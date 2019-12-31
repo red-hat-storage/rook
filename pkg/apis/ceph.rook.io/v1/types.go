@@ -289,7 +289,7 @@ type MetadataServerSpec struct {
 	// The number of metadata servers that are active. The remaining servers in the cluster will be in standby mode.
 	ActiveCount int32 `json:"activeCount"`
 
-	// The number of active standby metadata server
+	// The number of standby metadata server that are active
 	ActiveStandbyCount int32 `json:"activestandbycount"`
 
 	// Whether each active MDS instance will have an active standby with a warm metadata cache for faster failover.

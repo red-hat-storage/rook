@@ -120,6 +120,7 @@ func (c *Cluster) Start() error {
 
 	// Always create double the number of metadata servers to have standby mdses available
 	replicas := c.fs.Spec.MetadataServer.ActiveCount * 2
+	
 	if c.fs.Spec.MetadataServer.ActiveStandByCount > 0 {
 		replicas := c.fs.Spec.MetadataServer.ActiveStandByCount
 	}
