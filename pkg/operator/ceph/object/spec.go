@@ -167,6 +167,7 @@ func (c *clusterConfig) makeDaemonContainer(rgwConfig *rgwConfig) v1.Container {
 		),
 		Env:             controller.DaemonEnvVars(c.clusterSpec.CephVersion.Image),
 		Resources:       c.store.Spec.Gateway.Resources,
+		StartupProbe:    c.generateStartupProbe(),
 		LivenessProbe:   c.generateLiveProbe(),
 		SecurityContext: mon.PodSecurityContext(),
 	}
@@ -207,6 +208,21 @@ func (c *clusterConfig) generateLiveProbe() *v1.Probe {
 			},
 		},
 		InitialDelaySeconds: 10,
+	}
+}
+
+func (c *clusterConfig) generateStartupProbe() *v1.Probe {
+	return &v1.Probe{
+		Handler: v1.Handler{
+			HTTPGet: &v1.HTTPGetAction{
+				Path:   livenessProbePath,
+				Port:   c.generateLiveProbePort(), // same as liveness but allows for longer RGW startup times
+				Scheme: c.generateLiveProbeScheme(),
+			},
+		},
+		InitialDelaySeconds: 10,
+		PeriodSeconds:       10,
+		FailureThreshold:    18,
 	}
 }
 
