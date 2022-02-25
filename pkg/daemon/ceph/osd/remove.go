@@ -159,17 +159,19 @@ func removeOSD(context *clusterd.Context, clusterInfo *client.ClusterInfo, osdID
 	}
 
 	// purge the osd
-	purgeosdargs := []string{"osd", "purge", fmt.Sprintf("osd.%d", osdID), "--force", "--yes-i-really-mean-it"}
-	_, err = client.NewCephCommand(context, clusterInfo, purgeosdargs).Run()
+	logger.Infof("purging osd.%d", osdID)
+	purgeOSDArgs := []string{"osd", "purge", fmt.Sprintf("osd.%d", osdID), "--force", "--yes-i-really-mean-it"}
+	_, err = client.NewCephCommand(context, clusterInfo, purgeOSDArgs).Run()
 	if err != nil {
 		logger.Errorf("failed to purge osd.%d. %v", osdID, err)
 	}
 
 	// Attempting to remove the parent host. Errors can be ignored if there are other OSDs on the same host
-	hostargs := []string{"osd", "crush", "rm", hostName}
-	_, err = client.NewCephCommand(context, clusterInfo, hostargs).Run()
+	logger.Infof("attempting to remove host %q from crush map if not in use", osdID)
+	hostArgs := []string{"osd", "crush", "rm", hostName}
+	_, err = client.NewCephCommand(context, clusterInfo, hostArgs).Run()
 	if err != nil {
-		logger.Errorf("failed to remove CRUSH host %q. %v", hostName, err)
+		logger.Infof("failed to remove CRUSH host %q. %v", hostName, err)
 	}
 
 	logger.Infof("completed removal of OSD %d", osdID)
