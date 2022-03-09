@@ -614,6 +614,8 @@ class RadosJSON:
     def create_rgw_admin_ops_user(self):
         cmd = ['radosgw-admin', 'user', 'create', '--uid', self.EXTERNAL_RGW_ADMIN_OPS_USER_NAME, '--display-name',
                'Rook RGW Admin Ops user', '--caps', 'buckets=*;users=*;usage=read;metadata=read;zone=read']
+        if self._arg_parser.dry_run:
+            return self.dry_run("ceph " + " ".join(cmd))
         try:
             output = subprocess.check_output(cmd,
                                              stderr=subprocess.PIPE)
