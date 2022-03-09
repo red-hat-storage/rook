@@ -707,6 +707,8 @@ class RadosJSON:
 
     def gen_json_out(self):
         self._gen_output_map()
+        if self._arg_parser.dry_run:
+            return ""
         json_out = [
             {
                 "name": "rook-ceph-mon-endpoints",
