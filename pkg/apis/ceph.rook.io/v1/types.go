@@ -38,7 +38,7 @@ import (
 // +kubebuilder:printcolumn:name="DataDirHostPath",type=string,JSONPath=`.spec.dataDirHostPath`,description="Directory used on the K8s nodes"
 // +kubebuilder:printcolumn:name="MonCount",type=string,JSONPath=`.spec.mon.count`,description="Number of MONs"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`,description="Phase"
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.message`,description="Message"
 // +kubebuilder:printcolumn:name="Health",type=string,JSONPath=`.status.ceph.health`,description="Ceph Health"
 // +kubebuilder:printcolumn:name="External",type=boolean,JSONPath=`.spec.external.enable`
@@ -315,6 +315,9 @@ type ClusterStatus struct {
 	CephStatus  *CephStatus     `json:"ceph,omitempty"`
 	CephStorage *CephStorage    `json:"storage,omitempty"`
 	CephVersion *ClusterVersion `json:"version,omitempty"`
+	// ObservedGeneration is the latest generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // CephDaemonsVersions show the current ceph version for different ceph daemons
@@ -567,6 +570,7 @@ type CrashCollectorSpec struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // CephBlockPool represents a Ceph Storage Pool
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:subresource:status
 type CephBlockPool struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -650,7 +654,7 @@ type PoolSpec struct {
 // allowed pool names that can be specified.
 type NamedBlockPoolSpec struct {
 	// The desired name of the pool if different from the CephBlockPool CR name.
-	// +kubebuilder:validation:Enum=device_health_metrics;.nfs
+	// +kubebuilder:validation:Enum=device_health_metrics;.nfs;.mgr
 	// +optional
 	Name string `json:"name,omitempty"`
 	// The core pool configuration
@@ -685,6 +689,9 @@ type CephBlockPoolStatus struct {
 	// +optional
 	// +nullable
 	Info map[string]string `json:"info,omitempty"`
+	// ObservedGeneration is the latest generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // MirroringStatusSpec is the status of the pool mirroring
@@ -843,6 +850,9 @@ type SnapshotSchedule struct {
 type Status struct {
 	// +optional
 	Phase string `json:"phase,omitempty"`
+	// ObservedGeneration is the latest generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // ReplicatedSpec represents the spec for replication in a pool
@@ -1109,6 +1119,9 @@ type CephFilesystemStatus struct {
 	// +optional
 	MirroringStatus *FilesystemMirroringInfoSpec `json:"mirroringStatus,omitempty"`
 	Conditions      []Condition                  `json:"conditions,omitempty"`
+	// ObservedGeneration is the latest generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // FilesystemMirroringInfo is the status of the pool mirroring
@@ -1258,6 +1271,7 @@ type PeerStatSpec struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // CephObjectStore represents a Ceph Object Store Gateway
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:subresource:status
 type CephObjectStore struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -1421,6 +1435,9 @@ type ObjectStoreStatus struct {
 	// +nullable
 	Info       map[string]string `json:"info,omitempty"`
 	Conditions []Condition       `json:"conditions,omitempty"`
+	// ObservedGeneration is the latest generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // BucketStatus represents the status of a bucket
@@ -1440,6 +1457,7 @@ type BucketStatus struct {
 // +genclient:noStatus
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=rcou;objectuser
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:subresource:status
 type CephObjectStoreUser struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -1457,6 +1475,9 @@ type ObjectStoreUserStatus struct {
 	// +optional
 	// +nullable
 	Info map[string]string `json:"info,omitempty"`
+	// ObservedGeneration is the latest generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -1564,6 +1585,7 @@ type PullSpec struct {
 // +genclient
 // +genclient:noStatus
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:subresource:status
 type CephObjectZoneGroup struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -1592,6 +1614,7 @@ type ObjectZoneGroupSpec struct {
 // +genclient
 // +genclient:noStatus
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:subresource:status
 type CephObjectZone struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -1628,6 +1651,7 @@ type ObjectZoneSpec struct {
 // +genclient
 // +genclient:noStatus
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:subresource:status
 type CephBucketTopic struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -1646,6 +1670,9 @@ type BucketTopicStatus struct {
 	// +optional
 	// +nullable
 	ARN *string `json:"ARN,omitempty"`
+	// ObservedGeneration is the latest generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // CephBucketTopicList represents a list Ceph Object Store Bucket Notification Topics
@@ -1916,6 +1943,12 @@ type NetworkSpec struct {
 	// +optional
 	Selectors map[string]string `json:"selectors,omitempty"`
 
+	// Settings for network connections such as compression and encryption across the
+	// wire.
+	// +nullable
+	// +optional
+	Connections *ConnectionsSpec `json:"connections,omitempty"`
+
 	// HostNetwork to enable host network
 	// +optional
 	HostNetwork bool `json:"hostNetwork,omitempty"`
@@ -1929,6 +1962,36 @@ type NetworkSpec struct {
 	// DualStack determines whether Ceph daemons should listen on both IPv4 and IPv6
 	// +optional
 	DualStack bool `json:"dualStack,omitempty"`
+}
+
+type ConnectionsSpec struct {
+	// Encryption settings for the network connections.
+	// +nullable
+	// +optional
+	Encryption *EncryptionSpec `json:"encryption,omitempty"`
+
+	// Compression settings for the network connections.
+	// +nullable
+	// +optional
+	Compression *CompressionSpec `json:"compression,omitempty"`
+}
+
+type EncryptionSpec struct {
+	// Whether to encrypt the data in transit across the wire to prevent eavesdropping
+	// the data on the network. The default is not set. Even if encryption is not enabled,
+	// clients still establish a strong initial authentication for the connection
+	// and data integrity is still validated with a crc check. When encryption is enabled,
+	// all communication between clients and Ceph daemons, or between Ceph daemons will
+	// be encrypted.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+}
+
+type CompressionSpec struct {
+	// Whether to compress the data in transit across the wire.
+	// The default is not set. Requires Ceph Quincy (v17) or newer.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
 }
 
 // DisruptionManagementSpec configures management of daemon disruptions
@@ -1964,6 +2027,7 @@ type DisruptionManagementSpec struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // CephClient represents a Ceph Client
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:subresource:status
 type CephClient struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -2000,6 +2064,9 @@ type CephClientStatus struct {
 	// +optional
 	// +nullable
 	Info map[string]string `json:"info,omitempty"`
+	// ObservedGeneration is the latest generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // CleanupPolicySpec represents a Ceph Cluster cleanup policy
@@ -2047,6 +2114,7 @@ type SanitizeDisksSpec struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // CephRBDMirror represents a Ceph RBD Mirror
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:subresource:status
 type CephRBDMirror struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -2117,6 +2185,7 @@ type MirroringPeerSpec struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // CephFilesystemMirror is the Ceph Filesystem Mirror object definition
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:subresource:status
 type CephFilesystemMirror struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -2327,6 +2396,7 @@ type StorageClassDeviceSet struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // CephFilesystemSubVolumeGroup represents a Ceph Filesystem SubVolumeGroup
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:subresource:status
 type CephFilesystemSubVolumeGroup struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -2364,4 +2434,7 @@ type CephFilesystemSubVolumeGroupStatus struct {
 	// +optional
 	// +nullable
 	Info map[string]string `json:"info,omitempty"`
+	// ObservedGeneration is the latest generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }

@@ -50,7 +50,7 @@ function use_local_disk() {
   else
     # it's the hosted runner!
     sudo sgdisk --zap-all --clear --mbrtogpt -g -- "${BLOCK}"
-    sudo dd if=/dev/zero of="${BLOCK}" bs=1M count=10 oflag=direct
+    sudo dd if=/dev/zero of="${BLOCK}" bs=1M count=10 oflag=direct,dsync
     sudo parted -s "${BLOCK}" mklabel gpt
   fi
   sudo lsblk
@@ -166,7 +166,7 @@ function validate_yaml() {
   kubectl create -f crds.yaml -f common.yaml
 
   # create the volume replication CRDs
-  replication_version=v0.1.0
+  replication_version=v0.3.0
   replication_url="https://raw.githubusercontent.com/csi-addons/volume-replication-operator/${replication_version}/config/crd/bases"
   kubectl create -f "${replication_url}/replication.storage.openshift.io_volumereplications.yaml"
   kubectl create -f "${replication_url}/replication.storage.openshift.io_volumereplicationclasses.yaml"
@@ -213,7 +213,9 @@ function deploy_cluster() {
   kubectl create -f object-test.yaml
   kubectl create -f pool-test.yaml
   kubectl create -f filesystem-test.yaml
+  sed -i "/resources:/,/ # priorityClassName:/d" rbdmirror.yaml
   kubectl create -f rbdmirror.yaml
+  sed -i "/resources:/,/ # priorityClassName:/d" filesystem-mirror.yaml
   kubectl create -f filesystem-mirror.yaml
   kubectl create -f nfs-test.yaml
   kubectl create -f subvolumegroup.yaml

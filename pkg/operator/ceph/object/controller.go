@@ -156,10 +156,11 @@ func (r *ReconcileCephObjectStore) Reconcile(context context.Context, request re
 	// workaround because the rook logging mechanism is not compatible with the controller-runtime logging interface
 	reconcileResponse, objectStore, err := r.reconcile(request)
 
-	return reporting.ReportReconcileResult(logger, r.recorder, objectStore, reconcileResponse, err)
+	return reporting.ReportReconcileResult(logger, r.recorder, request,
+		&objectStore, reconcileResponse, err)
 }
 
-func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconcile.Result, *cephv1.CephObjectStore, error) {
+func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconcile.Result, cephv1.CephObjectStore, error) {
 	// Fetch the cephObjectStore instance
 	cephObjectStore := &cephv1.CephObjectStore{}
 	err := r.client.Get(r.opManagerContext, request.NamespacedName, cephObjectStore)
@@ -172,22 +173,26 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 			cephObjectStore.Name = request.Name
 			cephObjectStore.Namespace = request.Namespace
 			r.stopMonitoring(cephObjectStore)
-			return reconcile.Result{}, cephObjectStore, nil
+			return reconcile.Result{}, *cephObjectStore, nil
 		}
 		// Error reading the object - requeue the request.
-		return reconcile.Result{}, cephObjectStore, errors.Wrap(err, "failed to get cephObjectStore")
+		return reconcile.Result{}, *cephObjectStore, errors.Wrap(err, "failed to get cephObjectStore")
 	}
+	// update observedGeneration local variable with current generation value,
+	// because generation can be changed before reconile got completed
+	// CR status will be updated at end of reconcile, so to reflect the reconcile has finished
+	observedGeneration := cephObjectStore.ObjectMeta.Generation
 
 	// Set a finalizer so we can do cleanup before the object goes away
 	err = opcontroller.AddFinalizerIfNotPresent(r.opManagerContext, r.client, cephObjectStore)
 	if err != nil {
-		return reconcile.Result{}, cephObjectStore, errors.Wrap(err, "failed to add finalizer")
+		return reconcile.Result{}, *cephObjectStore, errors.Wrap(err, "failed to add finalizer")
 	}
 
 	// The CR was just created, initializing status fields
 	if cephObjectStore.Status == nil {
 		// The store is not available so let's not build the status Info yet
-		updateStatus(r.client, request.NamespacedName, cephv1.ConditionProgressing, map[string]string{})
+		updateStatus(k8sutil.ObservedGenerationNotAvailable, r.client, request.NamespacedName, cephv1.ConditionProgressing, map[string]string{})
 	}
 
 	// Make sure a CephCluster is present otherwise do nothing
@@ -206,14 +211,14 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 			// Remove finalizer
 			err := opcontroller.RemoveFinalizer(r.opManagerContext, r.client, cephObjectStore)
 			if err != nil {
-				return reconcile.Result{}, cephObjectStore, errors.Wrap(err, "failed to remove finalizer")
+				return reconcile.Result{}, *cephObjectStore, errors.Wrap(err, "failed to remove finalizer")
 			}
 
 			// Return and do not requeue. Successful deletion.
-			return reconcile.Result{}, cephObjectStore, nil
+			return reconcile.Result{}, *cephObjectStore, nil
 		}
 
-		return reconcileResponse, cephObjectStore, nil
+		return reconcileResponse, *cephObjectStore, nil
 	}
 	r.clusterSpec = &cephCluster.Spec
 
@@ -231,17 +236,17 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 	// Populate clusterInfo during each reconcile
 	r.clusterInfo, _, _, err = mon.LoadClusterInfo(r.context, r.opManagerContext, request.NamespacedName.Namespace)
 	if err != nil {
-		return reconcile.Result{}, cephObjectStore, errors.Wrap(err, "failed to populate cluster info")
+		return reconcile.Result{}, *cephObjectStore, errors.Wrap(err, "failed to populate cluster info")
 	}
 
 	// DELETE: the CR was deleted
 	if !cephObjectStore.GetDeletionTimestamp().IsZero() {
-		updateStatus(r.client, request.NamespacedName, cephv1.ConditionDeleting, buildStatusInfo(cephObjectStore))
+		updateStatus(k8sutil.ObservedGenerationNotAvailable, r.client, request.NamespacedName, cephv1.ConditionDeleting, buildStatusInfo(cephObjectStore))
 
 		// Detect running Ceph version
 		runningCephVersion, err := cephclient.LeastUptodateDaemonVersion(r.context, r.clusterInfo, config.MonType)
 		if err != nil {
-			return reconcile.Result{}, cephObjectStore, errors.Wrapf(err, "failed to retrieve current ceph %q version", config.MonType)
+			return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "failed to retrieve current ceph %q version", config.MonType)
 		}
 		r.clusterInfo.CephVersion = runningCephVersion
 		r.clusterInfo.Context = r.opManagerContext
@@ -249,23 +254,23 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 		// get the latest version of the object to check dependencies
 		err = r.client.Get(r.opManagerContext, request.NamespacedName, cephObjectStore)
 		if err != nil {
-			return reconcile.Result{}, cephObjectStore, errors.Wrapf(err, "failed to get latest CephObjectStore %q", request.NamespacedName.String())
+			return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "failed to get latest CephObjectStore %q", request.NamespacedName.String())
 		}
 		objCtx, err := NewMultisiteContext(r.context, r.clusterInfo, cephObjectStore)
 		if err != nil {
-			return reconcile.Result{}, cephObjectStore, errors.Wrapf(err, "failed to check for object buckets. failed to get object context")
+			return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "failed to check for object buckets. failed to get object context")
 		}
 		opsCtx, err := NewMultisiteAdminOpsContext(objCtx, &cephObjectStore.Spec)
 		if err != nil {
-			return reconcile.Result{}, cephObjectStore, errors.Wrapf(err, "failed to check for object buckets. failed to get admin ops API context")
+			return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "failed to check for object buckets. failed to get admin ops API context")
 		}
 		deps, err := cephObjectStoreDependents(r.context, r.clusterInfo, cephObjectStore, objCtx, opsCtx)
 		if err != nil {
-			return reconcile.Result{}, cephObjectStore, err
+			return reconcile.Result{}, *cephObjectStore, err
 		}
 		if !deps.Empty() {
 			err := reporting.ReportDeletionBlockedDueToDependents(logger, r.client, cephObjectStore, deps)
-			return opcontroller.WaitForRequeueIfFinalizerBlocked, cephObjectStore, err
+			return opcontroller.WaitForRequeueIfFinalizerBlocked, *cephObjectStore, err
 		}
 		reporting.ReportDeletionNotBlockedDueToDependents(logger, r.client, r.recorder, cephObjectStore)
 
@@ -283,18 +288,18 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 		// Remove finalizer
 		err = opcontroller.RemoveFinalizer(r.opManagerContext, r.client, cephObjectStore)
 		if err != nil {
-			return reconcile.Result{}, cephObjectStore, errors.Wrap(err, "failed to remove finalizer")
+			return reconcile.Result{}, *cephObjectStore, errors.Wrap(err, "failed to remove finalizer")
 		}
 
 		// Return and do not requeue. Successful deletion.
-		return reconcile.Result{}, cephObjectStore, nil
+		return reconcile.Result{}, *cephObjectStore, nil
 	}
 
 	if cephObjectStore.Spec.IsExternal() {
 		// Check the ceph version of the running monitors
 		desiredCephVersion, err := cephclient.LeastUptodateDaemonVersion(r.context, r.clusterInfo, config.MonType)
 		if err != nil {
-			return reconcile.Result{}, nil, errors.Wrapf(err, "failed to retrieve current ceph %q version", config.MonType)
+			return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "failed to retrieve current ceph %q version", config.MonType)
 		}
 		r.clusterInfo.CephVersion = desiredCephVersion
 	} else {
@@ -312,9 +317,9 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 		if err != nil {
 			if strings.Contains(err.Error(), opcontroller.UninitializedCephConfigError) {
 				logger.Info(opcontroller.OperatorNotInitializedMessage)
-				return opcontroller.WaitForRequeueIfOperatorNotInitialized, cephObjectStore, nil
+				return opcontroller.WaitForRequeueIfOperatorNotInitialized, *cephObjectStore, nil
 			}
-			return reconcile.Result{}, cephObjectStore, errors.Wrap(err, "failed to detect running and desired ceph version")
+			return reconcile.Result{}, *cephObjectStore, errors.Wrap(err, "failed to detect running and desired ceph version")
 		}
 
 		// If the version of the Ceph monitor differs from the CephCluster CR image version we assume
@@ -323,7 +328,7 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 		if !reflect.DeepEqual(*runningCephVersion, *desiredCephVersion) {
 			// Upgrade is in progress, let's wait for the mons to be done
 			return opcontroller.WaitForRequeueIfCephClusterIsUpgrading,
-				cephObjectStore,
+				*cephObjectStore,
 				opcontroller.ErrorCephUpgradingRequeue(desiredCephVersion, runningCephVersion)
 		}
 		r.clusterInfo.CephVersion = *desiredCephVersion
@@ -331,25 +336,26 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 
 	// validate the store settings
 	if err := r.validateStore(cephObjectStore); err != nil {
-		return reconcile.Result{}, cephObjectStore, errors.Wrapf(err, "invalid object store %q arguments", cephObjectStore.Name)
+		return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "invalid object store %q arguments", cephObjectStore.Name)
 	}
 
 	// CREATE/UPDATE
 	_, err = r.reconcileCreateObjectStore(cephObjectStore, request.NamespacedName, cephCluster.Spec)
 	if err != nil && kerrors.IsNotFound(err) {
 		logger.Info(opcontroller.OperatorNotInitializedMessage)
-		return opcontroller.WaitForRequeueIfOperatorNotInitialized, cephObjectStore, nil
+		return opcontroller.WaitForRequeueIfOperatorNotInitialized, *cephObjectStore, nil
 	} else if err != nil {
-		result, err := r.setFailedStatus(request.NamespacedName, "failed to create object store deployments", err)
-		return result, cephObjectStore, err
+		result, err := r.setFailedStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, "failed to create object store deployments", err)
+		return result, *cephObjectStore, err
 	}
 
+	// update ObservedGeneration in status at the end of reconcile
 	// Set Progressing status, we are done reconciling, the health check go routine will update the status
-	updateStatus(r.client, request.NamespacedName, cephv1.ConditionProgressing, buildStatusInfo(cephObjectStore))
+	updateStatus(observedGeneration, r.client, request.NamespacedName, cephv1.ConditionProgressing, buildStatusInfo(cephObjectStore))
 
 	// Return and do not requeue
 	logger.Debug("done reconciling")
-	return reconcile.Result{}, cephObjectStore, nil
+	return reconcile.Result{}, *cephObjectStore, nil
 }
 
 func (r *ReconcileCephObjectStore) reconcileCreateObjectStore(cephObjectStore *cephv1.CephObjectStore, namespacedName types.NamespacedName, cluster cephv1.ClusterSpec) (reconcile.Result, error) {
@@ -377,7 +383,7 @@ func (r *ReconcileCephObjectStore) reconcileCreateObjectStore(cephObjectStore *c
 		logger.Info("reconciling object store service")
 		_, err = cfg.reconcileService(cephObjectStore)
 		if err != nil {
-			return r.setFailedStatus(namespacedName, "failed to reconcile service", err)
+			return r.setFailedStatus(k8sutil.ObservedGenerationNotAvailable, namespacedName, "failed to reconcile service", err)
 		}
 
 		// RECONCILE ENDPOINTS
@@ -385,11 +391,11 @@ func (r *ReconcileCephObjectStore) reconcileCreateObjectStore(cephObjectStore *c
 		logger.Info("reconciling external object store endpoint")
 		err = cfg.reconcileExternalEndpoint(cephObjectStore)
 		if err != nil {
-			return r.setFailedStatus(namespacedName, "failed to reconcile external endpoint", err)
+			return r.setFailedStatus(k8sutil.ObservedGenerationNotAvailable, namespacedName, "failed to reconcile external endpoint", err)
 		}
 
 		if err := UpdateEndpoint(objContext, &cephObjectStore.Spec); err != nil {
-			return r.setFailedStatus(namespacedName, "failed to set endpoint", err)
+			return r.setFailedStatus(k8sutil.ObservedGenerationNotAvailable, namespacedName, "failed to set endpoint", err)
 		}
 	} else {
 		logger.Info("reconciling object store deployments")
@@ -417,11 +423,11 @@ func (r *ReconcileCephObjectStore) reconcileCreateObjectStore(cephObjectStore *c
 		logger.Debug("reconciling object store service")
 		serviceIP, err := cfg.reconcileService(cephObjectStore)
 		if err != nil {
-			return r.setFailedStatus(namespacedName, "failed to reconcile service", err)
+			return r.setFailedStatus(k8sutil.ObservedGenerationNotAvailable, namespacedName, "failed to reconcile service", err)
 		}
 
 		if err := UpdateEndpoint(objContext, &cephObjectStore.Spec); err != nil {
-			return r.setFailedStatus(namespacedName, "failed to set endpoint", err)
+			return r.setFailedStatus(k8sutil.ObservedGenerationNotAvailable, namespacedName, "failed to set endpoint", err)
 		}
 
 		// Reconcile Pool Creation
@@ -429,7 +435,7 @@ func (r *ReconcileCephObjectStore) reconcileCreateObjectStore(cephObjectStore *c
 			logger.Info("reconciling object store pools")
 			err = CreatePools(objContext, r.clusterSpec, cephObjectStore.Spec.MetadataPool, cephObjectStore.Spec.DataPool)
 			if err != nil {
-				return r.setFailedStatus(namespacedName, "failed to create object pools", err)
+				return r.setFailedStatus(k8sutil.ObservedGenerationNotAvailable, namespacedName, "failed to create object pools", err)
 			}
 		}
 
@@ -439,7 +445,7 @@ func (r *ReconcileCephObjectStore) reconcileCreateObjectStore(cephObjectStore *c
 		if err != nil && kerrors.IsNotFound(err) {
 			return reconcile.Result{}, err
 		} else if err != nil {
-			return r.setFailedStatus(namespacedName, "failed to configure multisite for object store", err)
+			return r.setFailedStatus(k8sutil.ObservedGenerationNotAvailable, namespacedName, "failed to configure multisite for object store", err)
 		}
 
 		// Create or Update Store
