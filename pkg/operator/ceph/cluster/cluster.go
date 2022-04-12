@@ -36,6 +36,7 @@ import (
 	"github.com/rook/rook/pkg/operator/ceph/cluster/osd"
 	"github.com/rook/rook/pkg/operator/ceph/config"
 	"github.com/rook/rook/pkg/operator/ceph/controller"
+	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
 	"github.com/rook/rook/pkg/operator/ceph/csi"
 	cephver "github.com/rook/rook/pkg/operator/ceph/version"
 	"github.com/rook/rook/pkg/operator/k8sutil"
@@ -58,30 +59,25 @@ type cluster struct {
 	mons               *mon.Cluster
 	ownerInfo          *k8sutil.OwnerInfo
 	isUpgrade          bool
-	monitoringRoutines map[string]*clusterHealth
+	monitoringRoutines map[string]*opcontroller.ClusterHealth
 	observedGeneration int64
 }
 
-type clusterHealth struct {
-	internalCtx    context.Context
-	internalCancel context.CancelFunc
-}
-
-func newCluster(c *cephv1.CephCluster, context *clusterd.Context, ownerInfo *k8sutil.OwnerInfo) *cluster {
+func newCluster(ctx context.Context, c *cephv1.CephCluster, context *clusterd.Context, ownerInfo *k8sutil.OwnerInfo) *cluster {
 	return &cluster{
 		// at this phase of the cluster creation process, the identity components of the cluster are
 		// not yet established. we reserve this struct which is filled in as soon as the cluster's
 		// identity can be established.
-		ClusterInfo:        client.AdminClusterInfo(c.Namespace, c.Name),
+		ClusterInfo:        client.AdminClusterInfo(ctx, c.Namespace, c.Name),
 		Namespace:          c.Namespace,
 		Spec:               &c.Spec,
 		context:            context,
 		namespacedName:     types.NamespacedName{Namespace: c.Namespace, Name: c.Name},
-		monitoringRoutines: make(map[string]*clusterHealth),
+		monitoringRoutines: make(map[string]*opcontroller.ClusterHealth),
 		ownerInfo:          ownerInfo,
-		mons:               mon.New(context, c.Namespace, c.Spec, ownerInfo),
+		mons:               mon.New(ctx, context, c.Namespace, c.Spec, ownerInfo),
 		// update observedGeneration with current generation value,
-		// because generation can be changed before reconile got completed
+		// because generation can be changed before reconcile got completed
 		// CR status will be updated at end of reconcile, so to reflect the reconcile has finished
 		observedGeneration: c.ObjectMeta.Generation,
 	}
@@ -459,7 +455,7 @@ func (c *cluster) replaceDefaultCrushMap(newRoot string) (err error) {
 func (c *cluster) preMonStartupActions(cephVersion cephver.CephVersion) error {
 	// Disable the mds sanity checks for the mons due to a ceph upgrade issue
 	// for the mds to Pacific if 16.2.7 or greater. We keep it more general for any
-	// Pacific upgrade greater than 16.2.7 in case they skip updrading directly to 16.2.7.
+	// Pacific upgrade greater than 16.2.7 in case they skip upgrading directly to 16.2.7.
 	if c.isUpgrade && cephVersion.IsPacific() && cephVersion.IsAtLeast(cephver.CephVersion{Major: 16, Minor: 2, Extra: 7}) {
 		if err := c.skipMDSSanityChecks(true); err != nil {
 			// If there is an error, just print it and continue. Likely there is not a

@@ -62,6 +62,10 @@ func (s *TestCephSettings) ApplyEnvVars() {
 	if os.Getenv("SKIP_CLEANUP_POLICY") == "false" {
 		s.SkipCleanupPolicy = false
 	}
+	err := os.Setenv("ROOK_DISABLE_ADMISSION_CONTROLLER", "false")
+	if err != nil {
+		logger.Errorf("failed to set ROOK_DISABLE_ADMISSION_CONTROLLER. %v", err)
+	}
 }
 
 func (s *TestCephSettings) readManifest(filename string) string {
@@ -97,6 +101,7 @@ func replaceNamespaces(name, manifest, operatorNamespace, clusterNamespace strin
 	manifest = strings.ReplaceAll(manifest, "rook-ceph:rook-ceph-system # serviceaccount:namespace:operator", operatorNamespace+":rook-ceph-system")
 	manifest = strings.ReplaceAll(manifest, "rook-ceph:rook-ceph-mgr # serviceaccount:namespace:cluster", clusterNamespace+":rook-ceph-mgr")
 	manifest = strings.ReplaceAll(manifest, "rook-ceph:rook-ceph-osd # serviceaccount:namespace:cluster", clusterNamespace+":rook-ceph-osd")
+	manifest = strings.ReplaceAll(manifest, "rook-ceph:rook-ceph-rgw # serviceaccount:namespace:cluster", clusterNamespace+":rook-ceph-rgw")
 
 	// SCC namespaces for CSI driver
 	manifest = strings.ReplaceAll(manifest, "rook-ceph:rook-csi-rbd-plugin-sa # serviceaccount:namespace:operator", operatorNamespace+":rook-csi-rbd-plugin-sa")

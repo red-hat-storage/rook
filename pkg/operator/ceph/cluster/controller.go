@@ -177,7 +177,7 @@ func add(opManagerContext context.Context, mgr manager.Manager, r reconcile.Reco
 			},
 		},
 		handler.EnqueueRequestsFromMapFunc(handlerFunc),
-		predicateForNodeWatcher(mgr.GetClient(), context))
+		predicateForNodeWatcher(opManagerContext, mgr.GetClient(), context))
 	if err != nil {
 		return err
 	}
@@ -277,10 +277,10 @@ func (r *ReconcileCephCluster) reconcileDelete(cephCluster *cephv1.CephCluster) 
 		return reconcile.Result{}, *cephCluster, err
 	}
 	if !deps.Empty() {
-		err := reporting.ReportDeletionBlockedDueToDependents(logger, r.client, cephCluster, deps)
+		err := reporting.ReportDeletionBlockedDueToDependents(r.opManagerContext, logger, r.client, cephCluster, deps)
 		return opcontroller.WaitForRequeueIfFinalizerBlocked, *cephCluster, err
 	}
-	reporting.ReportDeletionNotBlockedDueToDependents(logger, r.client, r.clusterController.recorder, cephCluster)
+	reporting.ReportDeletionNotBlockedDueToDependents(r.opManagerContext, logger, r.client, r.clusterController.recorder, cephCluster)
 
 	doCleanup := true
 
@@ -340,7 +340,7 @@ func (c *ClusterController) reconcileCephCluster(clusterObj *cephv1.CephCluster,
 	cluster, ok := c.clusterMap[clusterObj.Namespace]
 	if !ok {
 		// It's a new cluster so let's populate the struct
-		cluster = newCluster(clusterObj, c.context, ownerInfo)
+		cluster = newCluster(c.OpManagerCtx, clusterObj, c.context, ownerInfo)
 	}
 	cluster.namespacedName = c.namespacedName
 	// updating observedGeneration in cluster if it's not the first reconcile
@@ -377,8 +377,12 @@ func (c *ClusterController) requestClusterDelete(cluster *cephv1.CephCluster) (r
 		// since the op manager context is cancelled.
 		// close the goroutines watching the health of the cluster (mons, osds, ceph status)
 		for _, daemon := range monitorDaemonList {
-			if monitoring, ok := cluster.monitoringRoutines[daemon]; ok && monitoring.internalCtx.Err() == nil { // if the context hasn't been cancelled
-				cluster.monitoringRoutines[daemon].internalCancel()
+			if monitoring, ok := cluster.monitoringRoutines[daemon]; ok && monitoring.InternalCtx.Err() == nil { // if the context hasn't been cancelled
+				// Stop the monitoring routine
+				cluster.monitoringRoutines[daemon].InternalCancel()
+
+				// Remove the monitoring routine from the map
+				delete(cluster.monitoringRoutines, daemon)
 			}
 		}
 	}
@@ -520,7 +524,7 @@ func (c *ClusterController) deleteOSDEncryptionKeyFromKMS(currentCluster *cephv1
 	}
 
 	// Fetch PVCs
-	osdPVCs, _, err := osd.GetExistingPVCs(c.context, currentCluster.Namespace)
+	osdPVCs, _, err := osd.GetExistingPVCs(c.OpManagerCtx, c.context, currentCluster.Namespace)
 	if err != nil {
 		return errors.Wrap(err, "failed to list osd pvc")
 	}

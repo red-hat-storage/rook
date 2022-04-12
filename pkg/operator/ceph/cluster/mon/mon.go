@@ -20,6 +20,7 @@ limitations under the License.
 package mon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -61,7 +62,7 @@ const (
 
 	// AppName is the name of the secret storing cluster mon.admin key, fsid and name
 	AppName = "rook-ceph-mon"
-	// OperatorCreds is the name of the secret
+	//nolint:gosec // OperatorCreds is the name of the secret
 	OperatorCreds     = "rook-ceph-operator-creds"
 	monClusterAttr    = "mon_cluster"
 	fsidSecretNameKey = "fsid"
@@ -163,9 +164,9 @@ type SchedulingResult struct {
 }
 
 // New creates an instance of a mon cluster
-func New(context *clusterd.Context, namespace string, spec cephv1.ClusterSpec, ownerInfo *k8sutil.OwnerInfo) *Cluster {
+func New(ctx context.Context, clusterdContext *clusterd.Context, namespace string, spec cephv1.ClusterSpec, ownerInfo *k8sutil.OwnerInfo) *Cluster {
 	return &Cluster{
-		context:        context,
+		context:        clusterdContext,
 		spec:           spec,
 		Namespace:      namespace,
 		maxMonID:       -1,
@@ -175,6 +176,9 @@ func New(context *clusterd.Context, namespace string, spec cephv1.ClusterSpec, o
 			Schedule: map[string]*MonScheduleInfo{},
 		},
 		ownerInfo: ownerInfo,
+		ClusterInfo: &cephclient.ClusterInfo{
+			Context: ctx,
+		},
 	}
 }
 

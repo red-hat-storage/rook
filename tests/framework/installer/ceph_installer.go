@@ -190,7 +190,7 @@ func (h *CephInstaller) startAdmissionController() error {
 	if err != nil {
 		return errors.Errorf("failed to find user home directory. %v", err)
 	}
-	scriptPath := path.Join(rootPath, "tests/scripts/deploy_admission_controller_test.sh")
+	scriptPath := path.Join(rootPath, "tests/scripts/deploy_cert_manager.sh")
 	err = h.k8shelper.MakeContext().Executor.ExecuteCommandWithEnv([]string{fmt.Sprintf("NAMESPACE=%s", h.settings.OperatorNamespace), fmt.Sprintf("HOME=%s", userHome)}, "bash", scriptPath)
 	if err != nil {
 		return err
@@ -494,7 +494,6 @@ func (h *CephInstaller) GetNodeHostnames() ([]string, error) {
 }
 
 func (h *CephInstaller) installRookOperator() (bool, error) {
-	ctx := context.TODO()
 	var err error
 
 	h.k8shelper.CreateAnonSystemClusterBinding()
@@ -520,13 +519,13 @@ func (h *CephInstaller) installRookOperator() (bool, error) {
 		return false, err
 	}
 
-	discovery, err := h.k8shelper.Clientset.AppsV1().DaemonSets(h.settings.OperatorNamespace).Get(ctx, "rook-discover", metav1.GetOptions{})
 	if h.settings.EnableDiscovery {
-		assert.NoError(h.T(), err)
-		assert.NotNil(h.T(), discovery)
-	} else {
-		assert.Error(h.T(), err)
-		assert.True(h.T(), kerrors.IsNotFound(err))
+		if h.k8shelper.IsPodInExpectedState("rook-discover", h.settings.OperatorNamespace, "Running") {
+			assert.NoError(h.T(), err)
+		} else {
+			assert.Error(h.T(), err)
+			assert.True(h.T(), kerrors.IsNotFound(err))
+		}
 	}
 
 	return true, nil
@@ -552,6 +551,13 @@ func (h *CephInstaller) InstallRook() (bool, error) {
 	}
 
 	if h.settings.UseHelm {
+		// Install Prometheus so we can create the prometheus rules
+		args := []string{"apply", "-f", "https://raw.githubusercontent.com/coreos/prometheus-operator/v0.40.0/bundle.yaml"}
+		_, err = h.k8shelper.MakeContext().Executor.ExecuteCommandWithOutput("kubectl", args...)
+		if err != nil {
+			return false, errors.Wrap(err, "failed to install prometheus")
+		}
+		// Create the cluster
 		err = h.CreateRookCephClusterViaHelm()
 		if err != nil {
 			return false, errors.Wrap(err, "failed to install ceph cluster using Helm")

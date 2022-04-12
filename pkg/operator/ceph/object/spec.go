@@ -40,7 +40,8 @@ import (
 
 const (
 	readinessProbePath = "/swift/healthcheck"
-	// #nosec G101 since this is not leaking any hardcoded details
+	serviceAccountName = "rook-ceph-rgw"
+	//nolint:gosec // since this is not leaking any hardcoded details
 	setupVaultTokenFile = `
 set -e
 
@@ -113,8 +114,9 @@ func (c *clusterConfig) makeRGWPodSpec(rgwConfig *rgwConfig) (v1.PodTemplateSpec
 			controller.DaemonVolumes(c.DataPathMap, rgwConfig.ResourceName),
 			c.mimeTypesVolume(),
 		),
-		HostNetwork:       c.clusterSpec.Network.IsHost(),
-		PriorityClassName: c.store.Spec.Gateway.PriorityClassName,
+		HostNetwork:        c.clusterSpec.Network.IsHost(),
+		PriorityClassName:  c.store.Spec.Gateway.PriorityClassName,
+		ServiceAccountName: serviceAccountName,
 	}
 
 	// If the log collector is enabled we add the side-car container

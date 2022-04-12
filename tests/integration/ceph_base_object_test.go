@@ -38,7 +38,7 @@ import (
 )
 
 const (
-	// #nosec G101 since this is not leaking any hardcoded credentials, it's just the secret name
+	//nolint:gosec // since this is not leaking any hardcoded credentials, it's just the secret name
 	objectTLSSecretName = "rook-ceph-rgw-tls-test-store-csr"
 )
 
@@ -53,7 +53,6 @@ var (
 	ObjectKey4             = "rookObj4"
 	contentType            = "plain/text"
 	obcName                = "smoke-delete-bucket"
-	region                 = "us-east-1"
 	maxObject              = "2"
 	newMaxObject           = "3"
 	bucketStorageClassName = "rook-smoke-delete-bucket"

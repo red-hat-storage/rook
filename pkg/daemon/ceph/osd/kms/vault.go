@@ -75,7 +75,7 @@ type removeCertFilesFunction func()
 */
 
 // InitVault inits the secret store
-func InitVault(context *clusterd.Context, namespace string, config map[string]string) (secrets.Secrets, error) {
+func InitVault(ctx context.Context, context *clusterd.Context, namespace string, config map[string]string) (secrets.Secrets, error) {
 	c := make(map[string]interface{})
 
 	// So that we don't alter the content of c.config for later iterations
@@ -86,7 +86,7 @@ func InitVault(context *clusterd.Context, namespace string, config map[string]st
 	}
 
 	// Populate TLS config
-	newConfigWithTLS, removeCertFiles, err := configTLS(context, namespace, oriConfig)
+	newConfigWithTLS, removeCertFiles, err := configTLS(ctx, context, namespace, oriConfig)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to initialize vault tls configuration")
 	}
@@ -111,8 +111,7 @@ func InitVault(context *clusterd.Context, namespace string, config map[string]st
 // The signature has named result parameters to help building 'defer' statements especially for the
 // content of removeCertFiles which needs to be populated by the files to remove if no errors and be
 // nil on errors
-func configTLS(clusterdContext *clusterd.Context, namespace string, config map[string]string) (newConfig map[string]string, removeCertFiles removeCertFilesFunction, retErr error) {
-	ctx := context.TODO()
+func configTLS(ctx context.Context, clusterdContext *clusterd.Context, namespace string, config map[string]string) (newConfig map[string]string, removeCertFiles removeCertFilesFunction, retErr error) {
 	var filesToRemove []*os.File
 
 	defer func() {
@@ -203,7 +202,7 @@ func put(v secrets.Secrets, secretName, secretValue string, keyContext map[strin
 	data := make(map[string]interface{})
 	data[secretName] = secretValue
 
-	// #nosec G104 Write the encryption key in Vault
+	//nolint:gosec // Write the encryption key in Vault
 	err = v.PutSecret(secretName, data, keyContext)
 	if err != nil {
 		return errors.Wrapf(err, "failed to put secret %q in vault", secretName)
@@ -213,7 +212,7 @@ func put(v secrets.Secrets, secretName, secretValue string, keyContext map[strin
 }
 
 func get(v secrets.Secrets, secretName string, keyContext map[string]string) (string, error) {
-	// #nosec G104 Write the encryption key in Vault
+	//nolint:gosec // Write the encryption key in Vault
 	s, err := v.GetSecret(secretName, keyContext)
 	if err != nil {
 		return "", err
@@ -223,7 +222,7 @@ func get(v secrets.Secrets, secretName string, keyContext map[string]string) (st
 }
 
 func deleteSecret(v secrets.Secrets, secretName string, keyContext map[string]string) error {
-	// #nosec G104 Write the encryption key in Vault
+	//nolint:gosec // Write the encryption key in Vault
 	err := v.DeleteSecret(secretName, keyContext)
 	if err != nil {
 		return errors.Wrapf(err, "failed to delete secret %q in vault", secretName)
@@ -248,8 +247,7 @@ func (c *Config) IsVault() bool {
 	return c.Provider == secrets.TypeVault
 }
 
-func validateVaultConnectionDetails(clusterdContext *clusterd.Context, ns string, kmsConfig map[string]string) error {
-	ctx := context.TODO()
+func validateVaultConnectionDetails(ctx context.Context, clusterdContext *clusterd.Context, ns string, kmsConfig map[string]string) error {
 	for _, option := range vaultMandatoryConnectionDetails {
 		if GetParam(kmsConfig, option) == "" {
 			return errors.Errorf("failed to find connection details %q", option)

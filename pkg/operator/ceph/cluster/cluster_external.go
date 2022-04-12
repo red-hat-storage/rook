@@ -108,7 +108,7 @@ func (c *ClusterController) configureExternalCephCluster(cluster *cluster) error
 	}
 
 	// Create CSI config map
-	err = csi.CreateCsiConfigMap(c.namespacedName.Namespace, c.context.Clientset, cluster.ownerInfo)
+	err = csi.CreateCsiConfigMap(c.OpManagerCtx, c.namespacedName.Namespace, c.context.Clientset, cluster.ownerInfo)
 	if err != nil {
 		return errors.Wrap(err, "failed to create csi config map")
 	}
@@ -237,21 +237,5 @@ func (c *ClusterController) configureExternalClusterMonitoring(context *clusterd
 	} else {
 		logger.Info("external service monitor created")
 	}
-
-	// namespace in which the prometheusRule should be deployed
-	// if left empty, it will be deployed in current namespace
-	namespace := cluster.Spec.Monitoring.RulesNamespace
-	if namespace == "" {
-		namespace = cluster.Namespace
-	}
-
-	logger.Info("creating external prometheus rule")
-	err = manager.DeployPrometheusRule(mgr.PrometheusExternalRuleName, namespace)
-	if err != nil {
-		logger.Errorf("failed to create external prometheus rule. %v", err)
-	} else {
-		logger.Info("external prometheus rule created")
-	}
-
 	return nil
 }
