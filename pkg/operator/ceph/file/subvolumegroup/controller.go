@@ -69,21 +69,23 @@ type ReconcileCephFilesystemSubVolumeGroup struct {
 	context          *clusterd.Context
 	clusterInfo      *cephclient.ClusterInfo
 	opManagerContext context.Context
+	opConfig         opcontroller.OperatorConfig
 }
 
 // Add creates a new CephFilesystemSubVolumeGroup Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager, context *clusterd.Context, opManagerContext context.Context, opConfig opcontroller.OperatorConfig) error {
-	return add(mgr, newReconciler(mgr, context, opManagerContext))
+	return add(mgr, newReconciler(mgr, context, opManagerContext, opConfig))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, context *clusterd.Context, opManagerContext context.Context) reconcile.Reconciler {
+func newReconciler(mgr manager.Manager, context *clusterd.Context, opManagerContext context.Context, opConfig opcontroller.OperatorConfig) reconcile.Reconciler {
 	return &ReconcileCephFilesystemSubVolumeGroup{
 		client:           mgr.GetClient(),
 		scheme:           mgr.GetScheme(),
 		context:          context,
 		opManagerContext: opManagerContext,
+		opConfig:         opConfig,
 	}
 }
 
@@ -253,6 +255,17 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) reconcile(request reconcile.Requ
 			SubvolumeGroup: cephFilesystemSubVolumeGroup.Name,
 		},
 	}
+
+	// If the cluster has Multus enabled we need to append the network namespace of the driver's
+	// holder DaemonSet in the csi configmap
+	if cephCluster.Spec.Network.IsMultus() {
+		netNamespaceFilePath, err := csi.GenerateNetNamespaceFilePath(r.opManagerContext, r.client, cephCluster.ClusterName, r.opConfig.OperatorNamespace, csi.CephFSDriverShortName)
+		if err != nil {
+			return reconcile.Result{}, errors.Wrap(err, "failed to generate cephfs net namespace file path")
+		}
+		csiClusterConfigEntry.CephFS.NetNamespaceFilePath = netNamespaceFilePath
+	}
+
 	err = csi.SaveClusterConfig(r.context.Clientset, buildClusterID(cephFilesystemSubVolumeGroup), r.clusterInfo, &csiClusterConfigEntry)
 	if err != nil {
 		return reconcile.Result{}, errors.Wrap(err, "failed to save cluster config")
