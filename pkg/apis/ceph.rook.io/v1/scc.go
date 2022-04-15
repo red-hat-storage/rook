@@ -71,7 +71,6 @@ func NewSecurityContextConstraints(name, namespace string) *secv1.SecurityContex
 			fmt.Sprintf("system:serviceaccount:%s:default", namespace),
 			fmt.Sprintf("system:serviceaccount:%s:rook-ceph-mgr", namespace),
 			fmt.Sprintf("system:serviceaccount:%s:rook-ceph-osd", namespace),
-			fmt.Sprintf("system:serviceaccount:%s:rook-ceph-rgw", namespace),
 		},
 	}
 }

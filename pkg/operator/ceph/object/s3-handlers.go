@@ -31,23 +31,25 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Region for aws golang sdk
-const CephRegion = "us-east-1"
-
 // S3Agent wraps the s3.S3 structure to allow for wrapper methods
 type S3Agent struct {
 	Client *s3.S3
 }
 
-func NewS3Agent(accessKey, secretKey, endpoint string, debug bool, tlsCert []byte) (*S3Agent, error) {
-	return newS3Agent(accessKey, secretKey, endpoint, debug, tlsCert, false)
+func NewS3Agent(accessKey, secretKey, endpoint, region string, debug bool, tlsCert []byte) (*S3Agent, error) {
+	return newS3Agent(accessKey, secretKey, endpoint, region, debug, tlsCert, false)
 }
 
-func NewInsecureS3Agent(accessKey, secretKey, endpoint string, debug bool) (*S3Agent, error) {
-	return newS3Agent(accessKey, secretKey, endpoint, debug, nil, true)
+func NewInsecureS3Agent(accessKey, secretKey, endpoint, region string, debug bool) (*S3Agent, error) {
+	return newS3Agent(accessKey, secretKey, endpoint, region, debug, nil, true)
 }
 
-func newS3Agent(accessKey, secretKey, endpoint string, debug bool, tlsCert []byte, insecure bool) (*S3Agent, error) {
+func newS3Agent(accessKey, secretKey, endpoint, region string, debug bool, tlsCert []byte, insecure bool) (*S3Agent, error) {
+	var cephRegion = "us-east-1"
+	if region != "" {
+		cephRegion = region
+	}
+
 	logLevel := aws.LogOff
 	if debug {
 		logLevel = aws.LogDebug
@@ -62,7 +64,7 @@ func newS3Agent(accessKey, secretKey, endpoint string, debug bool, tlsCert []byt
 	}
 	session, err := awssession.NewSession(
 		aws.NewConfig().
-			WithRegion(CephRegion).
+			WithRegion(cephRegion).
 			WithCredentials(credentials.NewStaticCredentials(accessKey, secretKey, "")).
 			WithEndpoint(endpoint).
 			WithS3ForcePathStyle(true).
@@ -197,7 +199,7 @@ func (s *S3Agent) DeleteObjectInBucket(bucketname string, key string) (bool, err
 }
 
 func BuildTransportTLS(tlsCert []byte, insecure bool) *http.Transport {
-	//nolint:gosec // is enabled only for testing
+	// #nosec G402 is enabled only for testing
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: insecure}
 	if len(tlsCert) > 0 {
 		caCertPool := x509.NewCertPool()

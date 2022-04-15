@@ -51,9 +51,8 @@ func startDiscover(cmd *cobra.Command, args []string) error {
 	rook.LogStartupInfo(discoverCmd.Flags())
 
 	context := rook.NewContext()
-	ctx := cmd.Context()
 
-	err := discover.Run(ctx, context, discoverDevicesInterval, usesCVInventory)
+	err := discover.Run(context, discoverDevicesInterval, usesCVInventory)
 	if err != nil {
 		rook.TerminateFatal(err)
 	}

@@ -24,7 +24,6 @@ import (
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
 	"github.com/rook/rook/pkg/operator/ceph/cluster/mon"
 	"github.com/rook/rook/pkg/operator/ceph/cluster/osd"
-	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
 )
 
 var (
@@ -38,10 +37,10 @@ func (c *ClusterController) configureCephMonitoring(cluster *cluster, clusterInf
 		isEnabled = isMonitoringEnabled(daemon, cluster.Spec)
 		if health, ok := cluster.monitoringRoutines[daemon]; ok {
 			// If the context Err() is nil this means it hasn't been cancelled yet
-			if health.InternalCtx.Err() == nil {
+			if health.internalCtx.Err() == nil {
 				logger.Debugf("monitoring routine for %q is already running", daemon)
 				if !isEnabled {
-					cluster.monitoringRoutines[daemon].InternalCancel()
+					cluster.monitoringRoutines[daemon].internalCancel()
 				}
 			}
 		} else {
@@ -50,9 +49,9 @@ func (c *ClusterController) configureCephMonitoring(cluster *cluster, clusterInf
 				// They can individually be cancelled and will be cancelled when the parent context is cancelled
 				internalCtx, internalCancel := context.WithCancel(c.OpManagerCtx)
 
-				cluster.monitoringRoutines[daemon] = &opcontroller.ClusterHealth{
-					InternalCtx:    internalCtx,
-					InternalCancel: internalCancel,
+				cluster.monitoringRoutines[daemon] = &clusterHealth{
+					internalCtx:    internalCtx,
+					internalCancel: internalCancel,
 				}
 
 				// Run the go routine
@@ -82,18 +81,18 @@ func (c *ClusterController) startMonitoringCheck(cluster *cluster, clusterInfo *
 	case "mon":
 		healthChecker := mon.NewHealthChecker(cluster.mons)
 		logger.Infof("enabling ceph %s monitoring goroutine for cluster %q", daemon, cluster.Namespace)
-		go healthChecker.Check(cluster.monitoringRoutines, daemon)
+		go healthChecker.Check(cluster.monitoringRoutines[daemon].internalCtx)
 
 	case "osd":
 		if !cluster.Spec.External.Enable {
 			c.osdChecker = osd.NewOSDHealthMonitor(c.context, clusterInfo, cluster.Spec.RemoveOSDsIfOutAndSafeToRemove, cluster.Spec.HealthCheck)
 			logger.Infof("enabling ceph %s monitoring goroutine for cluster %q", daemon, cluster.Namespace)
-			go c.osdChecker.Start(cluster.monitoringRoutines, daemon)
+			go c.osdChecker.Start(cluster.monitoringRoutines[daemon].internalCtx)
 		}
 
 	case "status":
 		cephChecker := newCephStatusChecker(c.context, clusterInfo, cluster.Spec)
 		logger.Infof("enabling ceph %s monitoring goroutine for cluster %q", daemon, cluster.Namespace)
-		go cephChecker.checkCephStatus(cluster.monitoringRoutines, daemon)
+		go cephChecker.checkCephStatus(cluster.monitoringRoutines[daemon].internalCtx)
 	}
 }

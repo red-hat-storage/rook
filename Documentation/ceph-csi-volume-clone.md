@@ -3,7 +3,6 @@ title: Volume clone
 weight: 3250
 indent: true
 ---
-{% include_relative branch.liquid %}
 
 The CSI Volume Cloning feature adds support for specifying existing PVCs in the
 `dataSource` field to indicate a user would like to clone a Volume.

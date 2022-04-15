@@ -17,6 +17,8 @@ limitations under the License.
 package mgr
 
 import (
+	"context"
+
 	"github.com/pkg/errors"
 	"github.com/rook/rook/pkg/operator/k8sutil"
 	policyv1 "k8s.io/api/policy/v1"
@@ -56,7 +58,7 @@ func (c *Cluster) reconcileMgrPDB() error {
 			}
 			return nil
 		}
-		op, err := controllerutil.CreateOrUpdate(c.clusterInfo.Context, c.context.Client, pdb, mutateFunc)
+		op, err := controllerutil.CreateOrUpdate(context.TODO(), c.context.Client, pdb, mutateFunc)
 		if err != nil {
 			return errors.Wrapf(err, "failed to reconcile mgr pdb on op %q", op)
 		}
@@ -72,7 +74,7 @@ func (c *Cluster) reconcileMgrPDB() error {
 		}
 		return nil
 	}
-	op, err := controllerutil.CreateOrUpdate(c.clusterInfo.Context, c.context.Client, pdb, mutateFunc)
+	op, err := controllerutil.CreateOrUpdate(context.TODO(), c.context.Client, pdb, mutateFunc)
 	if err != nil {
 		return errors.Wrapf(err, "failed to reconcile mgr pdb on op %q", op)
 	}
@@ -88,7 +90,7 @@ func (c *Cluster) deleteMgrPDB() {
 	}
 	if usePDBV1Beta1 {
 		mgrPDB := &policyv1beta1.PodDisruptionBudget{}
-		err := c.context.Client.Get(c.clusterInfo.Context, pdbRequest, mgrPDB)
+		err := c.context.Client.Get(context.TODO(), pdbRequest, mgrPDB)
 		if err != nil {
 			if !kerrors.IsNotFound(err) {
 				logger.Errorf("failed to get mgr pdb %q. %v", mgrPDBName, err)
@@ -96,14 +98,14 @@ func (c *Cluster) deleteMgrPDB() {
 			return
 		}
 		logger.Debugf("ensuring the mgr pdb %q is deleted", mgrPDBName)
-		err = c.context.Client.Delete(c.clusterInfo.Context, mgrPDB)
+		err = c.context.Client.Delete(context.TODO(), mgrPDB)
 		if err != nil {
 			logger.Errorf("failed to delete mgr pdb %q. %v", mgrPDBName, err)
 			return
 		}
 	}
 	mgrPDB := &policyv1.PodDisruptionBudget{}
-	err = c.context.Client.Get(c.clusterInfo.Context, pdbRequest, mgrPDB)
+	err = c.context.Client.Get(context.TODO(), pdbRequest, mgrPDB)
 	if err != nil {
 		if !kerrors.IsNotFound(err) {
 			logger.Errorf("failed to get mgr pdb %q. %v", mgrPDBName, err)
@@ -111,7 +113,7 @@ func (c *Cluster) deleteMgrPDB() {
 		return
 	}
 	logger.Debugf("ensuring the mgr pdb %q is deleted", mgrPDBName)
-	err = c.context.Client.Delete(c.clusterInfo.Context, mgrPDB)
+	err = c.context.Client.Delete(context.TODO(), mgrPDB)
 	if err != nil {
 		logger.Errorf("failed to delete mgr pdb %q. %v", mgrPDBName, err)
 	}

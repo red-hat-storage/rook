@@ -103,7 +103,8 @@ func setKEKinEnv(context *clusterd.Context, clusterInfo *cephclient.ClusterInfo)
 		return errors.Wrap(err, "failed to set key encryption key env variable for ceph-volume")
 	}
 
-	logger.Debug("successfully set kek to env variable")
+	logger.Debug("successfully set vault env variables")
+
 	return nil
 }
 

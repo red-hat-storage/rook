@@ -17,6 +17,8 @@ limitations under the License.
 package mon
 
 import (
+	"context"
+
 	"github.com/pkg/errors"
 	"github.com/rook/rook/pkg/operator/k8sutil"
 	policyv1 "k8s.io/api/policy/v1"
@@ -73,7 +75,7 @@ func (c *Cluster) createOrUpdateMonPDB(maxUnavailable int32) (controllerutil.Ope
 			}
 			return nil
 		}
-		return controllerutil.CreateOrUpdate(c.ClusterInfo.Context, c.context.Client, pdb, mutateFunc)
+		return controllerutil.CreateOrUpdate(context.TODO(), c.context.Client, pdb, mutateFunc)
 	}
 	pdb := &policyv1.PodDisruptionBudget{
 		ObjectMeta: objectMeta}
@@ -85,7 +87,7 @@ func (c *Cluster) createOrUpdateMonPDB(maxUnavailable int32) (controllerutil.Ope
 		}
 		return nil
 	}
-	return controllerutil.CreateOrUpdate(c.ClusterInfo.Context, c.context.Client, pdb, mutateFunc)
+	return controllerutil.CreateOrUpdate(context.TODO(), c.context.Client, pdb, mutateFunc)
 }
 
 // blockMonDrain makes MaxUnavailable in mon PDB to 0 to block any voluntary mon drains

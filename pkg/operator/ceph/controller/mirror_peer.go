@@ -35,15 +35,15 @@ import (
 )
 
 const (
-	//nolint:gosec // since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
+	// #nosec G101 since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
 	poolMirrorBoostrapPeerSecretName = "pool-peer-token"
-	//nolint:gosec // since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
+	// #nosec G101 since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
 	fsMirrorBoostrapPeerSecretName = "fs-peer-token"
-	//nolint:gosec // // since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
+	// #nosec G101 since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
 	clusterMirrorBoostrapPeerSecretName = "cluster-peer-token"
-	//nolint:gosec // since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
+	// RBDMirrorBootstrapPeerSecretName #nosec G101 since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
 	RBDMirrorBootstrapPeerSecretName = "rbdMirrorBootstrapPeerSecretName"
-	//nolint:gosec // since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
+	// FSMirrorBootstrapPeerSecretName #nosec G101 since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
 	FSMirrorBootstrapPeerSecretName = "fsMirrorBootstrapPeerSecretName"
 )
 

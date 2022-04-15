@@ -167,9 +167,3 @@ kind: ServiceAccount
 metadata:
   name: rook-ceph-purge-osd
   namespace: $NAMESPACE
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: rook-ceph-rgw
-  namespace: $NAMESPACE

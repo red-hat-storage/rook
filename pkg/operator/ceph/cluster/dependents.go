@@ -47,7 +47,6 @@ var (
 		"CephBucketTopic",
 		"CephBucketNotification",
 		"CephFilesystemSubVolumeGroup",
-		"CephBlockPoolRadosNamespace",
 	}
 )
 

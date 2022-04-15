@@ -45,7 +45,8 @@ var (
 	NetworkSelectors = []string{PublicNetworkSelectorKeyName, ClusterNetworkSelectorKeyName}
 )
 
-func generateNetworkSettings(ctx context.Context, clusterdContext *clusterd.Context, namespace string, networkSelectors map[string]string) ([]Option, error) {
+func generateNetworkSettings(clusterdContext *clusterd.Context, namespace string, networkSelectors map[string]string) ([]Option, error) {
+	ctx := context.TODO()
 	cephNetworks := []Option{}
 
 	for _, selectorKey := range NetworkSelectors {

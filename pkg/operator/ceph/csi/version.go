@@ -25,16 +25,15 @@ import (
 )
 
 var (
-	//minimum supported version is 3.5.0
-	minimum = CephCSIVersion{3, 5, 0}
+	//minimum supported version is 3.4.0
+	minimum = CephCSIVersion{3, 4, 0}
 	//supportedCSIVersions are versions that rook supports
-	releasev350 = CephCSIVersion{3, 5, 0}
-	releasev360 = CephCSIVersion{3, 6, 0}
-
+	releasev340          = CephCSIVersion{3, 4, 0}
+	releasev350          = CephCSIVersion{3, 5, 0}
 	supportedCSIVersions = []CephCSIVersion{
 		minimum,
+		releasev340,
 		releasev350,
-		releasev360,
 	}
 
 	// custom ceph.conf is supported in v3.5.0+

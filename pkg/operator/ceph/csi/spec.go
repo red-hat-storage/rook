@@ -60,7 +60,6 @@ type Param struct {
 	EnableVolumeReplicationSideCar bool
 	EnableCSIAddonsSideCar         bool
 	MountCustomCephConf            bool
-	EnableOIDCTokenProjection      bool
 	LogLevel                       uint8
 	CephFSGRPCMetricsPort          uint16
 	CephFSLivenessMetricsPort      uint16
@@ -104,7 +103,7 @@ var (
 // manually challenging.
 var (
 	// image names
-	DefaultCSIPluginImage         = "quay.io/cephcsi/cephcsi:v3.6.0"
+	DefaultCSIPluginImage         = "quay.io/cephcsi/cephcsi:v3.5.1"
 	DefaultRegistrarImage         = "k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0"
 	DefaultProvisionerImage       = "k8s.gcr.io/sig-storage/csi-provisioner:v3.1.0"
 	DefaultAttacherImage          = "k8s.gcr.io/sig-storage/csi-attacher:v3.4.0"
@@ -131,11 +130,10 @@ var (
 )
 
 const (
-	KubeMinMajor                     = "1"
-	kubeMinVerForSnapshot            = "17"
-	KubeMinVerForOIDCTokenProjection = "20"
-	kubeMinVerForV1csiDriver         = "18"
-	kubeMaxVerForBeta1csiDriver      = "21"
+	KubeMinMajor                = "1"
+	kubeMinVerForSnapshot       = "17"
+	kubeMinVerForV1csiDriver    = "18"
+	kubeMaxVerForBeta1csiDriver = "21"
 
 	// common tolerations and node affinity
 	provisionerTolerationsEnv  = "CSI_PROVISIONER_TOLERATIONS"
@@ -294,11 +292,6 @@ func (r *ReconcileCSI) startDrivers(ver *version.Info, ownerInfo *k8sutil.OwnerI
 
 	if strings.EqualFold(k8sutil.GetValue(r.opConfig.Parameters, "CSI_ENABLE_OMAP_GENERATOR", "false"), "true") {
 		tp.EnableOMAPGenerator = true
-	}
-
-	// SA token projection is stable only from kubernetes version 1.20.
-	if ver.Major == KubeMinMajor && ver.Minor >= KubeMinVerForOIDCTokenProjection {
-		tp.EnableOIDCTokenProjection = true
 	}
 
 	// if k8s >= v1.17 enable RBD and CephFS snapshotter by default

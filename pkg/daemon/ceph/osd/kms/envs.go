@@ -134,7 +134,6 @@ func ConfigEnvsToMapString() map[string]string {
 		pair := strings.SplitN(e, "=", 2)
 		for _, knownKMS := range knownKMSPrefix {
 			if strings.HasPrefix(pair[0], knownKMS) || pair[0] == Provider {
-				logger.Debugf("adding env %q", pair[0])
 				envs[pair[0]] = os.Getenv(pair[0])
 			}
 		}

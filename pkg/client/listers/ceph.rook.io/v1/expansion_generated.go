@@ -26,14 +26,6 @@ type CephBlockPoolListerExpansion interface{}
 // CephBlockPoolNamespaceLister.
 type CephBlockPoolNamespaceListerExpansion interface{}
 
-// CephBlockPoolRadosNamespaceListerExpansion allows custom methods to be added to
-// CephBlockPoolRadosNamespaceLister.
-type CephBlockPoolRadosNamespaceListerExpansion interface{}
-
-// CephBlockPoolRadosNamespaceNamespaceListerExpansion allows custom methods to be added to
-// CephBlockPoolRadosNamespaceNamespaceLister.
-type CephBlockPoolRadosNamespaceNamespaceListerExpansion interface{}
-
 // CephBucketNotificationListerExpansion allows custom methods to be added to
 // CephBucketNotificationLister.
 type CephBucketNotificationListerExpansion interface{}

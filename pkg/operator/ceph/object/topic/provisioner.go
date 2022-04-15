@@ -21,7 +21,7 @@ import (
 	"context"
 	"crypto/hmac"
 
-	//nolint:gosec // sha1 is needed for v2 signatures
+	// #nosec G505 sha1 is needed for v2 signatures
 	"crypto/sha1"
 	"encoding/base64"
 	"net/http"
@@ -99,7 +99,7 @@ func createSNSClient(p provisioner, objectStoreName types.NamespacedName) (*sns.
 
 	sess, err := awssession.NewSession(
 		aws.NewConfig().
-			WithRegion(object.CephRegion).
+			WithRegion(objContext.ZoneGroup).
 			WithCredentials(credentials.NewStaticCredentials(accessKey, secretKey, "")).
 			WithEndpoint(objContext.Endpoint).
 			WithMaxRetries(3).
@@ -111,8 +111,9 @@ func createSNSClient(p provisioner, objectStoreName types.NamespacedName) (*sns.
 		return nil, errors.Wrapf(err, "failed to create a new session for CephBucketTopic provisioning with %q", objectStoreName)
 	}
 
-	logger.Debugf("session created. endpoint %q secure %v",
+	logger.Debugf("session created. endpoint %q region %q secure %v",
 		*sess.Config.Endpoint,
+		*sess.Config.Region,
 		tlsEnabled,
 	)
 	snsClient := sns.New(sess)

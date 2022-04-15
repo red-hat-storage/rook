@@ -28,7 +28,7 @@ nodeSelector: {}
 # For more info, see https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#nodeselector
 #  disktype: ssd
 
-# Tolerations for the rook-ceph-operator to allow it to run on nodes with particular taints
+# Tolerations for the rook-ceph-operator to allow it to run on nodes with particular taints
 tolerations: []
 
 # Delay to use in node.kubernetes.io/unreachable toleration
@@ -278,7 +278,7 @@ csi:
   #rbdLivenessMetricsPort: 9080
   #kubeletDirPath: /var/lib/kubelet
   #cephcsi:
-    #image: quay.io/cephcsi/cephcsi:v3.6.0
+    #image: quay.io/cephcsi/cephcsi:v3.5.1
   #registrar:
     #image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
   #provisioner:
@@ -328,8 +328,6 @@ cephCommandsTimeoutSeconds: "15"
 # Disable it here if you have similar issues.
 # For more details see https://github.com/rook/rook/issues/2417
 enableSelinuxRelabeling: true
-
-disableAdmissionController: false
 
 # Writing to the hostPath is required for the Ceph mon and osd pods. Given the restricted permissions in OpenShift with SELinux,
 # the pod must be running privileged in order to write to the hostPath volume, this must be set to true then.

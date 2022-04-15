@@ -28,13 +28,14 @@ import (
 )
 
 const (
-	//nolint:gosec // OsdEncryptionSecretNameKeyName is the key name of the Secret that contains the OSD encryption key
+	// OsdEncryptionSecretNameKeyName is the key name of the Secret that contains the OSD encryption key
+	// #nosec G101 since this is not leaking any hardcoded credentials, it's just the secret key name
 	OsdEncryptionSecretNameKeyName = "dmcrypt-key"
 
-	//nolint:gosec // since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
+	// #nosec G101 since this is not leaking any hardcoded credentials, it's just the prefix of the secret name
 	osdEncryptionSecretNamePrefix = "rook-ceph-osd-encryption-key"
 
-	//nolint:gosec // KMSTokenSecretNameKey is the key name of the Secret that contains the KMS authentication token,
+	// KMSTokenSecretNameKey is the key name of the Secret that contains the KMS authentication token
 	KMSTokenSecretNameKey = "token"
 )
 

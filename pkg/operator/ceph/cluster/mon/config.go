@@ -137,7 +137,7 @@ func CreateOrLoadClusterInfo(clusterdContext *clusterd.Context, context context.
 	}
 
 	// get the existing monitor config
-	clusterInfo.Monitors, maxMonID, monMapping, err = loadMonConfig(context, clusterdContext.Clientset, namespace)
+	clusterInfo.Monitors, maxMonID, monMapping, err = loadMonConfig(clusterdContext.Clientset, namespace)
 	if err != nil {
 		return nil, maxMonID, monMapping, errors.Wrap(err, "failed to get mon config")
 	}
@@ -175,7 +175,8 @@ func WriteConnectionConfig(context *clusterd.Context, clusterInfo *cephclient.Cl
 }
 
 // loadMonConfig returns the monitor endpoints and maxMonID
-func loadMonConfig(ctx context.Context, clientset kubernetes.Interface, namespace string) (map[string]*cephclient.MonInfo, int, *Mapping, error) {
+func loadMonConfig(clientset kubernetes.Interface, namespace string) (map[string]*cephclient.MonInfo, int, *Mapping, error) {
+	ctx := context.TODO()
 	monEndpointMap := map[string]*cephclient.MonInfo{}
 	maxMonID := -1
 	monMapping := &Mapping{

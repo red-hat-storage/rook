@@ -17,6 +17,7 @@ limitations under the License.
 package object
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -95,7 +96,7 @@ func (c *debugHTTPClient) Do(req *http.Request) (*http.Response, error) {
 
 const (
 	// RGWAdminOpsUserSecretName is the secret name of the admin ops user
-	//nolint:gosec // since this is not leaking any hardcoded credentials, it's just the secret name
+	// #nosec G101 since this is not leaking any hardcoded credentials, it's just the secret name
 	RGWAdminOpsUserSecretName = "rgw-admin-ops-user"
 	rgwAdminOpsUserAccessKey  = "accessKey"
 	rgwAdminOpsUserSecretKey  = "secretKey"
@@ -121,7 +122,7 @@ func NewMultisiteContext(context *clusterd.Context, clusterInfo *cephclient.Clus
 		return nil, err
 	}
 
-	realmName, zoneGroupName, zoneName, err := getMultisiteForObjectStore(clusterInfo.Context, context, &store.Spec, store.Namespace, store.Name)
+	realmName, zoneGroupName, zoneName, err := getMultisiteForObjectStore(context, &store.Spec, store.Namespace, store.Name)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get realm/zone group/zone for object store %q", nsName)
 	}
@@ -215,7 +216,7 @@ func RunAdminCommandNoMultisite(c *Context, expectJSON bool, args ...string) (st
 
 	// If Multus is enabled we proxy all the command to the mgr sidecar
 	if c.CephClusterSpec.Network.IsMultus() {
-		output, stderr, err = c.Context.RemoteExecutor.ExecCommandInContainerWithFullOutputWithTimeout(c.clusterInfo.Context, cephclient.ProxyAppLabel, cephclient.CommandProxyInitContainerName, c.clusterInfo.Namespace, append([]string{"radosgw-admin"}, args...)...)
+		output, stderr, err = c.Context.RemoteExecutor.ExecCommandInContainerWithFullOutputWithTimeout(cephclient.ProxyAppLabel, cephclient.CommandProxyInitContainerName, c.clusterInfo.Namespace, append([]string{"radosgw-admin"}, args...)...)
 	} else {
 		command, args := cephclient.FinalizeCephCommandArgs("radosgw-admin", c.clusterInfo, args, c.Context.ConfigDir)
 		output, err = c.Context.Executor.ExecuteCommandWithTimeout(exec.CephCommandsTimeout, command, args...)
@@ -417,7 +418,7 @@ func GetAdminOPSUserCredentials(objContext *Context, spec *cephv1.ObjectStoreSpe
 	if spec.IsExternal() {
 		// Fetch the secret for admin ops user
 		s := &v1.Secret{}
-		err := objContext.Context.Client.Get(objContext.clusterInfo.Context, types.NamespacedName{Name: RGWAdminOpsUserSecretName, Namespace: ns}, s)
+		err := objContext.Context.Client.Get(context.TODO(), types.NamespacedName{Name: RGWAdminOpsUserSecretName, Namespace: ns}, s)
 		if err != nil {
 			return "", "", err
 		}

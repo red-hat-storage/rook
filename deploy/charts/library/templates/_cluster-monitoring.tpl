@@ -14,6 +14,7 @@ rules:
       - "monitoring.coreos.com"
     resources:
       - servicemonitors
+      - prometheusrules
     verbs:
       - get
       - list

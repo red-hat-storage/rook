@@ -89,7 +89,7 @@ func (c *ClusterInfo) NamespacedName() types.NamespacedName {
 
 // AdminClusterInfo() creates a ClusterInfo with the basic info to access the cluster
 // as an admin.
-func AdminClusterInfo(ctx context.Context, namespace, name string) *ClusterInfo {
+func AdminClusterInfo(namespace, name string) *ClusterInfo {
 	ownerInfo := k8sutil.NewOwnerInfoWithOwnerRef(&metav1.OwnerReference{}, "")
 	return &ClusterInfo{
 		Namespace: namespace,
@@ -98,14 +98,14 @@ func AdminClusterInfo(ctx context.Context, namespace, name string) *ClusterInfo 
 		},
 		name:      name,
 		OwnerInfo: ownerInfo,
-		Context:   ctx,
+		Context:   context.TODO(),
 	}
 }
 
 // AdminTestClusterInfo() creates a ClusterInfo with the basic info to access the cluster
 // as an admin. This cluster info should only be used by unit or integration tests.
 func AdminTestClusterInfo(namespace string) *ClusterInfo {
-	return AdminClusterInfo(context.TODO(), namespace, "testing")
+	return AdminClusterInfo(namespace, "testing")
 }
 
 // IsInitialized returns true if the critical information in the ClusterInfo struct has been filled

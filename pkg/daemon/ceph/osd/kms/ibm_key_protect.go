@@ -23,13 +23,14 @@ import (
 
 const (
 	TypeIBM = "ibmkeyprotect"
-	//nolint:gosec // IbmKeyProtectServiceApiKey is the IBM Key Protect service API key
+	// IbmKeyProtectServiceApiKey is the IBM Key Protect service API key
 	IbmKeyProtectServiceApiKey = "IBM_KP_SERVICE_API_KEY"
-	//nolint:gosec // IbmKeyProtectInstanceIdKey is the IBM Key Protect instance id
+	// IbmKeyProtectInstanceIdKey is the IBM Key Protect instance id
 	IbmKeyProtectInstanceIdKey = "IBM_KP_SERVICE_INSTANCE_ID"
-	//nolint:gosec // IbmKeyProtectBaseUrlKey is the IBM Key Protect base url
+	// IbmKeyProtectBaseUrlKey is the IBM Key Protect base url
 	IbmKeyProtectBaseUrlKey = "IBM_KP_BASE_URL"
-	//nolint:gosec // IbmKeyProtectTokenUrlKey is the IBM Key Protect token url
+	// IbmKeyProtectTokenUrlKey is the IBM Key Protect token url
+	// #nosec G101 since it's just an URL
 	IbmKeyProtectTokenUrlKey = "IBM_KP_TOKEN_URL"
 )
 

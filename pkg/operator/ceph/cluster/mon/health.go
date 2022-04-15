@@ -112,30 +112,20 @@ func NewHealthChecker(monCluster *Cluster) *HealthChecker {
 }
 
 // Check periodically checks the health of the monitors
-func (hc *HealthChecker) Check(monitoringRoutines map[string]*controller.ClusterHealth, daemon string) {
+func (hc *HealthChecker) Check(context context.Context) {
 	for {
 		// Update Mon Timeout with CR details
 		updateMonTimeout(hc.monCluster)
-
 		// Update Mon Interval with CR details
 		updateMonInterval(hc.monCluster, hc)
-
-		// We must perform this check otherwise the case will check an index that does not exist anymore and
-		// we will get an invalid pointer error and the go routine will panic
-		if _, ok := monitoringRoutines[daemon]; !ok {
-			logger.Infof("ceph cluster %q has been deleted. stopping monitoring of mons", hc.monCluster.Namespace)
-			return
-		}
-
 		select {
-		case <-monitoringRoutines[daemon].InternalCtx.Done():
+		case <-context.Done():
 			logger.Infof("stopping monitoring of mons in namespace %q", hc.monCluster.Namespace)
-			delete(monitoringRoutines, daemon)
 			return
 
 		case <-time.After(hc.interval):
 			logger.Debugf("checking health of mons")
-			err := hc.monCluster.checkHealth(monitoringRoutines[daemon].InternalCtx)
+			err := hc.monCluster.checkHealth(context)
 			if err != nil {
 				logger.Warningf("failed to check mon health. %v", err)
 			}
