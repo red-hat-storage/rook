@@ -19,6 +19,7 @@ package osd
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,7 +32,7 @@ import (
 )
 
 // RemoveOSDs purges a list of OSDs from the cluster
-func RemoveOSDs(context *clusterd.Context, clusterInfo *client.ClusterInfo, osdsToRemove []string) error {
+func RemoveOSDs(context *clusterd.Context, clusterInfo *client.ClusterInfo, osdsToRemove []string, forceOSDRemoval bool) error {
 
 	// Generate the ceph config for running ceph commands similar to the operator
 	if err := writeCephConfig(context, clusterInfo); err != nil {
@@ -57,10 +58,43 @@ func RemoveOSDs(context *clusterd.Context, clusterInfo *client.ClusterInfo, osds
 		}
 		const upStatus int64 = 1
 		if status == upStatus {
-			logger.Debugf("osd.%d is healthy. It cannot be removed unless it is 'down'", osdID)
+			logger.Infof("osd.%d is healthy. It cannot be removed unless it is 'down'", osdID)
 			continue
 		}
-		logger.Debugf("osd.%d is marked 'DOWN'. Removing it", osdID)
+
+		logger.Infof("osd.%d is marked 'DOWN'. Removing it", osdID)
+
+		// Check we can remove the OSD
+		// Loop forever until the osd is safe-to-destroy
+		for {
+			isSafeToDestroy, err := client.OsdSafeToDestroy(context, clusterInfo, osdID)
+			if err != nil {
+				// If we want to force remove the OSD and there was an error let's break outside of
+				// the loop and proceed with the OSD removal
+				if forceOSDRemoval {
+					logger.Errorf("failed to check if osd %d is safe to destroy, but force removal is enabled so proceeding with removal. %v", osdID, err)
+					break
+				} else {
+					logger.Errorf("failed to check if osd %d is safe to destroy, retrying in 1m. %v", osdID, err)
+					time.Sleep(1 * time.Minute)
+					continue
+				}
+			}
+
+			if isSafeToDestroy {
+				logger.Infof("osd.%d is safe to destroy, proceeding", osdID)
+				break
+			} else {
+				// If we arrive here and forceOSDRemoval is true, we should proceed with the OSD removal
+				if forceOSDRemoval {
+					logger.Infof("osd.%d is NOT be ok to destroy but force removal is enabled so proceeding with removal", osdID)
+					break
+				}
+				// Else we wait until the OSD can be removed
+				logger.Warningf("osd.%d is NOT be ok to destroy, retrying in 1m until success", osdID)
+				time.Sleep(1 * time.Minute)
+			}
+		}
 		removeOSD(context, clusterInfo, osdID)
 	}
 
@@ -75,6 +109,7 @@ func removeOSD(context *clusterd.Context, clusterInfo *client.ClusterInfo, osdID
 	}
 
 	// Mark the OSD as out.
+	logger.Infof("marking osd.%d out", osdID)
 	args := []string{"osd", "out", fmt.Sprintf("osd.%d", osdID)}
 	_, err = client.NewCephCommand(context, clusterInfo, args).Run()
 	if err != nil {
@@ -124,17 +159,19 @@ func removeOSD(context *clusterd.Context, clusterInfo *client.ClusterInfo, osdID
 	}
 
 	// purge the osd
-	purgeosdargs := []string{"osd", "purge", fmt.Sprintf("osd.%d", osdID), "--force", "--yes-i-really-mean-it"}
-	_, err = client.NewCephCommand(context, clusterInfo, purgeosdargs).Run()
+	logger.Infof("purging osd.%d", osdID)
+	purgeOSDArgs := []string{"osd", "purge", fmt.Sprintf("osd.%d", osdID), "--force", "--yes-i-really-mean-it"}
+	_, err = client.NewCephCommand(context, clusterInfo, purgeOSDArgs).Run()
 	if err != nil {
 		logger.Errorf("failed to purge osd.%d. %v", osdID, err)
 	}
 
 	// Attempting to remove the parent host. Errors can be ignored if there are other OSDs on the same host
-	hostargs := []string{"osd", "crush", "rm", hostName}
-	_, err = client.NewCephCommand(context, clusterInfo, hostargs).Run()
+	logger.Infof("attempting to remove host %q from crush map if not in use", osdID)
+	hostArgs := []string{"osd", "crush", "rm", hostName}
+	_, err = client.NewCephCommand(context, clusterInfo, hostArgs).Run()
 	if err != nil {
-		logger.Errorf("failed to remove CRUSH host %q. %v", hostName, err)
+		logger.Infof("failed to remove CRUSH host %q. %v", hostName, err)
 	}
 
 	logger.Infof("completed removal of OSD %d", osdID)
