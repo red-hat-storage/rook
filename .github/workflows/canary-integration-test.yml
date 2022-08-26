@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   canary:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -166,7 +166,7 @@ jobs:
       timeout-minutes: 60
 
   external-rgw-quincy-test:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -231,7 +231,7 @@ jobs:
       timeout-minutes: 60
 
   raw-disk:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -277,7 +277,7 @@ jobs:
       timeout-minutes: 60
 
   two-osds-in-device:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -323,7 +323,7 @@ jobs:
       timeout-minutes: 60
 
   pvc:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -388,7 +388,7 @@ jobs:
       timeout-minutes: 60
 
   pvc-db:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -436,7 +436,7 @@ jobs:
       timeout-minutes: 60
 
   pvc-db-wal:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -487,7 +487,7 @@ jobs:
       timeout-minutes: 60
 
   encryption-pvc:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -555,7 +555,7 @@ jobs:
       timeout-minutes: 60
 
   encryption-pvc-db:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -605,7 +605,7 @@ jobs:
       timeout-minutes: 60
 
   encryption-pvc-db-wal:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -656,7 +656,7 @@ jobs:
       timeout-minutes: 60
 
   encryption-pvc-kms-vault-token-auth:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -734,7 +734,7 @@ jobs:
       timeout-minutes: 60
 
   encryption-pvc-kms-vault-k8s-auth:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -795,7 +795,7 @@ jobs:
       timeout-minutes: 60
 
   lvm-pvc:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -842,7 +842,7 @@ jobs:
       timeout-minutes: 60
 
   multi-cluster-mirroring:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -1033,7 +1033,7 @@ jobs:
       timeout-minutes: 60
 
   rgw-multisite-testing:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
@@ -1060,7 +1060,7 @@ jobs:
       timeout-minutes: 60
 
   encryption-pvc-kms-ibm-kp:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v2
       with:
@@ -1090,7 +1090,7 @@ jobs:
       timeout-minutes: 60
 
   multus-cluster-network:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     steps:
     - name: checkout
