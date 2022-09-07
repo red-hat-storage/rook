@@ -20,15 +20,19 @@ import json
 import argparse
 import re
 from tokenize import single_quoted
-import requests
 import subprocess
 import hmac
 from hashlib import sha1 as sha
 from os import linesep as LINESEP
 from os import path
-import urllib.parse
 from email.utils import formatdate
+import requests
 from requests.auth import AuthBase
+
+py3k = False
+if sys.version_info.major >= 3:
+    py3k = True
+    import urllib.parse
 
 ModuleNotFoundError = ImportError
 
@@ -58,15 +62,10 @@ except ModuleNotFoundError:
     # for 3.x
     from urllib.parse import urlparse
 
-py3k = False
 try:
-    from urlparse import urlparse, unquote
     from base64 import encodestring
 except:
-    py3k = True
-    from urllib.parse import urlparse, unquote
     from base64 import encodebytes as encodestring
-
 
 class ExecutionFailureException(Exception):
     pass
