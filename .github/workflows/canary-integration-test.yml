@@ -1100,7 +1100,7 @@ jobs:
 
 
     - name: setup cluster resources
-      uses: ./.github/workflows/canary-test-config
+      uses: ./.github/workflows/setup-cluster-resources
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
 
