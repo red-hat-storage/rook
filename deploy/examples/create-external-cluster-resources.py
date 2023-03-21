@@ -554,7 +554,7 @@ class RadosJSON:
         # if the 'cluster' instance is a dummy one,
         # don't try to reach out to the endpoint
         if isinstance(self.cluster, DummyRados):
-            return
+            return "", "", ""
         protocols = ["http", "https"]
         response_error = None
         for prefix in protocols:
@@ -572,14 +572,17 @@ class RadosJSON:
                 else:
                     r = requests.head(ep, timeout=timeout)
                 if r.status_code == 200:
-                    return prefix, verify
+                    return prefix, verify, ""
             except Exception as err:
                 response_error = err
                 continue
-        raise ExecutionFailureException(
-            "unable to connect to endpoint: {}, failed error: {}".format(
-                endpoint_str, response_error
-            )
+        sys.stderr.write(
+            f"unable to connect to endpoint: {endpoint_str}, failed error: {response_error}"
+        )
+        return (
+            "",
+            "",
+            ("-1"),
         )
 
     def __init__(self, arg_list=None):
@@ -770,8 +773,9 @@ class RadosJSON:
             monitoring_endpoint_ip, monitoring_endpoint_port
         )
         self._invalid_endpoint(monitoring_endpoint)
-        self.endpoint_dial(monitoring_endpoint)
-
+        _, _, err = self.endpoint_dial(monitoring_endpoint)
+        if err == "-1":
+            raise ExecutionFailureException(err)
         # add the validated active mgr IP into the first index
         mgr_ips.insert(0, monitoring_endpoint_ip)
         all_mgr_ips_str = ",".join(mgr_ips)
@@ -1127,13 +1131,25 @@ class RadosJSON:
                         "failed to execute command %s. Output: %s. Code: %s. Error: %s"
                         % (cmd, execErr.output, execErr.returncode, execErr.stderr)
                     )
-                    raise Exception(err_msg)
+                    sys.stderr.write(err_msg)
+                    return None, None, False, "-1"
             else:
                 err_msg = (
                     "failed to execute command %s. Output: %s. Code: %s. Error: %s"
                     % (cmd, execErr.output, execErr.returncode, execErr.stderr)
                 )
-                raise Exception(err_msg)
+                sys.stderr.write(err_msg)
+                return None, None, False, "-1"
+
+        # if it is python2, don't check for ceph version for adding `info=read` cap(rgw_validation)
+        if sys.version_info.major < 3:
+            jsonoutput = json.loads(output)
+            return (
+                jsonoutput["keys"][0]["access_key"],
+                jsonoutput["keys"][0]["secret_key"],
+                False,
+                "",
+            )
 
         # separately add info=read caps for rgw-endpoint ip validation
         info_cap_supported = True
@@ -1161,13 +1177,15 @@ class RadosJSON:
                     "failed to execute command %s. Output: %s. Code: %s. Error: %s"
                     % (cmd, execErr.output, execErr.returncode, execErr.stderr)
                 )
-                raise Exception(err_msg)
+                sys.stderr.write(err_msg)
+                return None, None, False, "-1"
 
         jsonoutput = json.loads(output)
         return (
             jsonoutput["keys"][0]["access_key"],
             jsonoutput["keys"][0]["secret_key"],
             info_cap_supported,
+            "",
         )
 
     def convert_fqdn_rgw_endpoint_to_ip(self, fqdn_rgw_endpoint):
@@ -1184,34 +1202,11 @@ class RadosJSON:
         rgw_endpoint = self._join_host_port(rgw_endpoint_ip, rgw_endpoint_port)
         return rgw_endpoint
 
-    def validate_pool(self):
-        pools_to_validate = [self._arg_parser.rbd_data_pool_name]
-        # if rgw_endpoint is provided, validate it
-        if self._arg_parser.rgw_endpoint:
-            rgw_endpoint = self._arg_parser.rgw_endpoint
-            self._invalid_endpoint(rgw_endpoint)
-            cert = None
-            if (
-                not self._arg_parser.rgw_skip_tls
-                and self.validate_rgw_endpoint_tls_cert()
-            ):
-                cert = self._arg_parser.rgw_tls_cert_path
-            self.endpoint_dial(rgw_endpoint, cert=cert)
-            # only validate if rgw_pool_prefix is passed else it will take default value and we don't create these default pools
-            if self._arg_parser.rgw_pool_prefix != "default":
-                rgw_pool_to_validate = [
-                    "{0}.rgw.meta".format(self._arg_parser.rgw_pool_prefix),
-                    ".rgw.root",
-                    "{0}.rgw.control".format(self._arg_parser.rgw_pool_prefix),
-                    "{0}.rgw.log".format(self._arg_parser.rgw_pool_prefix),
-                ]
-                pools_to_validate.extend(rgw_pool_to_validate)
-
-        for pool in pools_to_validate:
-            if not self.cluster.pool_exists(pool):
-                raise ExecutionFailureException(
-                    "The provided pool, '{}', does not exist".format(pool)
-                )
+    def validate_rbd_pool(self):
+        if not self.cluster.pool_exists(self._arg_parser.rbd_data_pool_name):
+            raise ExecutionFailureException(
+                f"The provided pool, '{self._arg_parser.rbd_data_pool_name}', does not exist"
+            )
 
     def validate_rados_namespace(self):
         rbd_pool_name = self._arg_parser.rbd_data_pool_name
@@ -1252,14 +1247,10 @@ class RadosJSON:
                 "subvolume group {} passed doesn't exist".format(subvolume_group)
             )
 
-    def get_rgw_fsid(self):
+    def get_rgw_fsid(self, base_url, verify):
         access_key = self.out_map["RGW_ADMIN_OPS_USER_ACCESS_KEY"]
         secret_key = self.out_map["RGW_ADMIN_OPS_USER_SECRET_KEY"]
         rgw_endpoint = self._arg_parser.rgw_endpoint
-        cert = None
-        if not self._arg_parser.rgw_skip_tls and self.validate_rgw_endpoint_tls_cert():
-            cert = self._arg_parser.rgw_tls_cert_path
-        base_url, verify = self.endpoint_dial(rgw_endpoint, cert=cert)
         base_url = base_url + "://" + rgw_endpoint + "/admin/info?"
         params = {"format": "json"}
         request_url = base_url + urllib.parse.urlencode(params)
@@ -1271,30 +1262,64 @@ class RadosJSON:
                 verify=verify,
             )
         except requests.exceptions.Timeout:
-            raise ExecutionFailureException(
-                "invalid endpoint:, not able to call admin-ops api{}".format(
-                    rgw_endpoint
-                )
+            sys.stderr.write(
+                f"invalid endpoint:, not able to call admin-ops api{rgw_endpoint}"
             )
+            return "", "-1"
         r1 = r.json()
         if r1 is None or r1.get("info") is None:
-            return ""  # Invalid rgw-endpoint exception will returned by validate_rgw_endpoint()
+            sys.stderr.write(
+                f"The provided rgw Endpoint, '{self._arg_parser.rgw_endpoint}', is invalid."
+            )
+            return (
+                "",
+                "-1",
+            )
 
-        return r1["info"]["storage_backends"][0]["cluster_id"]
+        return r1["info"]["storage_backends"][0]["cluster_id"], ""
 
     def validate_rgw_endpoint(self):
         # if the 'cluster' instance is a dummy one,
         # don't try to reach out to the endpoint
         if isinstance(self.cluster, DummyRados):
             return
+
+        # check if the rgw endpoint is reachable
+        rgw_endpoint = self._arg_parser.rgw_endpoint
+        cert = None
+        if not self._arg_parser.rgw_skip_tls and self.validate_rgw_endpoint_tls_cert():
+            cert = self._arg_parser.rgw_tls_cert_path
+        base_url, verify, err = self.endpoint_dial(rgw_endpoint, cert=cert)
+        if err != "":
+            return "-1"
+
+        # check if the rgw endpoint is valid and belongs to the same cluster
         fsid = self.get_fsid()
-        rgw_fsid = self.get_rgw_fsid()
+        rgw_fsid, err = self.get_rgw_fsid(base_url, verify)
+        if err == "-1":
+            return "-1"
         if fsid != rgw_fsid:
-            raise ExecutionFailureException(
-                (
-                    "The provided rgw Endpoint, '{}', is invalid. We are validating by calling the adminops api through rgw-endpoint and validating the cluster_id '{}' is equal to the ceph cluster fsid '{}'"
-                ).format(self._arg_parser.rgw_endpoint, rgw_fsid, fsid)
+            sys.stderr.write(
+                f"The provided rgw Endpoint, '{self._arg_parser.rgw_endpoint}', is invalid. We are validating by calling the adminops api through rgw-endpoint and validating the cluster_id '{rgw_fsid}' is equal to the ceph cluster fsid '{fsid}'"
             )
+            return "-1"
+
+        # check if the rgw endpoint exist
+        # only validate if rgw_pool_prefix is passed else it will take default value and we don't create these default pools
+        if self._arg_parser.rgw_pool_prefix != "default":
+            rgw_pool_to_validate = [
+                f"{self._arg_parser.rgw_pool_prefix}.rgw.meta",
+                ".rgw.root",
+                f"{self._arg_parser.rgw_pool_prefix}.rgw.control",
+                f"{self._arg_parser.rgw_pool_prefix}.rgw.log",
+            ]
+            if not self.cluster.pool_exists(self._arg_parser.rgw_pool_to_validate):
+                sys.stderr.write(
+                    f"The provided pool, '{self._arg_parser.rgw_pool_to_validate}', does not exist"
+                )
+                return "-1"
+
+        return ""
 
     def _gen_output_map(self):
         if self.out_map:
@@ -1306,7 +1331,7 @@ class RadosJSON:
             self._arg_parser.rgw_endpoint = self.convert_fqdn_rgw_endpoint_to_ip(
                 self._arg_parser.rgw_endpoint
             )
-        self.validate_pool()
+        self.validate_rbd_pool()
         self.validate_rados_namespace()
         self.validate_subvolume_group()
         self._excluded_keys.add("CLUSTER_NAME")
@@ -1348,7 +1373,6 @@ class RadosJSON:
                 self.out_map["CSI_CEPHFS_PROVISIONER_SECRET"],
                 self.out_map["CSI_CEPHFS_PROVISIONER_SECRET_NAME"],
             ) = self.create_cephCSIKeyring_user("client.csi-cephfs-provisioner")
-        self.out_map["RGW_ENDPOINT"] = self._arg_parser.rgw_endpoint
         self.out_map["RGW_TLS_CERT"] = ""
         (
             self.out_map["MONITORING_ENDPOINT"],
@@ -1359,6 +1383,7 @@ class RadosJSON:
             "RBD_METADATA_EC_POOL_NAME"
         ] = self.validate_rgw_metadata_ec_pool_name()
         self.out_map["RGW_POOL_PREFIX"] = self._arg_parser.rgw_pool_prefix
+        self.out_map["RGW_ENDPOINT"] = ""
         if self._arg_parser.rgw_endpoint:
             if self._arg_parser.dry_run:
                 self.create_rgw_admin_ops_user()
@@ -1367,11 +1392,15 @@ class RadosJSON:
                     self.out_map["RGW_ADMIN_OPS_USER_ACCESS_KEY"],
                     self.out_map["RGW_ADMIN_OPS_USER_SECRET_KEY"],
                     info_cap_supported,
+                    err,
                 ) = self.create_rgw_admin_ops_user()
                 if info_cap_supported:
-                    self.validate_rgw_endpoint()
-            if self._arg_parser.rgw_tls_cert_path:
-                self.out_map["RGW_TLS_CERT"] = self.validate_rgw_endpoint_tls_cert()
+                    err = self.validate_rgw_endpoint()
+                if self._arg_parser.rgw_tls_cert_path:
+                    self.out_map["RGW_TLS_CERT"] = self.validate_rgw_endpoint_tls_cert()
+                # if there is no error, set the RGW_ENDPOINT
+                if err != "-1":
+                    self.out_map["RGW_ENDPOINT"] = self._arg_parser.rgw_endpoint
 
     def gen_shell_out(self):
         self._gen_output_map()
