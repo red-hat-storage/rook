@@ -27,8 +27,8 @@ OSD_COUNT=$2
 #############
 EXEC_COMMAND="kubectl -n rook-ceph exec $(kubectl get pod -l app=rook-ceph-tools -n rook-ceph -o jsonpath='{.items[*].metadata.name}') -- ceph --connect-timeout 3"
 
-function wait_for_daemon () {
-  timeout=90
+function wait_for_daemon() {
+  timeout=180
   daemon_to_test=$1
   while [ $timeout -ne 0 ]; do
     if eval $daemon_to_test; then
@@ -79,7 +79,7 @@ function test_demo_rbd_mirror {
 
 function test_demo_fs_mirror {
   # shellcheck disable=SC2046
-    return $(wait_for_daemon "$EXEC_COMMAND -s | grep -sq 'cephfs-mirror:'")
+  return $(wait_for_daemon "$EXEC_COMMAND -s | grep -sq 'cephfs-mirror:'")
 }
 
 function test_demo_pool {
@@ -137,7 +137,7 @@ else
   comma_to_space=${DAEMON_TO_VALIDATE//,/ }
 
   # transform to an array
-  IFS=" " read -r -a array <<< "$comma_to_space"
+  IFS=" " read -r -a array <<<"$comma_to_space"
 
   # sort and remove potential duplicate
   daemons_list=$(echo "${array[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' ')
@@ -145,39 +145,39 @@ fi
 
 for daemon in $daemons_list; do
   case "$daemon" in
-    mon)
-      continue
-      ;;
-    mgr)
-      continue
-      ;;
-    osd)
-      test_demo_osd
-      ;;
-    osd_multus)
-      test_demo_osd
-      test_multus_osd
-      ;;
-    mds)
-      test_demo_mds
-      ;;
-    rgw)
-      test_demo_rgw
-      ;;
-    rbd_mirror)
-      test_demo_rbd_mirror
-      ;;
-    fs_mirror)
-      test_demo_fs_mirror
-      ;;
-    nfs)
-      test_nfs
-      ;;
-    *)
-      log "ERROR: unknown daemon to validate!"
-      log "Available daemon are: mon mgr osd mds rgw rbd_mirror fs_mirror"
-      exit 1
-      ;;
+  mon)
+    continue
+    ;;
+  mgr)
+    continue
+    ;;
+  osd)
+    test_demo_osd
+    ;;
+  osd_multus)
+    test_demo_osd
+    test_multus_osd
+    ;;
+  mds)
+    test_demo_mds
+    ;;
+  rgw)
+    test_demo_rgw
+    ;;
+  rbd_mirror)
+    test_demo_rbd_mirror
+    ;;
+  fs_mirror)
+    test_demo_fs_mirror
+    ;;
+  nfs)
+    test_nfs
+    ;;
+  *)
+    log "ERROR: unknown daemon to validate!"
+    log "Available daemon are: mon mgr osd mds rgw rbd_mirror fs_mirror"
+    exit 1
+    ;;
   esac
 done
 

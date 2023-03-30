@@ -402,7 +402,6 @@ function deploy_multus() {
   # install whereabouts
   kubectl apply \
     -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/daemonset-install.yaml \
-    -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/ip-reconciler-job.yaml \
     -f https://github.com/k8snetworkplumbingwg/whereabouts/raw/master/doc/crds/whereabouts.cni.cncf.io_ippools.yaml \
     -f https://github.com/k8snetworkplumbingwg/whereabouts/raw/master/doc/crds/whereabouts.cni.cncf.io_overlappingrangeipreservations.yaml
 
