@@ -24,6 +24,7 @@ import (
 	"github.com/pkg/errors"
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	kms "github.com/rook/rook/pkg/daemon/ceph/osd/kms"
+	"github.com/rook/rook/pkg/operator/ceph/cluster/mon"
 	"github.com/rook/rook/pkg/operator/ceph/cluster/osd/config"
 	"github.com/rook/rook/pkg/operator/ceph/controller"
 	"github.com/rook/rook/pkg/operator/k8sutil"
@@ -104,9 +105,12 @@ func (c *Cluster) provisionPodTemplateSpec(osdProps osdProperties, restart v1.Re
 
 	// create a volume on /dev so the pod can access devices on the host
 	devVolume := v1.Volume{Name: "devices", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/dev"}}}
-	volumes = append(volumes, devVolume)
 	udevVolume := v1.Volume{Name: "udev", VolumeSource: v1.VolumeSource{HostPath: &v1.HostPathVolumeSource{Path: "/run/udev"}}}
-	volumes = append(volumes, udevVolume)
+	volumes = append(volumes, []v1.Volume{
+		udevVolume,
+		devVolume,
+		mon.CephSecretVolume(),
+	}...)
 
 	// If not running on PVC we mount the rootfs of the host to validate the presence of the LVM package
 	if !osdProps.onPVC() {
@@ -190,7 +194,7 @@ func (c *Cluster) provisionPodTemplateSpec(osdProps osdProperties, restart v1.Re
 }
 
 func (c *Cluster) provisionOSDContainer(osdProps osdProperties, copyBinariesMount v1.VolumeMount, provisionConfig *provisionConfig) (v1.Container, error) {
-	envVars := c.getConfigEnvVars(osdProps, k8sutil.DataDir)
+	envVars := c.getConfigEnvVars(osdProps, k8sutil.DataDir, true)
 
 	// enable debug logging in the prepare job
 	envVars = append(envVars, setDebugLogLevelEnvVar(true))
@@ -233,6 +237,7 @@ func (c *Cluster) provisionOSDContainer(osdProps osdProperties, copyBinariesMoun
 		{Name: "devices", MountPath: "/dev"},
 		{Name: "udev", MountPath: "/run/udev"},
 		copyBinariesMount,
+		mon.CephSecretVolumeMount(),
 	}...)
 
 	// If not running on PVC we mount the rootfs of the host to validate the presence of the LVM package
