@@ -73,6 +73,7 @@ func (c *Cluster) makeDeployment(mgrConfig *mgrConfig) (*apps.Deployment, error)
 	if c.spec.Mgr.Count > 1 {
 		podSpec.Spec.Containers = append(podSpec.Spec.Containers, c.makeMgrSidecarContainer(mgrConfig))
 		matchLabels := controller.AppLabels(AppName, c.clusterInfo.Namespace)
+		podSpec.Spec.Volumes = append(podSpec.Spec.Volumes, mon.CephSecretVolume())
 
 		// Stretch the mgrs across hosts by default, or across a bigger failure domain for stretch clusters
 		topologyKey := v1.LabelHostname
@@ -211,16 +212,8 @@ func (c *Cluster) makeMgrSidecarContainer(mgrConfig *mgrConfig) v1.Container {
 		k8sutil.PodIPEnvVar(k8sutil.PublicIPEnvVar),
 		mon.PodNamespaceEnvVar(c.clusterInfo.Namespace),
 		mon.EndpointEnvVar(),
-		mon.SecretEnvVar(),
 		mon.CephUsernameEnvVar(),
-		mon.CephSecretEnvVar(),
 		k8sutil.ConfigOverrideEnvVar(),
-		{Name: "ROOK_FSID", ValueFrom: &v1.EnvVarSource{
-			SecretKeyRef: &v1.SecretKeySelector{
-				LocalObjectReference: v1.LocalObjectReference{Name: "rook-ceph-mon"},
-				Key:                  "fsid",
-			},
-		}},
 		{Name: "ROOK_DASHBOARD_ENABLED", Value: strconv.FormatBool(c.spec.Dashboard.Enabled)},
 		{Name: "ROOK_MONITORING_ENABLED", Value: strconv.FormatBool(c.spec.Monitoring.Enabled)},
 		{Name: "ROOK_UPDATE_INTERVAL", Value: "15s"},
@@ -235,6 +228,7 @@ func (c *Cluster) makeMgrSidecarContainer(mgrConfig *mgrConfig) v1.Container {
 		Env:             envVars,
 		Resources:       cephv1.GetMgrSidecarResources(c.spec.Resources),
 		SecurityContext: controller.PrivilegedContext(true),
+		VolumeMounts:    []v1.VolumeMount{mon.CephSecretVolumeMount()},
 	}
 }
 
