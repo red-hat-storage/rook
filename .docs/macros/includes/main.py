@@ -10,8 +10,8 @@ GitHub branch/tag URL replacer
 regex = r"(github\.com/.+/rook/.+)/master/"
 subst = "\\1/%s/"
 
-def define_env(env):
 
+def define_env(env):
     repo = Repository('.')
     if repo is not None:
         target = repo.head.shorthand
