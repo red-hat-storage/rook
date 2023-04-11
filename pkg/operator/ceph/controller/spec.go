@@ -38,6 +38,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 )
 
 const (
@@ -48,14 +49,21 @@ const (
 	volumeMountSubPath                      = "data"
 	crashVolumeName                         = "rook-ceph-crash"
 	daemonSocketDir                         = "/run/ceph"
-	livenessProbeInitialDelaySeconds  int32 = 10
-	startupProbeFailuresDaemonDefault int32 = 6 // multiply by 10 = effective startup timeout
-	startupProbeFailuresDaemonOSD     int32 = 9 // multiply by 10 = effective startup timeout
 	logCollector                            = "log-collector"
 	DaemonIDLabel                           = "ceph_daemon_id"
 	daemonTypeLabel                         = "ceph_daemon_type"
 	ExternalMgrAppName                      = "rook-ceph-mgr-external"
 	ServiceExternalMetricName               = "http-external-metrics"
+	CephUserID                              = 167
+	livenessProbeTimeoutSeconds       int32 = 5
+	livenessProbeInitialDelaySeconds  int32 = 10
+	startupProbeFailuresDaemonDefault int32 = 6 // multiply by 10 = effective startup timeout
+	// The OSD requires a long timeout in case the OSD is taking extra time to
+	// scrub data during startup. We don't want the probe to disrupt the OSD update
+	// and restart the OSD prematurely. So we set a really long timeout to avoid
+	// disabling the startup and liveness probes completely.
+	// The default is two hours after multiplying by the 10s retry interval.
+	startupProbeFailuresDaemonOSD int32 = 12 * 60
 )
 
 type daemonConfig struct {
@@ -640,6 +648,14 @@ func PodSecurityContext() *v1.SecurityContext {
 	return &v1.SecurityContext{
 		Privileged: &privileged,
 	}
+}
+
+// PodSecurityContext detects if the pod needs privileges to run
+func CephSecurityContext() *v1.SecurityContext {
+	context := PodSecurityContext()
+	context.RunAsUser = pointer.Int64(CephUserID)
+	context.RunAsGroup = pointer.Int64(CephUserID)
+	return context
 }
 
 // PrivilegedContext returns a privileged Pod security context
