@@ -52,6 +52,9 @@ import (
 
 const (
 	controllerName = "ceph-object-controller"
+	// DisableOBCEnvVar environment variable, if set to "true", will skip watching Object Bucket and Notification resources.
+	// This variable can be added to container spec of the `rook-ceph-operator` deployment.
+	DisableOBCEnvVar = "ROOK_DISABLE_OBJECT_BUCKET_CLAIM"
 )
 
 var waitForRequeueIfObjectStoreNotReady = reconcile.Result{Requeue: true, RequeueAfter: 10 * time.Second}
