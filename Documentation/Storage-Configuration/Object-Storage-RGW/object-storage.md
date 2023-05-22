@@ -84,6 +84,7 @@ spec:
     port: 8080
     externalRgwEndpoints:
       - ip: 192.168.39.182
+        # hostname: example.com
   healthCheck:
     bucket:
       enabled: true
