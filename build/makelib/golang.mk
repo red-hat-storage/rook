@@ -171,7 +171,7 @@ go.mod.update:
 .PHONY: go.mod.check
 go.mod.check:
 	@echo === ensuring modules are tidied
-	@$(GOHOST) mod tidy -compat=1.17
+	@$(GOHOST) mod tidy
 
 .PHONY: go.mod.clean
 go.mod.clean:
