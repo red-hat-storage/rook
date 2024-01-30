@@ -435,7 +435,7 @@ func (r *ReconcileCephObjectStore) reconcileCreateObjectStore(cephObjectStore *c
 
 		// Reconcile Pool Creation
 		if !cephObjectStore.Spec.IsMultisite() {
-			logger.Info("reconciling object store pools")
+			logger.Info("reconciling object store pools1")
 			err = CreatePools(objContext, r.clusterSpec, cephObjectStore.Spec.MetadataPool, cephObjectStore.Spec.DataPool)
 			if err != nil {
 				return r.setFailedStatus(k8sutil.ObservedGenerationNotAvailable, namespacedName, "failed to create object pools", err)
