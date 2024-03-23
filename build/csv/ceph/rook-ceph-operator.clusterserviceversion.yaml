@@ -3005,15 +3005,10 @@ spec:
                           configMapKeyRef:
                             key: ROOK_CSI_ENABLE_NFS
                             name: ocs-operator-config
-                      - name: ROOK_CSI_ENABLE_CEPHFS
+                      - name: ROOK_CSI_DISABLE_DRIVER
                         valueFrom:
                           configMapKeyRef:
-                            key: ROOK_CSI_ENABLE_CEPHFS
-                            name: ocs-operator-config
-                      - name: ROOK_CSI_ENABLE_RBD
-                        valueFrom:
-                          configMapKeyRef:
-                            key: ROOK_CSI_ENABLE_RBD
+                            key: ROOK_CSI_DISABLE_DRIVER
                             name: ocs-operator-config
                       - name: CSI_PROVISIONER_TOLERATIONS
                         value: |2-
