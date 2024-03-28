@@ -95,7 +95,6 @@ metadata:
 parameters:
   ...
   ...
-  pool: replicapool
   topologyConstrainedPools: |
     [
      {"poolName":"pool-a",
@@ -112,6 +111,11 @@ provisioner: rook-ceph.rbd.csi.ceph.com
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 ```
+
+Set two values in the [rook-ceph-operator-config configmap](https://github.com/rook/rook/blob/master/deploy/examples/operator.yaml):
+
+- `CSI_ENABLE_TOPOLOGY: "true"`: Enable the feature
+- `CSI_TOPOLOGY_DOMAIN_LABELS: "topology.kubernetes.io/zone"`: Set the topology domain labels that the CSI driver will analyze on the nodes during scheduling.
 
 #### Create a Topology-Based PVC
 

@@ -720,11 +720,10 @@ class RadosJSON:
         ip_addr = str(q_leader_details["public_addr"].split("/")[0])
 
         if self._arg_parser.v2_port_enable:
-            if len(q_leader_addrvec) > 1:
-                if q_leader_addrvec[0]["type"] == "v2":
-                    ip_addr = q_leader_addrvec[0]["addr"]
-                elif q_leader_addrvec[1]["type"] == "v2":
-                    ip_addr = q_leader_addrvec[1]["addr"]
+            if q_leader_addrvec[0]["type"] == "v2":
+                ip_addr = q_leader_addrvec[0]["addr"]
+            elif len(q_leader_addrvec) > 1 and q_leader_addrvec[1]["type"] == "v2":
+                ip_addr = q_leader_addrvec[1]["addr"]
             else:
                 sys.stderr.write(
                     "'v2' address type not present, and 'v2-port-enable' flag is provided"
@@ -1932,7 +1931,6 @@ class RadosJSON:
                             "TOPOLOGY_FAILURE_DOMAIN_VALUES"
                         ],
                         "topologyPools": self.out_map["TOPOLOGY_POOLS"],
-                        "pool": self.out_map["RBD_POOL_NAME"],
                         "csi.storage.k8s.io/provisioner-secret-name": f"rook-{self.out_map['CSI_RBD_PROVISIONER_SECRET_NAME']}",
                         "csi.storage.k8s.io/controller-expand-secret-name": f"rook-{self.out_map['CSI_RBD_PROVISIONER_SECRET_NAME']}",
                         "csi.storage.k8s.io/node-stage-secret-name": f"rook-{self.out_map['CSI_RBD_NODE_SECRET_NAME']}",
