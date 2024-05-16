@@ -52,8 +52,7 @@ jobs:
 
       - name: Install pylint and requirements
         run: |
-          pip install pylint
-          pip install pylint --upgrade
+          pip install pylint==3.0
           pip install requests
           pip install pygit2
 
