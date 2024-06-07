@@ -63,6 +63,8 @@ spec:
                   deviceClass:
                     nullable: true
                     type: string
+                  enableCrushUpdates:
+                    type: boolean
                   enableRBDStats:
                     type: boolean
                   erasureCoded:
@@ -943,6 +945,8 @@ spec:
                   deviceClass:
                     nullable: true
                     type: string
+                  enableCrushUpdates:
+                    type: boolean
                   enableRBDStats:
                     type: boolean
                   erasureCoded:

@@ -448,6 +448,8 @@ func TestPostReconcileUpdateOSDProperties(t *testing.T) {
 		assert.Equal(t, "osd.2", removedDeviceClassOSD)
 	})
 	t.Run("test resize Osd Crush Weight", func(t *testing.T) {
+		osdID = []string{}
+		crushWeight = []string{}
 		c.spec.Storage = cephv1.StorageScopeSpec{AllowOsdCrushWeightUpdate: true}
 		err := c.postReconcileUpdateOSDProperties(desiredOSDs)
 		assert.Nil(t, err)
