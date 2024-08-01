@@ -959,7 +959,26 @@ spec:
                     type: object
                 type: object
               hosting:
+                nullable: true
                 properties:
+                  advertiseEndpoint:
+                    nullable: true
+                    properties:
+                      dnsName:
+                        minLength: 1
+                        type: string
+                      port:
+                        format: int32
+                        maximum: 65535
+                        minimum: 1
+                        type: integer
+                      useTls:
+                        type: boolean
+                    required:
+                    - dnsName
+                    - port
+                    - useTls
+                    type: object
                   dnsNames:
                     items:
                       type: string
