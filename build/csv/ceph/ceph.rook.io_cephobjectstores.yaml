@@ -43,6 +43,33 @@ spec:
                 items:
                   type: string
                 type: array
+              auth:
+                properties:
+                  keystone:
+                    nullable: true
+                    properties:
+                      acceptedRoles:
+                        items:
+                          type: string
+                        type: array
+                      implicitTenants:
+                        type: string
+                      revocationInterval:
+                        nullable: true
+                        type: integer
+                      serviceUserSecretName:
+                        type: string
+                      tokenCacheSize:
+                        nullable: true
+                        type: integer
+                      url:
+                        type: string
+                    required:
+                    - acceptedRoles
+                    - serviceUserSecretName
+                    - url
+                    type: object
+                type: object
               dataPool:
                 nullable: true
                 properties:
@@ -1116,6 +1143,32 @@ spec:
                 type: object
               preservePoolsOnDelete:
                 type: boolean
+              protocols:
+                properties:
+                  s3:
+                    nullable: true
+                    properties:
+                      authUseKeystone:
+                        nullable: true
+                        type: boolean
+                      enabled:
+                        nullable: true
+                        type: boolean
+                    type: object
+                  swift:
+                    nullable: true
+                    properties:
+                      accountInUrl:
+                        nullable: true
+                        type: boolean
+                      urlPrefix:
+                        nullable: true
+                        type: string
+                      versioningEnabled:
+                        nullable: true
+                        type: boolean
+                    type: object
+                type: object
               security:
                 nullable: true
                 properties:

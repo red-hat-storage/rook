@@ -2397,6 +2397,50 @@ spec:
                 - customresourcedefinitions
               verbs:
                 - get
+            - apiGroups:
+                - csi.ceph.io
+              resources:
+                - cephconnections
+              verbs:
+                - create
+                - delete
+                - get
+                - list
+                - update
+                - watch
+            - apiGroups:
+                - csi.ceph.io
+              resources:
+                - clientprofiles
+              verbs:
+                - create
+                - delete
+                - get
+                - list
+                - update
+                - watch
+            - apiGroups:
+                - csi.ceph.io
+              resources:
+                - operatorconfigs
+              verbs:
+                - create
+                - delete
+                - get
+                - list
+                - update
+                - watch
+            - apiGroups:
+                - csi.ceph.io
+              resources:
+                - drivers
+              verbs:
+                - create
+                - delete
+                - get
+                - list
+                - update
+                - watch
           serviceAccountName: rook-ceph-system
         - rules:
             - apiGroups:
