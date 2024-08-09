@@ -15,9 +15,10 @@ replace (
 )
 
 require (
-	github.com/IBM/keyprotect-go-client v0.14.3
-	github.com/aws/aws-sdk-go v1.55.3
+	github.com/IBM/keyprotect-go-client v0.15.1
+	github.com/aws/aws-sdk-go v1.55.5
 	github.com/banzaicloud/k8s-objectmatcher v1.8.0
+	github.com/ceph/ceph-csi-operator/api v0.0.0-20240807130124-deb792aa7ad8
 	github.com/ceph/go-ceph v0.28.0
 	github.com/coreos/pkg v0.0.0-20230601102743-20bbbf26f4d8
 	github.com/csi-addons/kubernetes-csi-addons v0.8.0
@@ -26,20 +27,21 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/vault/api v1.14.0
-	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.0
+	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.1
 	github.com/kube-object-storage/lib-bucket-provisioner v0.0.0-20221122204822-d1a8c34382f1
 	github.com/libopenstorage/secrets v0.0.0-20240416031220-a17cf7f72c6c
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.75.2
 	github.com/prometheus-operator/prometheus-operator/pkg/client v0.75.2
 	github.com/rook/rook/pkg/apis v0.0.0-20231204200402-5287527732f7
+	github.com/sethvargo/go-password v0.2.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
 	github.com/sykesm/zap-logfmt v0.0.4
 	go.uber.org/automaxprocs v1.5.3
 	go.uber.org/zap v1.27.0
-	golang.org/x/exp v0.0.0-20231127185646-65229373498e
+	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/sync v0.8.0
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -146,11 +148,11 @@ require (
 	github.com/xlab/treeprint v1.2.0 // indirect
 	go.starlark.net v0.0.0-20231121155337-90ade8b19d09 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.24.0 // indirect
-	golang.org/x/net v0.26.0 // indirect
+	golang.org/x/crypto v0.25.0 // indirect
+	golang.org/x/net v0.27.0 // indirect
 	golang.org/x/oauth2 v0.21.0 // indirect
-	golang.org/x/sys v0.21.0 // indirect
-	golang.org/x/term v0.21.0 // indirect
+	golang.org/x/sys v0.22.0 // indirect
+	golang.org/x/term v0.22.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
