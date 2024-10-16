@@ -53,7 +53,7 @@ type Images struct {
 var (
 	rbdMirrorPeerCaps                     = []string{"mon", "profile rbd-mirror-peer", "osd", "profile rbd"}
 	rbdMirrorPeerKeyringID                = "rbd-mirror-peer"
-	radosNamespaceMirroringMinimumVersion = cephver.CephVersion{Major: 20, Minor: 0, Extra: 0}
+	radosNamespaceMirroringMinimumVersion = cephver.CephVersion{Major: 19, Minor: 2, Extra: 0} // Modified for downstream
 )
 
 // ImportRBDMirrorBootstrapPeer add a mirror peer in the rbd-mirror configuration

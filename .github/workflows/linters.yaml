@@ -23,7 +23,7 @@ jobs:
   yaml-linter:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
+      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
         with:
           fetch-depth: 0
 
@@ -41,7 +41,7 @@ jobs:
   pylint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
+      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
         with:
           fetch-depth: 0
 
@@ -61,4 +61,4 @@ jobs:
         run: pylint $(git ls-files '*.py') -E
 
       - name: Setup black for py
-        uses: psf/black@b965c2a5026f8ba399283ba3e01898b012853c79 # stable
+        uses: psf/black@1b2427a2b785cc4aac97c19bb4b9a0de063f9547 # stable
