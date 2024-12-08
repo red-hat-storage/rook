@@ -1161,7 +1161,12 @@ func GetCephVolumeRawOSDs(context *clusterd.Context, clusterInfo *client.Cluster
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to get device info for %q", blockPath)
 			}
-			osd.DeviceClass = sys.GetDiskDeviceClass(diskInfo)
+			deviceType := sys.GetDiskDeviceType(diskInfo)
+			osd.DeviceType = deviceType
+			logger.Infof("setting device type %q for device %q", osd.DeviceType, diskInfo.Name)
+
+			crushDeviceClass := sys.GetDiskDeviceClass(oposd.CrushDeviceClassVarName, deviceType)
+			osd.DeviceClass = crushDeviceClass
 			logger.Infof("setting device class %q for device %q", osd.DeviceClass, diskInfo.Name)
 		}
 
@@ -1175,7 +1180,7 @@ func GetCephVolumeRawOSDs(context *clusterd.Context, clusterInfo *client.Cluster
 		// pod
 		// For the cleanup pod we don't want to close the encrypted block since it will sanitize it
 		// first and then close it
-		if os.Getenv(oposd.CephVolumeEncryptedKeyEnvVarName) != "" {
+		if osd.Encrypted && os.Getenv(oposd.CephVolumeEncryptedKeyEnvVarName) != "" {
 			// If label and subsystem are not set on the encrypted block let's set it
 			// They will be set if the OSD deployment has been removed manually and the prepare job
 			// runs again.
