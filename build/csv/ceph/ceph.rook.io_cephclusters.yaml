@@ -1610,6 +1610,12 @@ spec:
                     minimum: 0
                     nullable: true
                     type: number
+                  migration:
+                    properties:
+                      confirmation:
+                        pattern: ^$|^yes-really-migrate-osds$
+                        type: string
+                    type: object
                   nearFullRatio:
                     maximum: 1
                     minimum: 0
@@ -3260,6 +3266,11 @@ spec:
                     type: array
                   osd:
                     properties:
+                      migrationStatus:
+                        properties:
+                          pending:
+                            type: integer
+                        type: object
                       storeType:
                         additionalProperties:
                           type: integer
