@@ -7134,6 +7134,20 @@ RGWServiceSpec
 </tr>
 <tr>
 <td>
+<code>opsLogSidecar</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.OpsLogSidecar">
+OpsLogSidecar
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Enable enhanced operation Logs for S3 in a sidecar named ops-log</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>hostNetwork</code><br/>
 <em>
 bool
@@ -7170,6 +7184,36 @@ AdditionalVolumeMounts
 The root directory for each additional volume mount is <code>/var/rgw</code>.
 Example: for an additional mount at subPath <code>ldap</code>, mounted from a secret that has key
 <code>bindpass.secret</code>, the file would reside at <code>/var/rgw/ldap/bindpass.secret</code>.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>rgwConfig</code><br/>
+<em>
+map[string]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RgwConfig sets Ceph RGW config values for the gateway clients that serve this object store.
+Values are modified at runtime without RGW restart.
+This feature is intended for advanced users. It allows breaking configurations to be easily
+applied. Use with caution.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>rgwCommandFlags</code><br/>
+<em>
+map[string]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RgwCommandFlags sets Ceph RGW config values for the gateway clients that serve this object
+store. Values are modified at RGW startup, resulting in RGW pod restarts.
+This feature is intended for advanced users. It allows breaking configurations to be easily
+applied. Use with caution.</p>
 </td>
 </tr>
 </tbody>
@@ -10766,6 +10810,38 @@ bool
 <td>
 <em>(Optional)</em>
 <p>Preserve pools on object zone deletion</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ceph.rook.io/v1.OpsLogSidecar">OpsLogSidecar
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.GatewaySpec">GatewaySpec</a>)
+</p>
+<div>
+<p>RGWLoggingSpec is intended to extend the s3/swift logging for client operations</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>resources</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#resourcerequirements-v1-core">
+Kubernetes core/v1.ResourceRequirements
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Resources represents the way to specify resource requirements for the ops-log sidecar</p>
 </td>
 </tr>
 </tbody>
