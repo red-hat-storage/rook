@@ -1717,6 +1717,11 @@ type GatewaySpec struct {
 	// +nullable
 	Service *RGWServiceSpec `json:"service,omitempty"`
 
+	// Enable enhanced operation Logs for S3 in a sidecar named ops-log
+	// +optional
+	// +nullable
+	OpsLogSidecar *OpsLogSidecar `json:"opsLogSidecar,omitempty"`
+
 	// Whether host networking is enabled for the rgw daemon. If not set, the network settings from the cluster CR will be applied.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +nullable
@@ -1734,6 +1739,29 @@ type GatewaySpec struct {
 	// Example: for an additional mount at subPath `ldap`, mounted from a secret that has key
 	// `bindpass.secret`, the file would reside at `/var/rgw/ldap/bindpass.secret`.
 	AdditionalVolumeMounts AdditionalVolumeMounts `json:"additionalVolumeMounts,omitempty"`
+
+	// RgwConfig sets Ceph RGW config values for the gateway clients that serve this object store.
+	// Values are modified at runtime without RGW restart.
+	// This feature is intended for advanced users. It allows breaking configurations to be easily
+	// applied. Use with caution.
+	// +nullable
+	// +optional
+	RgwConfig map[string]string `json:"rgwConfig,omitempty"`
+
+	// RgwCommandFlags sets Ceph RGW config values for the gateway clients that serve this object
+	// store. Values are modified at RGW startup, resulting in RGW pod restarts.
+	// This feature is intended for advanced users. It allows breaking configurations to be easily
+	// applied. Use with caution.
+	// +nullable
+	// +optional
+	RgwCommandFlags map[string]string `json:"rgwCommandFlags,omitempty"`
+}
+
+// RGWLoggingSpec is intended to extend the s3/swift logging for client operations
+type OpsLogSidecar struct {
+	// Resources represents the way to specify resource requirements for the ops-log sidecar
+	// +optional
+	Resources v1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // EndpointAddress is a tuple that describes a single IP address or host name. This is a subset of
