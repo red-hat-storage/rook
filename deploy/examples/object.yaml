@@ -34,6 +34,10 @@ spec:
       # Make sure you're *ABSOLUTELY CERTAIN* that is what you want
       requireSafeReplicaSize: true
     parameters:
+      # RGW data pools are expected to be large, so mark them as "bulk" so that the PG autoscaler will treat them accordingly
+      # (see https://docs.ceph.com/en/reef/rados/operations/placement-groups/)
+      # In short, it will precreate a full number of PGs, so that the cluster works with optimal performance from day 1.
+      bulk: "true"
       # Inline compression mode for the data pool
       # Further reference: https://docs.ceph.com/docs/master/rados/configuration/bluestore-config-ref/#inline-compression
       compression_mode: none
@@ -105,8 +109,15 @@ spec:
     #       secret:
     #         secretName: rgw-ldap
     #         defaultMode: 0600
-  #zone:
-  #name: zone-a
+    # opsLogSidecar:
+    #   resources:
+    #     limits:
+    #     memory: "60Mi"
+    #   requests:
+    #     cpu: "100m"
+    #     memory: "60Mi"
+  # zone:
+  #   name: zone-a
   # service endpoint healthcheck
   healthCheck:
     # Configure the pod probes for the rgw daemon
