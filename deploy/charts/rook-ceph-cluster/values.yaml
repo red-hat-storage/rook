@@ -51,6 +51,8 @@ monitoring:
   # -- Enable Prometheus integration, will also create necessary RBAC rules to allow Operator to create ServiceMonitors.
   # Monitoring requires Prometheus to be pre-installed
   enabled: false
+  # -- Whether to disable the metrics reported by Ceph. If false, the prometheus mgr module and Ceph exporter are enabled
+  metricsDisabled: false
   # -- Whether to create the Prometheus rules for Ceph alerts
   createPrometheusRules: false
   # -- The namespace in which to create the prometheus rules, if different from the rook cluster namespace.
@@ -592,6 +594,8 @@ cephObjectStores:
         erasureCoded:
           dataChunks: 2
           codingChunks: 1
+        parameters:
+          bulk: "true"
       preservePoolsOnDelete: true
       gateway:
         port: 80
@@ -605,6 +609,13 @@ cephObjectStores:
         # sslCertificateRef:
         instances: 1
         priorityClassName: system-cluster-critical
+        # opsLogSidecar:
+        #   resources:
+        #     limits:
+        #       memory: "100Mi"
+        #     requests:
+        #       cpu: "100m"
+        #       memory: "40Mi"
     storageClass:
       enabled: true
       name: ceph-bucket
