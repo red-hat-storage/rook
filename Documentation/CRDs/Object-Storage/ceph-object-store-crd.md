@@ -123,7 +123,7 @@ spec:
   protocols:
     swift:
       accountInUrl: true
-      urlPrefix: /swift
+      urlPrefix: swift
   [...]
 ```
 
@@ -234,6 +234,24 @@ The gateway settings correspond to the RGW daemon settings.
       annotations:
       service.beta.openshift.io/serving-cert-secret-name: <name of TLS secret for automatic generation>
     ```
+
+* `opsLogSidecar`: By default, all RGW logs are included in the main RGW container logs.
+    For enhanced observability of the operations, the [RGW operations log](https://docs.ceph.com/en/latest/radosgw/config-ref/#confval-rgw_enable_ops_log) can be separated from the main RGW container logs by enabling a sidecar.
+    OpsLogSidecar can be enabled by the following example:
+
+```yaml
+  gateway:
+    opsLogSidecar:
+      resources:
+        requests: {}
+        limits: {}
+```
+
+Once enabled, logs can be accessed in RGW pod `ops-log` sidecar containers. For example:
+
+```sh
+kubectl --namespace rook-ceph logs rook-ceph-rgw-my-store-a-59d48474d8-jv7ps --container ops-log
+```
 
 ## Zone Settings
 
@@ -348,6 +366,94 @@ vault write -f transit/keys/<mybucketkey> exportable=true # transit engine
 ```
 
 * `tokenSecretName` can be (and often will be) the same for both kms and s3 configurations.
+
+## Advanced configuration
+
+!!! warning
+    This feature is intended for advanced users. It allows breaking configurations to be easily
+    applied. Use with caution.
+
+CephObjectStore allows arbitrary Ceph configurations to be applied to RGW daemons that serve the
+object store. [RGW config reference](https://docs.ceph.com/en/latest/radosgw/config-ref/).
+
+Configurations are applied to all RGWs that serve the CephObjectStore. Values must be strings.
+Below is an example showing how different RGW configs and values might be applied. The example is
+intended only to show a selection of value data types.
+
+```yaml
+# THIS SAMPLE IS NOT A RECOMMENDATION
+# ...
+spec:
+  gateway:
+    # ...
+    rgwConfig:
+      debug_rgw: "10" # int
+      # debug-rgw: "20" # equivalent config keys can have dashes or underscores
+      rgw_s3_auth_use_ldap: "true" # bool
+    rgwCommandFlags:
+      rgw_dmclock_auth_res: "100.0" # float
+      rgw_d4n_l1_datacache_persistent_path: /var/log/rook/rgwd4ncache # string
+      rgw_d4n_address: "127.0.0.1:6379" # IP string
+```
+
+* `rgwConfig` - These configurations are applied and modified at runtime, without RGW restart.
+* `rgwCommandFlags` - These configurations are applied as CLI arguments and result in RGW daemons
+    restarting when updates are applied. Restarts are desired behavior for some RGW configs.
+
+!!! note
+    Once an `rgwConfig` is set, it will not be removed from Ceph's central config store when removed
+    from the `rgwConfig` spec. Be sure to specifically set values back to their defaults once done.
+    With this in mind, `rgwCommandFlags` may be a better choice for temporary config values like
+    debug levels.
+
+### Example - debugging
+
+Users are often asked to provide RGW logs at a high log level when troubleshooting complex issues.
+Apply log levels to RGWs easily using `rgwCommandFlags`.
+
+This spec will restart the RGW(s) with the highest level debugging enabled.
+
+```yaml
+# ...
+spec:
+  gateway:
+    # ...
+    rgwCommandFlags:
+      debug_ms: "20"
+      debug_rgw: "20"
+```
+
+Once RGW debug logging is no longer needed, the values can simply be removed from the spec.
+
+### Example - usage with `additionalVolumeMounts`
+
+This sample configuration below demonstrates how advanced configuration can be used alongside
+`additionalVolumeMounts`. This hypothetical scenario shows how a Kubernetes secret containing an
+LDAP secret might be mounted to the RGW pod and how RGW would be configured to reference the mounted
+secret file.
+
+```yaml
+  # ...
+  gateway:
+    # ...
+    rgwConfig:
+      rgw_ldap_secret: /var/rgw/ldap/bindpass.secret
+    additionalVolumeMounts:
+      - subPath: ldap
+        volumeSource:
+          secret:
+            secretName: rgw-ldap
+            defaultMode: 0600
+---
+apiVersion: v1
+kind: Secret
+metadata:
+    name: rgw-ldap
+    namespace: rook-ceph
+type: Opaque
+data:
+    "bindpass.secret": aGVsbG8ud29ybGQK # hello.world
+```
 
 ## Deleting a CephObjectStore
 
