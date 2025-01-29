@@ -1,0 +1,9 @@
+apiVersion: v1
+data:
+  # The below field will contain the "create-external-cluster-resources.py" script.
+  # Use the updated configmap with the base64 encoded script value stored under
+  # build/csv/ceph directory.
+  script: ""
+kind: ConfigMap
+metadata:
+  name: rook-ceph-external-cluster-script-config

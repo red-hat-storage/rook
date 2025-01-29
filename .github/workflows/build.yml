@@ -36,6 +36,12 @@ jobs:
 
       - name: build rook
         run: |
+          # Install kubectl binary as required for generating csv
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/darwin/amd64/kubectl"
+          chmod +x ./kubectl
+          sudo mv ./kubectl /usr/local/bin/kubectl
+          sudo chown root: /usr/local/bin/kubectl
+
           GOPATH=$(go env GOPATH) make clean && make -j$nproc IMAGES='ceph' BUILD_CONTAINER_IMAGE=false build
 
       - name: validate build
@@ -91,3 +97,9 @@ jobs:
       - name: build.all rook with go ${{ matrix.go-version }}
         run: |
           tests/scripts/github-action-helper.sh build_rook_all
+
+      - name: run gen-csv
+        run: make csv-clean && GOPATH=$(go env GOPATH) make gen-csv
+
+      - name: validate gen-csv
+        run: tests/scripts/validate_modified_files.sh gen-csv

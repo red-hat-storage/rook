@@ -42,6 +42,25 @@ else
 S5CMD_ARCH = Linux-arm64
 endif
 
+ifeq ($(REAL_HOST_PLATFORM),linux_amd64)
+OPERATOR_SDK_PLATFORM = x86_64-linux-gnu
+INCLUDE_CSV_TEMPLATES = true
+endif
+ifeq ($(REAL_HOST_PLATFORM),linux_arm64)
+OPERATOR_SDK_PLATFORM = aarch64-linux-gnu
+INCLUDE_CSV_TEMPLATES = true
+S5CMD_ARCH = Linux-arm64
+endif
+ifeq ($(REAL_HOST_PLATFORM),darwin_amd64)
+OPERATOR_SDK_PLATFORM = x86_64-apple-darwin
+INCLUDE_CSV_TEMPLATES = true
+endif
+ifneq ($(INCLUDE_CSV_TEMPLATES),true)
+$(info )
+$(info NOT INCLUDING OLM/CSV TEMPLATES!)
+$(info )
+endif
+
 # s5cmd's version
 S5CMD_VERSION = 2.3.0
 
@@ -94,6 +113,18 @@ $(OPERATOR_SDK):
 		https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$(REAL_HOST_PLATFORM)
 	@chmod +x $(OPERATOR_SDK)
 	@$(OPERATOR_SDK) version
+
+csv: $(OPERATOR_SDK) $(YQv3)
+	@echo generate csv with latest operator-sdk
+	@mkdir -p ../../build/csv/ceph
+	@../../build/csv/csv-gen.sh
+	@# #adding 2>/dev/null since CI doesn't seems to be creating bundle.Dockerfile file
+	@rm bundle.Dockerfile 2> /dev/null || true
+	@git restore $(MANIFESTS_DIR)/crds.yaml ../../deploy/charts/rook-ceph/templates/resources.yaml
+
+csv-clean: ## Remove existing OLM files.
+	@rm -fr ../../build/csv/ceph/${go env GOARCH}
+	@rm -f ../../build/csv/rook-ceph.clusterserviceversion.yaml
 
 # reading from a file and outputting to the same file can have undefined results, so use this intermediate
 IMAGE_TMP="/tmp/rook-ceph-image-list"

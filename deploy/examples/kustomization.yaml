@@ -6,3 +6,4 @@ resources:
   - common.yaml
   - operator-openshift.yaml
   - csi/nfs/rbac.yaml
+  - external-cluster-script-configmap.yaml

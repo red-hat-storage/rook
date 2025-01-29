@@ -1,0 +1,17 @@
+spec:
+  install:
+    spec:
+      clusterPermissions:
+        - rules:
+            - verbs:
+                - use
+              apiGroups:
+                - security.openshift.io
+              resources:
+                - securitycontextconstraints
+              resourceNames:
+                - privileged
+          serviceAccountName: rook-ceph-system
+  maintainers:
+    - name: Red Hat Support
+      email: ocs-support@redhat.com

@@ -1,0 +1,195 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  creationTimestamp: null
+  name: cephblockpoolradosnamespaces.ceph.rook.io
+spec:
+  group: ceph.rook.io
+  names:
+    kind: CephBlockPoolRadosNamespace
+    listKind: CephBlockPoolRadosNamespaceList
+    plural: cephblockpoolradosnamespaces
+    singular: cephblockpoolradosnamespace
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - description: Name of the Ceph BlockPool
+      jsonPath: .spec.blockPoolName
+      name: BlockPool
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              blockPoolName:
+                type: string
+                x-kubernetes-validations:
+                - message: blockPoolName is immutable
+                  rule: self == oldSelf
+              mirroring:
+                properties:
+                  mode:
+                    enum:
+                    - ""
+                    - pool
+                    - image
+                    type: string
+                  remoteNamespace:
+                    type: string
+                  snapshotSchedules:
+                    items:
+                      properties:
+                        interval:
+                          type: string
+                        path:
+                          type: string
+                        startTime:
+                          type: string
+                      type: object
+                    type: array
+                required:
+                - mode
+                type: object
+              name:
+                type: string
+                x-kubernetes-validations:
+                - message: name is immutable
+                  rule: self == oldSelf
+            required:
+            - blockPoolName
+            type: object
+          status:
+            properties:
+              info:
+                additionalProperties:
+                  type: string
+                nullable: true
+                type: object
+              mirroringInfo:
+                properties:
+                  details:
+                    type: string
+                  lastChanged:
+                    type: string
+                  lastChecked:
+                    type: string
+                  mode:
+                    type: string
+                  peers:
+                    items:
+                      properties:
+                        client_name:
+                          type: string
+                        direction:
+                          type: string
+                        mirror_uuid:
+                          type: string
+                        site_name:
+                          type: string
+                        uuid:
+                          type: string
+                      type: object
+                    type: array
+                  site_name:
+                    type: string
+                type: object
+              mirroringStatus:
+                properties:
+                  details:
+                    type: string
+                  lastChanged:
+                    type: string
+                  lastChecked:
+                    type: string
+                  summary:
+                    properties:
+                      daemon_health:
+                        type: string
+                      health:
+                        type: string
+                      image_health:
+                        type: string
+                      states:
+                        nullable: true
+                        properties:
+                          error:
+                            type: integer
+                          replaying:
+                            type: integer
+                          starting_replay:
+                            type: integer
+                          stopped:
+                            type: integer
+                          stopping_replay:
+                            type: integer
+                          syncing:
+                            type: integer
+                          unknown:
+                            type: integer
+                        type: object
+                    type: object
+                type: object
+              phase:
+                type: string
+              snapshotScheduleStatus:
+                properties:
+                  details:
+                    type: string
+                  lastChanged:
+                    type: string
+                  lastChecked:
+                    type: string
+                  snapshotSchedules:
+                    items:
+                      properties:
+                        image:
+                          type: string
+                        items:
+                          items:
+                            properties:
+                              interval:
+                                type: string
+                              start_time:
+                                type: string
+                            type: object
+                          type: array
+                        namespace:
+                          type: string
+                        pool:
+                          type: string
+                      type: object
+                    nullable: true
+                    type: array
+                type: object
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+        required:
+        - metadata
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null
