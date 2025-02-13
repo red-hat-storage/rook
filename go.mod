@@ -1,6 +1,8 @@
 module github.com/rook/rook
 
-go 1.20
+go 1.21
+
+toolchain go1.23.1
 
 replace github.com/rook/rook/pkg/apis => ./pkg/apis
 
@@ -29,7 +31,7 @@ require (
 	github.com/sykesm/zap-logfmt v0.0.4
 	go.uber.org/zap v1.26.0
 	golang.org/x/exp v0.0.0-20231127185646-65229373498e
-	golang.org/x/sync v0.5.0
+	golang.org/x/sync v0.10.0
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.28.4
@@ -116,16 +118,15 @@ require (
 	github.com/xlab/treeprint v1.2.0 // indirect
 	go.starlark.net v0.0.0-20231121155337-90ade8b19d09 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.23.0 // indirect
-	golang.org/x/net v0.25.0 // indirect
-	golang.org/x/oauth2 v0.15.0 // indirect
-	golang.org/x/sys v0.20.0 // indirect
-	golang.org/x/term v0.20.0 // indirect
-	golang.org/x/text v0.15.0 // indirect
-	golang.org/x/time v0.5.0 // indirect
+	golang.org/x/crypto v0.31.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/oauth2 v0.24.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/term v0.27.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/time v0.8.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
-	google.golang.org/appengine v1.6.8 // indirect
-	google.golang.org/protobuf v1.31.0 // indirect
+	google.golang.org/protobuf v1.36.0 // indirect
 	gopkg.in/evanphx/json-patch.v5 v5.7.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
@@ -151,21 +152,21 @@ exclude (
 	k8s.io/client-go v1.5.0
 	k8s.io/client-go v1.5.1
 	k8s.io/client-go v1.5.2
-	k8s.io/client-go v10.0.0+incompatible
-	k8s.io/client-go v11.0.0+incompatible
-	k8s.io/client-go v11.0.1-0.20190409021438-1a26190bd76a+incompatible
-	k8s.io/client-go v12.0.0+incompatible
-	k8s.io/client-go v2.0.0+incompatible
 	k8s.io/client-go v2.0.0-alpha.1+incompatible
-	k8s.io/client-go v3.0.0+incompatible
+	k8s.io/client-go v2.0.0+incompatible
 	k8s.io/client-go v3.0.0-beta.0+incompatible
-	k8s.io/client-go v4.0.0+incompatible
+	k8s.io/client-go v3.0.0+incompatible
 	k8s.io/client-go v4.0.0-beta.0+incompatible
+	k8s.io/client-go v4.0.0+incompatible
 	k8s.io/client-go v5.0.0+incompatible
 	k8s.io/client-go v5.0.1+incompatible
 	k8s.io/client-go v6.0.0+incompatible
 	k8s.io/client-go v7.0.0+incompatible
 	k8s.io/client-go v8.0.0+incompatible
-	k8s.io/client-go v9.0.0+incompatible
 	k8s.io/client-go v9.0.0-invalid+incompatible
+	k8s.io/client-go v9.0.0+incompatible
+	k8s.io/client-go v10.0.0+incompatible
+	k8s.io/client-go v11.0.0+incompatible
+	k8s.io/client-go v11.0.1-0.20190409021438-1a26190bd76a+incompatible
+	k8s.io/client-go v12.0.0+incompatible
 )
