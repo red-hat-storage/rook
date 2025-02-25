@@ -513,7 +513,7 @@ func TestCluster_configurePrometheusModule(t *testing.T) {
 	assert.Equal(t, 2, modulesEnabled)
 	assert.Equal(t, 1, modulesDisabled)
 	assert.Equal(t, "30001", configSettings["mgr/prometheus/server_port"])
-	assert.Equal(t, 1, len(configSettings))
+	assert.Equal(t, 2, len(configSettings))
 
 	modulesEnabled = 0
 	modulesDisabled = 0
@@ -527,7 +527,7 @@ func TestCluster_configurePrometheusModule(t *testing.T) {
 	assert.Equal(t, 2, modulesEnabled)
 	assert.Equal(t, 1, modulesDisabled)
 	assert.Equal(t, "30001", configSettings["mgr/prometheus/server_port"])
-	assert.Equal(t, 1, len(configSettings))
+	assert.Equal(t, 2, len(configSettings))
 
 	// Enable prometheus module, port and interval changed
 	modulesEnabled = 0

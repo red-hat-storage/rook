@@ -400,6 +400,12 @@ func (c *Cluster) configurePrometheusModule() error {
 		logger.Infof("prometheus config will change, interval: %v", interval)
 	}
 
+	// Disable fetching of performance counters from the prometheus exporter as ceph-exporter is enabled for 4.14
+	err = monStore.Set("mgr", "mgr/prometheus/exclude_perf_counters", "true")
+	if err != nil {
+		return errors.Wrapf(err, "failed to enable exclude_perf_counters")
+	}
+
 	if portHasChanged || intervalHasChanged {
 		logger.Info("prometheus config has changed. restarting the prometheus module")
 		return c.restartMgrModule(PrometheusModuleName)
