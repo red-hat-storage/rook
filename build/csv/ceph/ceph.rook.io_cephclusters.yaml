@@ -468,6 +468,10 @@ spec:
                     maximum: 9
                     minimum: 0
                     type: integer
+                  externalMonIDs:
+                    items:
+                      type: string
+                    type: array
                   failureDomainLabel:
                     type: string
                   stretchCluster:
