@@ -1094,6 +1094,22 @@ spec:
                       type: string
                     nullable: true
                     type: object
+                  rgwConfigFromSecret:
+                    additionalProperties:
+                      properties:
+                        key:
+                          type: string
+                        name:
+                          default: ""
+                          type: string
+                        optional:
+                          type: boolean
+                      required:
+                      - key
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    nullable: true
+                    type: object
                   securePort:
                     format: int32
                     maximum: 65535

@@ -7203,6 +7203,23 @@ applied. Use with caution.</p>
 </tr>
 <tr>
 <td>
+<code>rgwConfigFromSecret</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#secretkeyselector-v1-core">
+map[string]k8s.io/api/core/v1.SecretKeySelector
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RgwConfigFromSecret works exactly like RgwConfig but takes config value from Secret Key reference.
+Values are modified at runtime without RGW restart.
+This feature is intended for advanced users. It allows breaking configurations to be easily
+applied. Use with caution.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>rgwCommandFlags</code><br/>
 <em>
 map[string]string
@@ -8775,6 +8792,22 @@ VolumeClaimTemplate
 <td>
 <em>(Optional)</em>
 <p>VolumeClaimTemplate is the PVC definition</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>externalMonIDs</code><br/>
+<em>
+[]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ExternalMonIDs - optional list of monitor IDs which are deployed externally and not managed by Rook.
+If set, Rook will not remove mons with given IDs from quorum.
+This parameter is used only for local Rook cluster running in normal mode
+and will be ignored if external or stretched mode is used.
+leading</p>
 </td>
 </tr>
 </tbody>
