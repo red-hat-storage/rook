@@ -233,6 +233,10 @@ func (r *ReconcileCephBlockPoolRadosNamespace) reconcile(request reconcile.Reque
 		return reconcile.Result{}, nil
 	}
 
+	cephBlockPool := &cephv1.CephBlockPool{}
+	pool := cephBlockPoolRadosNamespace.Spec.BlockPoolName
+	cephBlockPoolNamespacedName := types.NamespacedName{Name: pool, Namespace: request.Namespace}
+
 	if cephCluster.Spec.External.Enable {
 		logger.Debugf("external rados namespace %q creation is not supported, create it manually, the controller will assume it's there", namespacedName)
 		err = r.updateClusterConfig(cephBlockPoolRadosNamespace, cephCluster)
@@ -240,6 +244,10 @@ func (r *ReconcileCephBlockPoolRadosNamespace) reconcile(request reconcile.Reque
 			return reconcile.Result{}, errors.Wrap(err, "failed to save cluster config")
 		}
 		r.updateStatus(r.client, namespacedName, cephv1.ConditionReady)
+		err = csi.CreateUpdateClientProfileRadosNamespace(r.clusterInfo.Context, r.client, r.clusterInfo, cephBlockPoolNamespacedName, buildClusterID(cephBlockPoolRadosNamespace), cephCluster.Name)
+		if err != nil {
+			return reconcile.Result{}, errors.Wrap(err, "failed to create ceph csi-op config CR for RadosNamespace")
+		}
 		return reconcile.Result{}, nil
 	}
 
@@ -257,9 +265,6 @@ func (r *ReconcileCephBlockPoolRadosNamespace) reconcile(request reconcile.Reque
 
 	// Build the NamespacedName to fetch the CephBlockPool and make sure it exists, if not we cannot
 	// create the rados namespace
-	cephBlockPool := &cephv1.CephBlockPool{}
-	pool := cephBlockPoolRadosNamespace.Spec.BlockPoolName
-	cephBlockPoolNamespacedName := types.NamespacedName{Name: pool, Namespace: request.Namespace}
 	err = r.client.Get(r.opManagerContext, cephBlockPoolNamespacedName, cephBlockPool)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
