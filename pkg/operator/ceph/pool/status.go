@@ -21,6 +21,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/pkg/errors"
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	"github.com/rook/rook/pkg/operator/ceph/reporting"
 	"github.com/rook/rook/pkg/operator/k8sutil"
@@ -30,16 +31,16 @@ import (
 )
 
 // updateStatus updates a pool CR with the given status
-func updateStatus(ctx context.Context, client client.Client, poolName types.NamespacedName, status cephv1.ConditionType, info map[string]string, observedGeneration int64) {
+func updateStatus(ctx context.Context, client client.Client, poolName types.NamespacedName, status cephv1.ConditionType, info map[string]string, observedGeneration int64) error {
 	pool := &cephv1.CephBlockPool{}
 	err := client.Get(ctx, poolName, pool)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			logger.Debug("CephBlockPool resource not found. Ignoring since object must be deleted.")
-			return
+			return nil
 		}
 		logger.Warningf("failed to retrieve pool %q to update status to %q. %v", poolName, status, err)
-		return
+		return errors.Wrapf(err, "failed to retrieve pool %q to update status to %q", poolName, status)
 	}
 
 	if pool.Status == nil {
@@ -53,9 +54,10 @@ func updateStatus(ctx context.Context, client client.Client, poolName types.Name
 	}
 	if err := reporting.UpdateStatus(client, pool); err != nil {
 		logger.Warningf("failed to set pool %q status to %q. %v", pool.Name, status, err)
-		return
+		return errors.Wrapf(err, "failed to set pool %q status to %q", pool.Name, status)
 	}
 	logger.Debugf("pool %q status updated to %q", poolName, status)
+	return nil
 }
 
 // updateStatusBucket updates an object with a given status
