@@ -156,6 +156,37 @@ spec:
                 type: string
               displayName:
                 type: string
+              keys:
+                items:
+                  properties:
+                    accessKeyRef:
+                      properties:
+                        key:
+                          type: string
+                        name:
+                          default: ""
+                          type: string
+                        optional:
+                          type: boolean
+                      required:
+                      - key
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    secretKeyRef:
+                      properties:
+                        key:
+                          type: string
+                        name:
+                          default: ""
+                          type: string
+                        optional:
+                          type: boolean
+                      required:
+                      - key
+                      type: object
+                      x-kubernetes-map-type: atomic
+                  type: object
+                type: array
               quotas:
                 nullable: true
                 properties:
@@ -184,6 +215,21 @@ spec:
                   type: string
                 nullable: true
                 type: object
+              keys:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                    resourceVersion:
+                      type: string
+                    uid:
+                      type: string
+                  type: object
+                  x-kubernetes-map-type: atomic
+                nullable: true
+                type: array
               observedGeneration:
                 format: int64
                 type: integer
