@@ -19,9 +19,10 @@ package exec
 
 import (
 	"fmt"
-	kexec "k8s.io/client-go/util/exec"
 	"os/exec"
 	"syscall"
+
+	kexec "k8s.io/client-go/util/exec"
 )
 
 // CephCLIError is Ceph CLI Error type
@@ -38,16 +39,24 @@ func (e *CephCLIError) Error() string {
 func ExitStatus(err error) (int, bool) {
 	switch e := err.(type) {
 	case *exec.ExitError:
+		fmt.Println("case-1 ", e)
 		waitStatus, ok := e.ProcessState.Sys().(syscall.WaitStatus)
 		if ok {
 			return waitStatus.ExitStatus(), true
 		}
+		fmt.Println("case-1 contd...", e.ProcessState.ExitCode())
 	case kexec.CodeExitError:
+		fmt.Println(" case-2 ", e)
 		return int(e.ExitStatus()), true
 	case *CephCLIError:
+		fmt.Println("case-3 ", e)
 		return ExitStatus(e.err)
 	case syscall.Errno:
+		fmt.Println("case-4 ", e)
 		return int(e), true
+	default:
+		fmt.Println("default case:  ", e)
 	}
+
 	return 0, false
 }
