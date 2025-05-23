@@ -27,7 +27,7 @@ import (
 const (
 	// snapshotterVersion from which the snapshotcontroller and CRD will be
 	// installed
-	snapshotterVersion = "v8.2.0"
+	snapshotterVersion = "v8.2.1"
 	repoURL            = "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter"
 	rbacPath           = "deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml"
 	controllerPath     = "deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml"
@@ -69,7 +69,7 @@ func (k8sh *K8sHelper) snapshotController(action string) error {
 	if err != nil {
 		return err
 	}
-	controllerManifest = strings.Replace(controllerManifest, "canary", snapshotterVersion, -1)
+	controllerManifest = strings.ReplaceAll(controllerManifest, "canary", snapshotterVersion)
 	logger.Infof("snapshot controller: %s", controllerManifest)
 
 	_, err = k8sh.KubectlWithStdin(controllerManifest, action, "-f", "-")
