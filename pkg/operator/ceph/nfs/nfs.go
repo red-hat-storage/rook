@@ -131,7 +131,7 @@ func (r *ReconcileCephNFS) upCephNFS(n *cephv1.CephNFS) error {
 
 		// Add server to database
 		nodeID := getNFSNodeID(id)
-		err = r.addServerToDatabase(n, fmt.Sprintf("node%s", nodeID))
+		err = r.addServerToDatabase(n, nodeID)
 		if err != nil {
 			return errors.Wrapf(err, "failed to add server %q to database", id)
 		}
@@ -258,7 +258,7 @@ func (r *ReconcileCephNFS) downCephNFS(n *cephv1.CephNFS, nfsServerListNum int) 
 
 		// Remove from grace db
 		nodeID := getNFSNodeID(name)
-		r.removeServerFromDatabase(n, fmt.Sprintf("node%s", nodeID))
+		r.removeServerFromDatabase(n, nodeID)
 
 		// Remove deployment
 		// since we list deployments to determine what to remove, have to remove deployment last
@@ -277,7 +277,7 @@ func (r *ReconcileCephNFS) removeServersFromDatabase(n *cephv1.CephNFS, newActiv
 	for i := n.Spec.Server.Active - 1; i >= newActive; i-- {
 		name := k8sutil.IndexToName(i)
 		nodeID := getNFSNodeID(name)
-		r.removeServerFromDatabase(n, fmt.Sprintf("node%s", nodeID))
+		r.removeServerFromDatabase(n, nodeID)
 	}
 
 	return nil
