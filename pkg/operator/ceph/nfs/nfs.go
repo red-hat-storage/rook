@@ -55,7 +55,7 @@ type daemonConfig struct {
 
 // Create the ganesha server
 func (r *ReconcileCephNFS) upCephNFS(n *cephv1.CephNFS) error {
-	nfsToSkipReconcile, err := controller.GetDaemonsToSkipReconcile(r.clusterInfo.Context, r.context, n.Namespace, config.NfsType, AppName)
+	nfsToSkipReconcile, err := controller.GetDaemonsToSkipReconcile(r.clusterInfo.Context, r.context, n.Namespace, "instance", AppName)
 	if err != nil {
 		return errors.Wrap(err, "failed to check for NFS daemons to skip reconcile")
 	}

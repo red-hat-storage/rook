@@ -26,7 +26,6 @@ import (
 	"github.com/rook/rook/pkg/client/clientset/versioned/scheme"
 	"github.com/rook/rook/pkg/clusterd"
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
-	"github.com/rook/rook/pkg/operator/ceph/config"
 	cephver "github.com/rook/rook/pkg/operator/ceph/version"
 	"github.com/rook/rook/pkg/operator/k8sutil"
 	exectest "github.com/rook/rook/pkg/util/exec/test"
@@ -216,7 +215,7 @@ func TestReconcileCephNFS_upCephNFS(t *testing.T) {
 func TestUpCephNFS_SkipsReconcile(t *testing.T) {
 	ns := "skip-nfs-test"
 	s := scheme.Scheme
-	daemonID := "a"
+	instance := "a"
 
 	clientset := k8sfake.NewSimpleClientset()
 	client := fake.NewClientBuilder().WithScheme(s).Build()
@@ -228,7 +227,7 @@ func TestUpCephNFS_SkipsReconcile(t *testing.T) {
 			Labels: map[string]string{
 				k8sutil.AppAttr:              AppName,
 				cephv1.SkipReconcileLabelKey: "true",
-				config.NfsType:               daemonID,
+				"instance":                   instance,
 			},
 		},
 	}
