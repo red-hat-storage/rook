@@ -124,14 +124,8 @@ func (r *ReconcileCephNFS) upCephNFS(n *cephv1.CephNFS) error {
 			return errors.Wrap(err, "failed to create ceph nfs service")
 		}
 
-		// with upgrades remove old server from database
-		deprecatedNodeID := getDeprecatedNFSNodeID(n, id)
-		r.removeServerFromDatabase(n, deprecatedNodeID)
-		r.removeServerFromDatabase(n, fmt.Sprintf("node%s", deprecatedNodeID))
-
 		// Add server to database
-		nodeID := getNFSNodeID(id)
-		err = r.addServerToDatabase(n, nodeID)
+		err = r.addServerToDatabase(n, id)
 		if err != nil {
 			return errors.Wrapf(err, "failed to add server %q to database", id)
 		}
@@ -165,25 +159,26 @@ func (r *ReconcileCephNFS) addRADOSConfigFile(n *cephv1.CephNFS) error {
 	return nil
 }
 
-func (r *ReconcileCephNFS) addServerToDatabase(nfs *cephv1.CephNFS, nodeID string) error {
-	logger.Infof("adding ganesha %q to grace db", nodeID)
+func (r *ReconcileCephNFS) addServerToDatabase(nfs *cephv1.CephNFS, name string) error {
+	logger.Infof("adding ganesha %q to grace db", name)
 
-	if err := r.runGaneshaRadosGrace(nfs, nodeID, "add"); err != nil {
-		return errors.Wrapf(err, "failed to add %q to grace db", nodeID)
+	if err := r.runGaneshaRadosGrace(nfs, name, "add"); err != nil {
+		return errors.Wrapf(err, "failed to add %q to grace db", name)
 	}
 
 	return nil
 }
 
-func (r *ReconcileCephNFS) removeServerFromDatabase(nfs *cephv1.CephNFS, nodeID string) {
-	logger.Infof("removing ganesha %q from grace db", nodeID)
+func (r *ReconcileCephNFS) removeServerFromDatabase(nfs *cephv1.CephNFS, name string) {
+	logger.Infof("removing ganesha %q from grace db", name)
 
-	if err := r.runGaneshaRadosGrace(nfs, nodeID, "remove"); err != nil {
-		logger.Debugf("failed to remove %q from grace db. %v", nodeID, err)
+	if err := r.runGaneshaRadosGrace(nfs, name, "remove"); err != nil {
+		logger.Errorf("failed to remove %q from grace db. %v", name, err)
 	}
 }
 
-func (r *ReconcileCephNFS) runGaneshaRadosGrace(nfs *cephv1.CephNFS, nodeID, action string) error {
+func (r *ReconcileCephNFS) runGaneshaRadosGrace(nfs *cephv1.CephNFS, name, action string) error {
+	nodeID := getNFSNodeID(nfs, name)
 	args := []string{"--pool", nfs.Spec.RADOS.Pool, "--ns", nfs.Spec.RADOS.Namespace, action, nodeID}
 	cmd := cephclient.NewGaneshaRadosGraceCommand(r.context, r.clusterInfo, args)
 	_, err := cmd.RunWithTimeout(exec.CephCommandsTimeout)
@@ -193,7 +188,7 @@ func (r *ReconcileCephNFS) runGaneshaRadosGrace(nfs *cephv1.CephNFS, nodeID, act
 func (r *ReconcileCephNFS) generateConfigMap(n *cephv1.CephNFS, name string) *v1.ConfigMap {
 
 	data := map[string]string{
-		"config": getGaneshaConfig(n, name),
+		"config": getGaneshaConfig(n, r.clusterInfo.CephVersion, name),
 	}
 	configMap := &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -257,8 +252,7 @@ func (r *ReconcileCephNFS) downCephNFS(n *cephv1.CephNFS, nfsServerListNum int) 
 		}
 
 		// Remove from grace db
-		nodeID := getNFSNodeID(name)
-		r.removeServerFromDatabase(n, nodeID)
+		r.removeServerFromDatabase(n, name)
 
 		// Remove deployment
 		// since we list deployments to determine what to remove, have to remove deployment last
@@ -276,8 +270,7 @@ func (r *ReconcileCephNFS) downCephNFS(n *cephv1.CephNFS, nfsServerListNum int) 
 func (r *ReconcileCephNFS) removeServersFromDatabase(n *cephv1.CephNFS, newActive int) error {
 	for i := n.Spec.Server.Active - 1; i >= newActive; i-- {
 		name := k8sutil.IndexToName(i)
-		nodeID := getNFSNodeID(name)
-		r.removeServerFromDatabase(n, nodeID)
+		r.removeServerFromDatabase(n, name)
 	}
 
 	return nil
