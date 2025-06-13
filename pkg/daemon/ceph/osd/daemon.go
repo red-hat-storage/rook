@@ -201,6 +201,15 @@ func Provision(context *clusterd.Context, agent *OsdAgent, crushLocation, topolo
 
 	context.Devices = rawDevices
 
+	// Wipe the desired OSD disks in case they belong to a different ceph cluster.
+	if agent.wipeDevicesFromOtherClusters {
+		logger.Info("checking for OSD disks from a different cluster")
+		err := agent.WipeDevicesFromOtherClusters(context)
+		if err != nil {
+			return errors.Wrapf(err, "failed to wipe devices from other clusters")
+		}
+	}
+
 	logger.Info("creating and starting the osds")
 
 	// determine the set of devices that can/should be used for OSDs.
@@ -550,11 +559,12 @@ func getAvailableDevices(context *clusterd.Context, agent *OsdAgent) (*DeviceOsd
 			// It is particularly useful when a metadata PVC is used because we need to identify it in the map
 			// So the entry must be named "metadata" so it can accessed later
 			if agent.pvcBacked {
-				if device.Type == pvcDataTypeDevice {
+				switch device.Type {
+				case pvcDataTypeDevice:
 					available.Entries[pvcDataTypeDevice] = deviceInfo
-				} else if device.Type == pvcMetadataTypeDevice {
+				case pvcMetadataTypeDevice:
 					available.Entries[pvcMetadataTypeDevice] = deviceInfo
-				} else if device.Type == pvcWalTypeDevice {
+				case pvcWalTypeDevice:
 					available.Entries[pvcWalTypeDevice] = deviceInfo
 				}
 			} else {

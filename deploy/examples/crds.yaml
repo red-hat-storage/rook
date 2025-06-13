@@ -16,6 +16,9 @@ spec:
     kind: CephBlockPoolRadosNamespace
     listKind: CephBlockPoolRadosNamespaceList
     plural: cephblockpoolradosnamespaces
+    shortNames:
+      - cephbprns
+      - cephrns
     singular: cephblockpoolradosnamespace
   scope: Namespaced
   versions:
@@ -349,6 +352,8 @@ spec:
     kind: CephBlockPool
     listKind: CephBlockPoolList
     plural: cephblockpools
+    shortNames:
+      - cephbp
     singular: cephblockpool
   scope: Namespaced
   versions:
@@ -843,6 +848,8 @@ spec:
     kind: CephBucketNotification
     listKind: CephBucketNotificationList
     plural: cephbucketnotifications
+    shortNames:
+      - cephbn
     singular: cephbucketnotification
   scope: Namespaced
   versions:
@@ -1005,6 +1012,8 @@ spec:
     kind: CephBucketTopic
     listKind: CephBucketTopicList
     plural: cephbuckettopics
+    shortNames:
+      - cephbt
     singular: cephbuckettopic
   scope: Namespaced
   versions:
@@ -1238,6 +1247,8 @@ spec:
     kind: CephClient
     listKind: CephClientList
     plural: cephclients
+    shortNames:
+      - cephcl
     singular: cephclient
   scope: Namespaced
   versions:
@@ -1321,6 +1332,8 @@ spec:
     kind: CephCluster
     listKind: CephClusterList
     plural: cephclusters
+    shortNames:
+      - ceph
     singular: cephcluster
   scope: Namespaced
   versions:
@@ -1483,6 +1496,11 @@ spec:
                             - quick
                           type: string
                       type: object
+                    wipeDevicesFromOtherClusters:
+                      description: |-
+                        WipeDevicesFromOtherClusters wipes the OSD disks belonging to other clusters. This is useful in scenarios where ceph cluster
+                        was reinstalled but OSD disk still contains the metadata from previous ceph cluster.
+                      type: boolean
                   type: object
                 continueUpgradeAfterChecksEvenIfNotHealthy:
                   description: ContinueUpgradeAfterChecksEvenIfNotHealthy defines if an upgrade should continue even if PGs are not clean
@@ -3593,8 +3611,42 @@ spec:
                   description: Security represents security settings
                   nullable: true
                   properties:
+                    cephx:
+                      description: 'CephX configures CephX key settings. More: https://docs.ceph.com/en/latest/dev/cephx/'
+                      properties:
+                        daemon:
+                          description: |-
+                            Daemon configures CephX key settings for local Ceph daemons managed by Rook and part of the
+                            Ceph cluster. Daemon CephX keys can be rotated without affecting client connections.
+                          properties:
+                            keyGeneration:
+                              description: |-
+                                KeyGeneration specifies the desired CephX key generation. This is used when KeyRotationPolicy
+                                is KeyGeneration and ignored for other policies. If this is set to greater than the current
+                                key generation, relevant keys will be rotated, and the generation value will be updated to
+                                this new value (generation values are not necessarily incremental, though that is the
+                                intended use case). If this is set to less than or equal to the current key generation, keys
+                                are not rotated.
+                              format: int32
+                              maximum: 4294967295
+                              minimum: 0
+                              type: integer
+                              x-kubernetes-validations:
+                                - message: keyGeneration cannot be decreased
+                                  rule: self >= oldSelf
+                            keyRotationPolicy:
+                              description: |-
+                                KeyRotationPolicy controls if and when CephX keys are rotated after initial creation.
+                                One of Disabled, or KeyGeneration. Default Disabled.
+                              enum:
+                                - ""
+                                - Disabled
+                                - KeyGeneration
+                              type: string
+                          type: object
+                      type: object
                     keyRotation:
-                      description: KeyRotation defines options for Key Rotation.
+                      description: KeyRotation defines options for rotation of OSD disk encryption keys.
                       nullable: true
                       properties:
                         enabled:
@@ -6467,6 +6519,8 @@ spec:
     kind: CephFilesystemMirror
     listKind: CephFilesystemMirrorList
     plural: cephfilesystemmirrors
+    shortNames:
+      - cephfsm
     singular: cephfilesystemmirror
   scope: Namespaced
   versions:
@@ -7141,6 +7195,8 @@ spec:
     kind: CephFilesystem
     listKind: CephFilesystemList
     plural: cephfilesystems
+    shortNames:
+      - cephfs
     singular: cephfilesystem
   scope: Namespaced
   versions:
@@ -8728,6 +8784,9 @@ spec:
     kind: CephFilesystemSubVolumeGroup
     listKind: CephFilesystemSubVolumeGroupList
     plural: cephfilesystemsubvolumegroups
+    shortNames:
+      - cephfssvg
+      - cephsvg
     singular: cephfilesystemsubvolumegroup
   scope: Namespaced
   versions:
@@ -10848,6 +10907,8 @@ spec:
     kind: CephObjectRealm
     listKind: CephObjectRealmList
     plural: cephobjectrealms
+    shortNames:
+      - cephor
     singular: cephobjectrealm
   scope: Namespaced
   versions:
@@ -10938,6 +10999,8 @@ spec:
     kind: CephObjectStore
     listKind: CephObjectStoreList
     plural: cephobjectstores
+    shortNames:
+      - cephos
     singular: cephobjectstore
   scope: Namespaced
   versions:
@@ -13015,6 +13078,31 @@ spec:
             status:
               description: ObjectStoreStatus represents the status of a Ceph Object Store resource
               properties:
+                cephx:
+                  properties:
+                    daemon:
+                      description: Daemon shows the CephX key status for local Ceph daemons associated with this resources.
+                      properties:
+                        keyCephVersion:
+                          description: |-
+                            KeyCephVersion reports the Ceph version that created the current generation's keys. This is
+                            same string format as reported by `CephCluster.status.version.version` to allow them to be
+                            compared. E.g., `20.2.0-0`.
+                            For all newly-created resources, this field set to the version of Ceph that created the key.
+                            The special value "Uninitialized" indicates that keys are being created for the first time.
+                            An empty string indicates that the version is unknown, as expected in brownfield deployments.
+                          type: string
+                        keyGeneration:
+                          description: |-
+                            KeyGeneration represents the CephX key generation for the last successful reconcile.
+                            For all newly-created resources, this field is set to `1`.
+                            When keys are rotated due to any rotation policy, the generation is incremented or updated to
+                            the configured policy generation.
+                            Generation `0` indicates that keys existed prior to the implementation of key tracking.
+                          format: int32
+                          type: integer
+                      type: object
+                  type: object
                 conditions:
                   items:
                     description: Condition represents a status condition on any Rook-Ceph Custom Resource.
@@ -13090,6 +13178,7 @@ spec:
     shortNames:
       - rcou
       - objectuser
+      - cephosu
     singular: cephobjectstoreuser
   scope: Namespaced
   versions:
@@ -13405,6 +13494,8 @@ spec:
     kind: CephObjectZoneGroup
     listKind: CephObjectZoneGroupList
     plural: cephobjectzonegroups
+    shortNames:
+      - cephozg
     singular: cephobjectzonegroup
   scope: Namespaced
   versions:
@@ -13500,6 +13591,8 @@ spec:
     kind: CephObjectZone
     listKind: CephObjectZoneList
     plural: cephobjectzones
+    shortNames:
+      - cephoz
     singular: cephobjectzone
   scope: Namespaced
   versions:
@@ -14069,6 +14162,8 @@ spec:
     kind: CephRBDMirror
     listKind: CephRBDMirrorList
     plural: cephrbdmirrors
+    shortNames:
+      - cephrbdm
     singular: cephrbdmirror
   scope: Namespaced
   versions:

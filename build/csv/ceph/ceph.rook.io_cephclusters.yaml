@@ -11,6 +11,8 @@ spec:
     kind: CephCluster
     listKind: CephClusterList
     plural: cephclusters
+    shortNames:
+    - ceph
     singular: cephcluster
   scope: Namespaced
   versions:
@@ -130,6 +132,8 @@ spec:
                         - quick
                         type: string
                     type: object
+                  wipeDevicesFromOtherClusters:
+                    type: boolean
                 type: object
               continueUpgradeAfterChecksEvenIfNotHealthy:
                 type: boolean
@@ -1562,6 +1566,26 @@ spec:
               security:
                 nullable: true
                 properties:
+                  cephx:
+                    properties:
+                      daemon:
+                        properties:
+                          keyGeneration:
+                            format: int32
+                            maximum: 4294967295
+                            minimum: 0
+                            type: integer
+                            x-kubernetes-validations:
+                            - message: keyGeneration cannot be decreased
+                              rule: self >= oldSelf
+                          keyRotationPolicy:
+                            enum:
+                            - ""
+                            - Disabled
+                            - KeyGeneration
+                            type: string
+                        type: object
+                    type: object
                   keyRotation:
                     nullable: true
                     properties:

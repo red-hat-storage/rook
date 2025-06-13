@@ -11,6 +11,8 @@ spec:
     kind: CephObjectZone
     listKind: CephObjectZoneList
     plural: cephobjectzones
+    shortNames:
+    - cephoz
     singular: cephobjectzone
   scope: Namespaced
   versions:

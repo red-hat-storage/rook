@@ -43,11 +43,13 @@ import (
 
 const (
 	// test with the latest releases
-	reefTestImage  = "quay.io/ceph/ceph:v18"
-	squidTestImage = "quay.io/ceph/ceph:v19"
+	reefTestImage     = "quay.io/ceph/ceph:v18"
+	squidTestImage    = "quay.io/ceph/ceph:v19"
+	tentacleTestImage = "quay.io/ceph/ceph:v20"
 	// test with the current development versions
-	reefDevelTestImage  = "quay.ceph.io/ceph-ci/ceph:reef"
-	squidDevelTestImage = "quay.ceph.io/ceph-ci/ceph:squid"
+	reefDevelTestImage     = "quay.ceph.io/ceph-ci/ceph:reef"
+	squidDevelTestImage    = "quay.ceph.io/ceph-ci/ceph:squid"
+	tentacleDevelTestImage = "quay.ceph.io/ceph-ci/ceph:tentacle"
 	// test with the latest Ceph main image
 	mainTestImage      = "quay.ceph.io/ceph-ci/ceph:main"
 	cephOperatorLabel  = "app=rook-ceph-operator"
@@ -71,6 +73,8 @@ var (
 	ReefDevelVersion             = cephv1.CephVersionSpec{Image: reefDevelTestImage}
 	SquidVersion                 = cephv1.CephVersionSpec{Image: squidTestImage}
 	SquidDevelVersion            = cephv1.CephVersionSpec{Image: squidDevelTestImage}
+	TentacleVersion              = cephv1.CephVersionSpec{Image: tentacleTestImage}
+	TentacleDevelVersion         = cephv1.CephVersionSpec{Image: tentacleDevelTestImage, AllowUnsupported: true}
 	MainVersion                  = cephv1.CephVersionSpec{Image: mainTestImage, AllowUnsupported: true}
 	volumeReplicationBaseURL     = fmt.Sprintf("https://raw.githubusercontent.com/csi-addons/kubernetes-csi-addons/%s/config/crd/bases/", volumeReplicationVersion)
 	volumeReplicationCRDURL      = volumeReplicationBaseURL + "replication.storage.openshift.io_volumereplications.yaml"
@@ -97,6 +101,8 @@ func ReturnCephVersion() cephv1.CephVersionSpec {
 		return ReefDevelVersion
 	case "squid-devel":
 		return SquidDevelVersion
+	case "tentacle-devel":
+		return TentacleDevelVersion
 	default:
 		// Default to the latest stable version
 		return SquidVersion
@@ -201,15 +207,15 @@ func (h *CephInstaller) CreateRookToolbox(manifests CephManifests) (err error) {
 }
 
 // Execute a command in the ceph toolbox
-func (h *CephInstaller) Execute(command string, parameters []string, namespace string) (error, string) {
+func (h *CephInstaller) Execute(command string, parameters []string, namespace string) (string, error) {
 	clusterInfo := client.AdminTestClusterInfo(namespace)
 	cmd, args := client.FinalizeCephCommandArgs(command, clusterInfo, parameters, h.k8shelper.MakeContext().ConfigDir)
 	result, err := h.k8shelper.MakeContext().Executor.ExecuteCommandWithOutput(cmd, args...)
 	if err != nil {
 		logger.Warningf("Error executing command %q: <%v>", command, err)
-		return err, result
+		return result, err
 	}
-	return nil, result
+	return result, nil
 }
 
 // CreateCephCluster creates rook cluster via kubectl

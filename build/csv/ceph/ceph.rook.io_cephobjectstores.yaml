@@ -11,6 +11,8 @@ spec:
     kind: CephObjectStore
     listKind: CephObjectStoreList
     plural: cephobjectstores
+    shortNames:
+    - cephos
     singular: cephobjectstore
   scope: Namespaced
   versions:
@@ -1624,6 +1626,17 @@ spec:
             type: object
           status:
             properties:
+              cephx:
+                properties:
+                  daemon:
+                    properties:
+                      keyCephVersion:
+                        type: string
+                      keyGeneration:
+                        format: int32
+                        type: integer
+                    type: object
+                type: object
               conditions:
                 items:
                   properties:

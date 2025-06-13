@@ -74,6 +74,7 @@ The following table lists the configurable parameters of the rook-operator chart
 | `monitoring.metricsDisabled` | Whether to disable the metrics reported by Ceph. If false, the prometheus mgr module and Ceph exporter are enabled | `false` |
 | `monitoring.prometheusRule.annotations` | Annotations applied to PrometheusRule | `{}` |
 | `monitoring.prometheusRule.labels` | Labels applied to PrometheusRule | `{}` |
+| `monitoring.prometheusRuleOverrides` | Edit Prometheus rules for Ceph alerts | `{}` |
 | `monitoring.rulesNamespaceOverride` | The namespace in which to create the prometheus rules, if different from the rook cluster namespace. If you have multiple rook-ceph clusters in the same k8s cluster, choose the same namespace (ideally, namespace with prometheus deployed) to set rulesNamespaceOverride for all the clusters. Otherwise, you will get duplicate alerts with multiple alert definitions. | `nil` |
 | `operatorNamespace` | Namespace of the main rook operator | `"rook-ceph"` |
 | `pspEnable` | Create & use PSP resources. Set this to the same value as the rook-ceph chart. | `false` |
@@ -81,6 +82,7 @@ The following table lists the configurable parameters of the rook-operator chart
 | `toolbox.containerSecurityContext` | Toolbox container security context | `{"capabilities":{"drop":["ALL"]},"runAsGroup":2016,"runAsNonRoot":true,"runAsUser":2016}` |
 | `toolbox.enabled` | Enable Ceph debugging pod deployment. See [toolbox](../Troubleshooting/ceph-toolbox.md) | `false` |
 | `toolbox.image` | Toolbox image, defaults to the image used by the Ceph cluster | `nil` |
+| `toolbox.labels` | Toolbox labels | `{}` |
 | `toolbox.priorityClassName` | Set the priority class for the toolbox if desired | `nil` |
 | `toolbox.resources` | Toolbox resources | `{"limits":{"memory":"1Gi"},"requests":{"cpu":"100m","memory":"128Mi"}}` |
 | `toolbox.tolerations` | Toolbox tolerations | `[]` |

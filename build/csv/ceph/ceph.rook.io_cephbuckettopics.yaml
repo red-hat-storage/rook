@@ -11,6 +11,8 @@ spec:
     kind: CephBucketTopic
     listKind: CephBucketTopicList
     plural: cephbuckettopics
+    shortNames:
+    - cephbt
     singular: cephbuckettopic
   scope: Namespaced
   versions:
