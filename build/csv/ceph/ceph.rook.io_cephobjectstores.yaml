@@ -187,6 +187,7 @@ spec:
                       subFailureDomain:
                         type: string
                       targetSizeRatio:
+                        minimum: 0
                         type: number
                     required:
                     - size
@@ -1463,6 +1464,7 @@ spec:
                       subFailureDomain:
                         type: string
                       targetSizeRatio:
+                        minimum: 0
                         type: number
                     required:
                     - size
