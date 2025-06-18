@@ -1963,6 +1963,11 @@ func (in *ClusterCephxStatus) DeepCopyInto(out *ClusterCephxStatus) {
 		*out = new(CephxStatus)
 		**out = **in
 	}
+	if in.OSD != nil {
+		in, out := &in.OSD, &out.OSD
+		*out = new(CephxStatus)
+		**out = **in
+	}
 	if in.RBDMirrorPeer != nil {
 		in, out := &in.RBDMirrorPeer, &out.RBDMirrorPeer
 		*out = new(CephxStatus)
