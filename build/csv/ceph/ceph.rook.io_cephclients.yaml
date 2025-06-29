@@ -42,6 +42,13 @@ spec:
                 x-kubernetes-preserve-unknown-fields: true
               name:
                 type: string
+              removeSecret:
+                type: boolean
+              secretName:
+                type: string
+                x-kubernetes-validations:
+                - message: SecretName is immutable and cannot be changed
+                  rule: self == oldSelf
             required:
             - caps
             type: object
