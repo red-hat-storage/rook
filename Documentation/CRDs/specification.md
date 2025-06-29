@@ -592,6 +592,32 @@ string
 </tr>
 <tr>
 <td>
+<code>secretName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>SecretName is the name of the secret created for this ceph client.
+If not specified, the default name is &ldquo;rook-ceph-client-&rdquo; as a prefix to the CR name.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>removeSecret</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RemoveSecret indicates whether the current secret for this ceph client should be removed or not.
+If true, the K8s secret will be deleted, but the cephx keyring will remain until the CR is deleted.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>caps</code><br/>
 <em>
 map[string]string
@@ -3094,6 +3120,19 @@ CSICephFSSpec
 <p>CephFS defines CSI Driver settings for CephFS driver.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>skipUserCreation</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>SkipUserCreation determines whether CSI users and their associated secrets should be skipped.
+If set to true, the user must manually manage these secrets.</p>
+</td>
+</tr>
 </tbody>
 </table>
 <h3 id="ceph.rook.io/v1.Capacity">Capacity
@@ -4669,6 +4708,32 @@ string
 </td>
 <td>
 <em>(Optional)</em>
+</td>
+</tr>
+<tr>
+<td>
+<code>secretName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>SecretName is the name of the secret created for this ceph client.
+If not specified, the default name is &ldquo;rook-ceph-client-&rdquo; as a prefix to the CR name.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>removeSecret</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RemoveSecret indicates whether the current secret for this ceph client should be removed or not.
+If true, the K8s secret will be deleted, but the cephx keyring will remain until the CR is deleted.</p>
 </td>
 </tr>
 <tr>

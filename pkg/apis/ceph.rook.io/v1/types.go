@@ -255,6 +255,10 @@ type CSIDriverSpec struct {
 	// CephFS defines CSI Driver settings for CephFS driver.
 	// +optional
 	CephFS CSICephFSSpec `json:"cephfs,omitempty"`
+	// SkipUserCreation determines whether CSI users and their associated secrets should be skipped.
+	// If set to true, the user must manually manage these secrets.
+	// +optional
+	SkipUserCreation bool `json:"skipUserCreation,omitempty"`
 }
 
 // CSICephFSSpec defines the settings for CephFS CSI driver.
@@ -3084,6 +3088,16 @@ type CephClientList struct {
 type ClientSpec struct {
 	// +optional
 	Name string `json:"name,omitempty"`
+	// SecretName is the name of the secret created for this ceph client.
+	// If not specified, the default name is "rook-ceph-client-" as a prefix to the CR name.
+	// +kubebuilder:validation:XValidation:message="SecretName is immutable and cannot be changed",rule="self == oldSelf"
+	// +optional
+	SecretName string `json:"secretName,omitempty"`
+
+	// RemoveSecret indicates whether the current secret for this ceph client should be removed or not.
+	// If true, the K8s secret will be deleted, but the cephx keyring will remain until the CR is deleted.
+	// +optional
+	RemoveSecret bool `json:"removeSecret,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Caps map[string]string `json:"caps"`
 }
