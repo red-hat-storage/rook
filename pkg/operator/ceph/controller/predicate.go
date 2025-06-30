@@ -863,3 +863,50 @@ func DuplicateCephClusters(ctx context.Context, c client.Client, object client.O
 
 	return false
 }
+
+func WatchPeerTokenSecretPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			newSecret, ok := e.Object.(*corev1.Secret)
+			if !ok {
+				logger.Errorf("expected type Secret but found %T", newSecret)
+				return false
+			}
+
+			// reconcile when secret is created
+			if strings.Contains(newSecret.GetName(), clusterMirrorBootstrapPeerSecretName) {
+				logger.Debugf("peer token create event for secret %q in the namespace %q", newSecret.GetName(), newSecret.GetNamespace())
+				return true
+			}
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			newSecret, ok := e.ObjectNew.(*corev1.Secret)
+			if !ok {
+				logger.Errorf("expected type Secret but found (new) %T", newSecret)
+				return false
+			}
+			oldSecret, ok := e.ObjectOld.(*corev1.Secret)
+			if !ok {
+				logger.Errorf("expected type Secret but found (old) %T", newSecret)
+				return false
+			}
+
+			if !strings.Contains(newSecret.GetName(), clusterMirrorBootstrapPeerSecretName) {
+				return false
+			}
+			// reconcile if the peer token data has changed
+			newData := newSecret.Data["token"]
+			oldData := oldSecret.Data["token"]
+			if string(newData) != string(oldData) {
+				logger.Debugf("peer token update event for secret %q in the namespace %q", newSecret.GetName(), newSecret.GetNamespace())
+				return true
+			}
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			// Do not reconcile when secret is deleted
+			return false
+		},
+	}
+}
