@@ -26,6 +26,7 @@ import (
 	"github.com/pkg/errors"
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	"github.com/rook/rook/pkg/clusterd"
+	"github.com/rook/rook/pkg/util/exec"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -65,11 +66,31 @@ func ImportRBDMirrorBootstrapPeer(context *clusterd.Context, clusterInfo *Cluste
 		return errors.Wrapf(err, "failed to create temporary token file for pool %q", poolName)
 	}
 
+	err = tokenFilePath.Sync()
+	if err != nil {
+		logger.Errorf("failed to run fsync on token file %q", tokenFilePath.Name())
+	}
 	// Write token into a file
 	err = os.WriteFile(tokenFilePath.Name(), token, 0400)
 	if err != nil {
 		return errors.Wrapf(err, "failed to write token to file %q", tokenFilePath.Name())
 	}
+
+	tokenFileStats, err := os.Stat(tokenFilePath.Name())
+	if err != nil {
+		logger.Errorf("failed to get the Token file stats %q", tokenFilePath.Name())
+	}
+
+	logger.Infof("Token file name - %s", tokenFileStats.Name())
+	logger.Infof("Token file permissions - %s", tokenFileStats.Mode())
+	logger.Infof("Token file Size - %d", tokenFileStats.Size())
+
+	tokenFileContents, err := os.ReadFile(tokenFilePath.Name())
+	if err != nil {
+		logger.Errorf("failed to read the temp file %q", tokenFilePath.Name())
+	}
+
+	logger.Infof("Token file contents : %s", string(tokenFileContents))
 
 	// Remove token once we exit, we don't need it anymore
 	defer func() error {
@@ -83,11 +104,20 @@ func ImportRBDMirrorBootstrapPeer(context *clusterd.Context, clusterInfo *Cluste
 		args = append(args, "--direction", direction)
 	}
 	cmd := NewRBDCommand(context, clusterInfo, args)
-
 	// Run command
 	output, err := cmd.Run()
 	if err != nil {
-		return errors.Wrapf(err, "failed to add rbd-mirror peer token for pool %q. %s", poolName, output)
+		code, ok := exec.ExitStatus(err)
+		if !ok {
+			logger.Warning("no error code returned in rdb import failure")
+		}
+		// Read content again before deleting the file
+		tokenFileContents, err := os.ReadFile(tokenFilePath.Name())
+		if err != nil {
+			logger.Errorf("failed to read the temp file %q", tokenFilePath.Name())
+		}
+		logger.Infof("Token file contents after error : %s", string(tokenFileContents))
+		return errors.Wrapf(err, "failed to add rbd-mirror peer token for pool %q. Code: %d. Output: %s", poolName, code, output)
 	}
 
 	logger.Infof("successfully added rbd-mirror peer token for pool %q", poolName)
