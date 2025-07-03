@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/ceph/go-ceph/rgw/admin"
 	"github.com/coreos/pkg/capnslog"
@@ -49,6 +50,7 @@ import (
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
 	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
 	"github.com/rook/rook/pkg/operator/ceph/object"
+	cephObject "github.com/rook/rook/pkg/operator/ceph/object"
 	"github.com/rook/rook/pkg/operator/ceph/reporting"
 	"github.com/rook/rook/pkg/operator/k8sutil"
 )
@@ -404,6 +406,19 @@ func (r *ReconcileObjectStoreUser) createOrUpdateCephUser(u *cephv1.CephObjectSt
 				return errors.Wrapf(err, "failed to create ceph object user %v", &userConfig.ID)
 			}
 			logCreateOrUpdate = fmt.Sprintf("created ceph object user %q", u.Name)
+		} else if strings.Contains(err.Error(), "InvalidAccessKeyId") {
+			// In case of an Invalid Access Key, delete the `rgw-admin-ops-user` and restart the operator.
+			// This is a temporary fix until https://bugzilla.redhat.com/show_bug.cgi?id=2373031 is resolved.
+			logger.Errorf("failed to get Ceph Object user %q. Error: %v", u.Name, err)
+			logger.Infof("deleting the admin user %q", cephObject.RGWAdminOpsUserSecretName)
+			_, err := cephObject.DeleteUser(&r.objContext.Context, cephObject.RGWAdminOpsUserSecretName)
+			if err != nil {
+				return errors.Wrapf(err, "failed to delete admin user %q with InvalidAccessKeyID",
+					cephObject.RGWAdminOpsUserSecretName)
+			}
+			logger.Warningf("restarting the operator to recreate the %q user", cephObject.RGWAdminOpsUserSecretName)
+			// restart the rook operator so that it will recreate the `rgw-admin-ops-user`
+			opcontroller.ReloadManager()
 		} else {
 			return errors.Wrapf(err, "failed to get details from ceph object user %q", u.Name)
 		}
