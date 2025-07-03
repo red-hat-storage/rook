@@ -1502,7 +1502,13 @@ spec:
                             fieldPath: metadata.namespace
                     image: docker.io/rook/ceph:v1.17.0.29.g2348ff689
                     name: rook-ceph-operator
-                    resources: {}
+                    resources:
+                      limits:
+                        cpu: "1"
+                        memory: 512Mi
+                      requests:
+                        cpu: 100m
+                        memory: 128Mi
                     securityContext:
                       runAsGroup: 2016
                       runAsNonRoot: true
