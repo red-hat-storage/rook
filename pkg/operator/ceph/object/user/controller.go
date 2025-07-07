@@ -24,6 +24,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ceph/go-ceph/rgw/admin"
 	"github.com/coreos/pkg/capnslog"
@@ -407,18 +408,38 @@ func (r *ReconcileObjectStoreUser) createOrUpdateCephUser(u *cephv1.CephObjectSt
 			}
 			logCreateOrUpdate = fmt.Sprintf("created ceph object user %q", u.Name)
 		} else if strings.Contains(err.Error(), "InvalidAccessKeyId") {
+			cooldown := 35 * time.Second
 			// In case of an Invalid Access Key, delete the `rgw-admin-ops-user` and restart the operator.
-			// This is a temporary fix until https://bugzilla.redhat.com/show_bug.cgi?id=2373031 is resolved.
+			// This is a temporary workaround until https://bugzilla.redhat.com/show_bug.cgi?id=2373031 is resolved.
 			logger.Errorf("failed to get Ceph Object user %q. Error: %v", u.Name, err)
-			logger.Infof("deleting the admin user %q", cephObject.RGWAdminOpsUserSecretName)
-			_, err := cephObject.DeleteUser(&r.objContext.Context, cephObject.RGWAdminOpsUserSecretName)
-			if err != nil {
-				return errors.Wrapf(err, "failed to delete admin user %q with InvalidAccessKeyID",
-					cephObject.RGWAdminOpsUserSecretName)
+			waSuccess := false
+			// user deletion can hang due to the same underlying reasons that create fails.
+			// in testing, radosgw-admin seemed to respond more often with ~30 second periodicity,
+			// so retry the deletion workaround with 35 second cooldown hoping for better chance of success.
+			for i := range 4 {
+				logger.Infof("waiting 35 seconds before attempting to delete admin user %q attempt %d", cephObject.RGWAdminOpsUserSecretName, i)
+				time.Sleep(cooldown)
+				logger.Infof("deleting the admin user %q attempt %d", cephObject.RGWAdminOpsUserSecretName, i)
+				_, err := cephObject.DeleteUser(&r.objContext.Context, cephObject.RGWAdminOpsUserSecretName)
+				if err != nil {
+					logger.Warningf("failed to delete admin user %q with InvalidAccessKeyID: %v",
+						cephObject.RGWAdminOpsUserSecretName, err)
+					waSuccess = false
+				} else {
+					waSuccess = true
+					break // workaround succeeded
+				}
 			}
-			logger.Warningf("restarting the operator to recreate the %q user", cephObject.RGWAdminOpsUserSecretName)
-			// restart the rook operator so that it will recreate the `rgw-admin-ops-user`
-			opcontroller.ReloadManager()
+			if waSuccess {
+				// wait 35 seconds before restarting operator in hopes that user creation will be more likely to succeed after a cooldown
+				logger.Infof("admin user %q deletion succeeded; waiting 35 seconds to retry user creation", cephObject.RGWAdminOpsUserSecretName)
+				time.Sleep(cooldown)
+				logger.Warningf("restarting the operator to recreate the %q user", cephObject.RGWAdminOpsUserSecretName)
+				// restart the rook operator so that it will recreate the `rgw-admin-ops-user`
+				opcontroller.ReloadManager()
+			} else {
+				logger.Warningf("failed to delete admin user %q with InvalidAccessKeyID after several attempts", cephObject.RGWAdminOpsUserSecretName)
+			}
 		} else {
 			return errors.Wrapf(err, "failed to get details from ceph object user %q", u.Name)
 		}

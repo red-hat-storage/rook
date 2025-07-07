@@ -482,16 +482,17 @@ func GetAdminOPSUserCredentials(objContext *Context, spec *cephv1.ObjectStoreSpe
 		forceUserCreation = true
 	}
 
-	user, rgwerr, err := CreateUser(objContext, userConfig, forceUserCreation)
+	user, rgwerr, err := GetUser(objContext, userConfig.UserID)
 	if err != nil {
-		if rgwerr == ErrorCodeFileExists {
-			user, _, err = GetUser(objContext, userConfig.UserID)
-			if err != nil {
-				return "", "", errors.Wrapf(err, "failed to get details from ceph object user %q for object store %q", userConfig.UserID, objContext.Name)
-			}
-		} else {
+		if rgwerr != RGWErrorNotFound {
+			// any other error is unexpected, but we can attempt to create the user anyway. log the err to help debug corner cases
+			logger.Infof("failed to get details from ceph object user %q for object store %q. code=%d. %v", userConfig.UserID, objContext.Name, rgwerr, err)
+		}
+		user, rgwerr, err = CreateUser(objContext, userConfig, forceUserCreation)
+		if err != nil {
 			return "", "", errors.Wrapf(err, "failed to create object user %q. error code %d for object store %q", userConfig.UserID, rgwerr, objContext.Name)
 		}
 	}
+
 	return *user.AccessKey, *user.SecretKey, nil
 }
