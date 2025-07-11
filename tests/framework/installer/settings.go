@@ -39,7 +39,7 @@ func readManifest(filename string) string {
 	if err != nil {
 		panic(errors.Wrapf(err, "failed to read manifest at %s", manifest))
 	}
-	return imageMatch.ReplaceAllString(string(contents), "image: docker.io/rook/ceph:"+LocalBuildTag)
+	return imageMatch.ReplaceAllString(string(contents), "image: quay.io/brgardne/rook-ceph:6dfba47ae9019e6c08e12503816cffdadad368cd5344f7b3b19e71060d479ed3")
 }
 
 func buildURL(rookVersion, filename string) string {

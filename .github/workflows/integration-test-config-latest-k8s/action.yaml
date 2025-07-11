@@ -27,6 +27,6 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: tests/scripts/github-action-helper.sh use_local_disk_for_integration_test
 
-    - name: build rook
-      shell: bash --noprofile --norc -eo pipefail -x {0}
-      run: tests/scripts/github-action-helper.sh build_rook
+    # - name: build rook
+    #   shell: bash --noprofile --norc -eo pipefail -x {0}
+    #   run: tests/scripts/github-action-helper.sh build_rook

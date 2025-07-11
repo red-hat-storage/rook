@@ -547,7 +547,7 @@ func (h *CephInstaller) installRookOperator() (bool, error) {
 func (h *CephInstaller) InstallRook() (bool, error) {
 	if h.settings.RookVersion != LocalBuildTag {
 		// make sure we have the images from a previous release locally so the test doesn't hit a timeout
-		assert.NoError(h.T(), h.k8shelper.GetDockerImage("rook/ceph:"+h.settings.RookVersion))
+		assert.NoError(h.T(), h.k8shelper.GetDockerImage("quay.io/brgardne/rook-ceph:6dfba47ae9019e6c08e12503816cffdadad368cd5344f7b3b19e71060d479ed3"))
 	}
 
 	assert.NoError(h.T(), h.k8shelper.GetDockerImage(h.settings.CephVersion.Image))
@@ -969,7 +969,7 @@ func NewCephInstaller(t func() *testing.T, clientset *kubernetes.Clientset, sett
 	if err != nil {
 		panic("failed to get kubectl client :" + err.Error())
 	}
-	logger.Infof("Rook Version: %s", settings.RookVersion)
+	logger.Infof("Rook Version: %s", "quay.io/brgardne/rook-ceph:6dfba47ae9019e6c08e12503816cffdadad368cd5344f7b3b19e71060d479ed3")
 	logger.Infof("Ceph Version: %s", settings.CephVersion.Image)
 	h := &CephInstaller{
 		settings:        settings,
@@ -996,7 +996,7 @@ spec:
           restartPolicy: Never
           containers:
               - name: rook-cleaner
-                image: rook/ceph:` + LocalBuildTag + `
+                image: rook/ceph: quay.io/brgardne/rook-ceph:6dfba47ae9019e6c08e12503816cffdadad368cd5344f7b3b19e71060d479ed3
                 securityContext:
                     privileged: true
                 volumeMounts:
@@ -1026,7 +1026,7 @@ spec:
           restartPolicy: Never
           containers:
               - name: rook-cleaner
-                image: rook/ceph:` + LocalBuildTag + `
+                image: rook/ceph: quay.io/brgardne/rook-ceph:6dfba47ae9019e6c08e12503816cffdadad368cd5344f7b3b19e71060d479ed3
                 securityContext:
                     privileged: true
                 volumeMounts:

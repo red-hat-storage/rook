@@ -81,7 +81,7 @@ func (s *ObjectSuite) SetupSuite() {
 		UseCrashPruner:          true,
 		EnableVolumeReplication: false,
 		RookVersion:             installer.LocalBuildTag,
-		CephVersion:             installer.ReturnCephVersion(),
+		CephVersion:             cephv1.CephVersionSpec{Image: "quay.io/brgardne/ceph:19.2.1-222.el9cp"},
 	}
 	s.settings.ApplyEnvVars()
 	s.installer, s.k8sh = StartTestCluster(s.T, s.settings)
