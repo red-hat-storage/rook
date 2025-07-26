@@ -1120,6 +1120,17 @@ spec:
             type: object
           status:
             properties:
+              cephx:
+                properties:
+                  daemon:
+                    properties:
+                      keyCephVersion:
+                        type: string
+                      keyGeneration:
+                        format: int32
+                        type: integer
+                    type: object
+                type: object
               conditions:
                 items:
                   properties:
