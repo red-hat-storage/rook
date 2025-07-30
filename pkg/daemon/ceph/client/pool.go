@@ -455,9 +455,10 @@ func createReplicatedPoolForApp(context *clusterd.Context, clusterInfo *ClusterI
 	logger.Infof("reconciling replicated pool %s succeeded", pool.Name)
 
 	if checkFailureDomain || pool.PoolSpec.DeviceClass != "" {
-		if err = updatePoolCrushRule(context, clusterInfo, clusterSpec, pool); err != nil {
-			return nil
-		}
+		// Always skip updating the crush rules for pools with device classes in 4.16
+		//if err = updatePoolCrushRule(context, clusterInfo, clusterSpec, pool); err != nil {
+		//	return nil
+		//}
 	}
 	return nil
 }
