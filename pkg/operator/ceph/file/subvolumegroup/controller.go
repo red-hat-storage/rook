@@ -25,7 +25,7 @@ import (
 	"syscall"
 	"time"
 
-	csiopv1a1 "github.com/ceph/ceph-csi-operator/api/v1alpha1"
+	csiopv1 "github.com/ceph/ceph-csi-operator/api/v1"
 	"github.com/pkg/errors"
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
 	"github.com/rook/rook/pkg/util/exec"
@@ -125,7 +125,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	err = csiopv1a1.AddToScheme(mgr.GetScheme())
+	err = csiopv1.AddToScheme(mgr.GetScheme())
 	if err != nil {
 		return err
 	}
@@ -138,6 +138,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileCephFilesystemSubVolumeGroup) Reconcile(context context.Context, request reconcile.Request) (reconcile.Result, error) {
+	defer opcontroller.RecoverAndLogException()
 	// workaround because the rook logging mechanism is not compatible with the controller-runtime logging interface
 	reconcileResponse, err := r.reconcile(request)
 	if err != nil {
@@ -452,6 +453,9 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) updateStatus(observedGeneration 
 }
 
 func buildClusterID(cephFilesystemSubVolumeGroup *cephv1.CephFilesystemSubVolumeGroup) string {
+	if cephFilesystemSubVolumeGroup.Spec.ClusterID != "" {
+		return cephFilesystemSubVolumeGroup.Spec.ClusterID
+	}
 	clusterID := fmt.Sprintf("%s-%s-file-%s", cephFilesystemSubVolumeGroup.Namespace, cephFilesystemSubVolumeGroup.Spec.FilesystemName, getSubvolumeGroupName(cephFilesystemSubVolumeGroup))
 	return k8sutil.Hash(clusterID)
 }
