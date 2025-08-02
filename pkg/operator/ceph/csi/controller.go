@@ -22,7 +22,7 @@ import (
 	"os"
 	"strconv"
 
-	csiopv1a1 "github.com/ceph/ceph-csi-operator/api/v1alpha1"
+	csiopv1 "github.com/ceph/ceph-csi-operator/api/v1"
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -117,7 +117,7 @@ func add(ctx context.Context, mgr manager.Manager, r reconcile.Reconciler, opCon
 		return err
 	}
 
-	err = csiopv1a1.AddToScheme(mgr.GetScheme())
+	err = csiopv1.AddToScheme(mgr.GetScheme())
 	if err != nil {
 		return err
 	}
@@ -129,6 +129,7 @@ func add(ctx context.Context, mgr manager.Manager, r reconcile.Reconciler, opCon
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileCSI) Reconcile(context context.Context, request reconcile.Request) (reconcile.Result, error) {
+	defer opcontroller.RecoverAndLogException()
 	// workaround because the rook logging mechanism is not compatible with the controller-runtime logging interface
 	reconcileResponse, err := r.reconcile(request)
 	if err != nil {

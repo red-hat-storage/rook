@@ -23,7 +23,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	csiopv1a1 "github.com/ceph/ceph-csi-operator/api/v1alpha1"
+	csiopv1 "github.com/ceph/ceph-csi-operator/api/v1"
 	"github.com/coreos/pkg/capnslog"
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	rookclient "github.com/rook/rook/pkg/client/clientset/versioned/fake"
@@ -248,9 +248,9 @@ func TestFilesystemSubvolumeGroupController(t *testing.T) {
 
 	t.Run("success - external mode csi config is updated", func(t *testing.T) {
 		cephCluster.Spec.External.Enable = true
-		csiOpClientProfile := &csiopv1a1.ClientProfile{}
+		csiOpClientProfile := &csiopv1.ClientProfile{}
 
-		s.AddKnownTypes(cephv1.SchemeGroupVersion, &cephv1.CephBlockPoolList{}, &csiopv1a1.ClientProfile{})
+		s.AddKnownTypes(cephv1.SchemeGroupVersion, &cephv1.CephBlockPoolList{}, &csiopv1.ClientProfile{})
 		objects := []runtime.Object{
 			cephFilesystemSubVolumeGroup,
 			cephCluster,
@@ -345,6 +345,20 @@ func Test_buildClusterID(t *testing.T) {
 	cephFilesystemSubVolumeGroup := &cephv1.CephFilesystemSubVolumeGroup{ObjectMeta: metav1.ObjectMeta{Namespace: "rook-ceph", Name: longName}, Spec: cephv1.CephFilesystemSubVolumeGroupSpec{FilesystemName: "myfs"}}
 	clusterID := buildClusterID(cephFilesystemSubVolumeGroup)
 	assert.Equal(t, "29e92135b7e8c014079b9f9f3566777d", clusterID)
+
+	inputClusterID := "test-clusterId"
+	cephFilesystemSubVolumeGroup = &cephv1.CephFilesystemSubVolumeGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "rook-ceph",
+			Name:      longName,
+		},
+		Spec: cephv1.CephFilesystemSubVolumeGroupSpec{
+			FilesystemName: "myfs",
+			ClusterID:      inputClusterID,
+		},
+	}
+	clusterID = buildClusterID(cephFilesystemSubVolumeGroup)
+	assert.Equal(t, inputClusterID, clusterID)
 }
 
 func Test_formatPinning(t *testing.T) {

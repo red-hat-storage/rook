@@ -45,6 +45,14 @@ spec:
                 x-kubernetes-validations:
                 - message: blockPoolName is immutable
                   rule: self == oldSelf
+              clusterID:
+                maxLength: 36
+                minLength: 1
+                pattern: ^[a-zA-Z0-9_-]+$
+                type: string
+                x-kubernetes-validations:
+                - message: ClusterID is immutable
+                  rule: self == oldSelf
               mirroring:
                 properties:
                   mode:

@@ -21,7 +21,7 @@ import (
 	"context"
 	"fmt"
 
-	csiopv1a1 "github.com/ceph/ceph-csi-operator/api/v1alpha1"
+	csiopv1 "github.com/ceph/ceph-csi-operator/api/v1"
 	"github.com/coreos/pkg/capnslog"
 	addonsv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/csiaddons/v1alpha1"
 
@@ -155,7 +155,7 @@ func add(opManagerContext context.Context, mgr manager.Manager, r reconcile.Reco
 		return err
 	}
 
-	err = csiopv1a1.AddToScheme(mgr.GetScheme())
+	err = csiopv1.AddToScheme(mgr.GetScheme())
 	if err != nil {
 		return err
 	}
@@ -244,6 +244,7 @@ func add(opManagerContext context.Context, mgr manager.Manager, r reconcile.Reco
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileCephCluster) Reconcile(context context.Context, request reconcile.Request) (reconcile.Result, error) {
+	defer opcontroller.RecoverAndLogException()
 	// workaround because the rook logging mechanism is not compatible with the controller-runtime logging interface
 	reconcileResponse, cephCluster, err := r.reconcile(request)
 
@@ -394,7 +395,7 @@ func (c *ClusterController) reconcileCephCluster(clusterObj *cephv1.CephCluster,
 	cluster, ok := c.clusterMap[clusterObj.Namespace]
 	if !ok {
 		// It's a new cluster so let's populate the struct
-		cluster = newCluster(c.OpManagerCtx, clusterObj, c.context, ownerInfo)
+		cluster = newCluster(c.OpManagerCtx, clusterObj, c.context, ownerInfo, c.rookImage)
 	}
 	cluster.namespacedName = c.namespacedName
 	// updating observedGeneration in cluster if it's not the first reconcile
