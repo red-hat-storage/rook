@@ -1573,6 +1573,27 @@ spec:
                 properties:
                   cephx:
                     properties:
+                      csi:
+                        properties:
+                          keepPriorKeyCountMax:
+                            maximum: 10
+                            minimum: 0
+                            type: integer
+                          keyGeneration:
+                            format: int32
+                            maximum: 4294967295
+                            minimum: 0
+                            type: integer
+                            x-kubernetes-validations:
+                            - message: keyGeneration cannot be decreased
+                              rule: self >= oldSelf
+                          keyRotationPolicy:
+                            enum:
+                            - ""
+                            - Disabled
+                            - KeyGeneration
+                            type: string
+                        type: object
                       daemon:
                         properties:
                           keyGeneration:
@@ -3274,7 +3295,41 @@ spec:
                 type: object
               cephx:
                 properties:
+                  cephExporter:
+                    properties:
+                      keyCephVersion:
+                        type: string
+                      keyGeneration:
+                        format: int32
+                        type: integer
+                    type: object
+                  crashCollector:
+                    properties:
+                      keyCephVersion:
+                        type: string
+                      keyGeneration:
+                        format: int32
+                        type: integer
+                    type: object
+                  csi:
+                    properties:
+                      keyCephVersion:
+                        type: string
+                      keyGeneration:
+                        format: int32
+                        type: integer
+                      priorKeyCount:
+                        type: integer
+                    type: object
                   mgr:
+                    properties:
+                      keyCephVersion:
+                        type: string
+                      keyGeneration:
+                        format: int32
+                        type: integer
+                    type: object
+                  osd:
                     properties:
                       keyCephVersion:
                         type: string
