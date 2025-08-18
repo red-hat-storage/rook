@@ -4781,19 +4781,6 @@ CephxStatus
 </tr>
 <tr>
 <td>
-<code>rbdMirrorPeer</code><br/>
-<em>
-<a href="#ceph.rook.io/v1.CephxStatus">
-CephxStatus
-</a>
-</em>
-</td>
-<td>
-<p>RBDMirrorPeer represents the cephx key rotation status of the <code>rbd-mirror-peer</code> user</p>
-</td>
-</tr>
-<tr>
-<td>
 <code>csi</code><br/>
 <em>
 <a href="#ceph.rook.io/v1.CephxStatusWithKeyCount">
@@ -4803,6 +4790,19 @@ CephxStatusWithKeyCount
 </td>
 <td>
 <p>CSI shows the CephX key status for Ceph-CSI components.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>rbdMirrorPeer</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<p>RBDMirrorPeer represents the cephx key rotation status of the <code>rbd-mirror-peer</code> user</p>
 </td>
 </tr>
 <tr>
