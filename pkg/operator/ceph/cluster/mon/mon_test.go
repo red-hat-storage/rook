@@ -1057,8 +1057,8 @@ func TestRotateMonCephxKeys(t *testing.T) {
 			},
 		},
 		Status: cephv1.ClusterStatus{
-			Cephx: &cephv1.ClusterCephxStatus{
-				Mon: &uninitializedStatus,
+			Cephx: cephv1.ClusterCephxStatus{
+				Mon: uninitializedStatus,
 			},
 		},
 	}
