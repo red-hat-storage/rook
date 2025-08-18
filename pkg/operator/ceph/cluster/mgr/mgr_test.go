@@ -93,8 +93,8 @@ func createNewCluster(t *testing.T) *Cluster {
 			},
 		},
 		Status: cephv1.ClusterStatus{
-			Cephx: &cephv1.ClusterCephxStatus{
-				Mgr: &uninitializedStatus,
+			Cephx: cephv1.ClusterCephxStatus{
+				Mgr: uninitializedStatus,
 			},
 		},
 	}

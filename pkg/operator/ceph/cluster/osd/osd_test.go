@@ -1020,7 +1020,7 @@ func Test_updateCephOsdStorageStatus_cephx(t *testing.T) {
 		assert.NoError(t, err)
 		err = context.Client.Get(clusterInfo.Context, clusterInfo.NamespacedName(), cephCluster)
 		assert.NoError(t, err)
-		assert.Nil(t, cephCluster.Status.Cephx)
+		assert.Equal(t, cephv1.ClusterCephxStatus{}, cephCluster.Status.Cephx)
 	})
 
 	t.Run("unset cephx status, no cephcluster status", func(t *testing.T) {
@@ -1114,7 +1114,7 @@ func Test_updateCephOsdStorageStatus_cephx(t *testing.T) {
 		err = context.Client.Get(clusterInfo.Context, clusterInfo.NamespacedName(), cephCluster)
 		assert.NoError(t, err)
 		assert.NotNil(t, cephCluster.Status.Cephx)
-		assert.Equal(t, cephv1.CephxStatus{KeyGeneration: 1, KeyCephVersion: "v20"}, *cephCluster.Status.Cephx.OSD)
+		assert.Equal(t, cephv1.CephxStatus{KeyGeneration: 1, KeyCephVersion: "v20"}, cephCluster.Status.Cephx.OSD)
 	})
 
 	t.Run("gen 1 and unset cephx status", func(t *testing.T) {
@@ -1144,7 +1144,7 @@ func Test_updateCephOsdStorageStatus_cephx(t *testing.T) {
 		err = context.Client.Get(clusterInfo.Context, clusterInfo.NamespacedName(), cephCluster)
 		assert.NoError(t, err)
 		assert.NotNil(t, cephCluster.Status.Cephx)
-		assert.Equal(t, cephv1.CephxStatus{KeyGeneration: 0, KeyCephVersion: ""}, *cephCluster.Status.Cephx.OSD)
+		assert.Equal(t, cephv1.CephxStatus{KeyGeneration: 0, KeyCephVersion: ""}, cephCluster.Status.Cephx.OSD)
 	})
 
 	t.Run("gen 1 and gen 2 cephx status", func(t *testing.T) {
@@ -1176,7 +1176,7 @@ func Test_updateCephOsdStorageStatus_cephx(t *testing.T) {
 		err = context.Client.Get(clusterInfo.Context, clusterInfo.NamespacedName(), cephCluster)
 		assert.NoError(t, err)
 		assert.NotNil(t, cephCluster.Status.Cephx)
-		assert.Equal(t, cephv1.CephxStatus{KeyGeneration: 1, KeyCephVersion: "v20"}, *cephCluster.Status.Cephx.OSD)
+		assert.Equal(t, cephv1.CephxStatus{KeyGeneration: 1, KeyCephVersion: "v20"}, cephCluster.Status.Cephx.OSD)
 	})
 }
 

@@ -230,7 +230,8 @@ func TestTrackMonsOutOfQuorum(t *testing.T) {
 		mapping:   &opcontroller.Mapping{},
 		context:   &clusterd.Context{Clientset: clientset, ConfigDir: tempDir},
 		ownerInfo: ownerInfo,
-		Namespace: "ns"}
+		Namespace: "ns",
+	}
 	c.ClusterInfo = &cephclient.ClusterInfo{Monitors: map[string]*cephclient.MonInfo{
 		"a": {Name: "a", Endpoint: endpoint},
 		"b": {Name: "b", Endpoint: endpoint},
@@ -322,8 +323,8 @@ func TestEvictMonOnSameNode(t *testing.T) {
 			},
 		},
 		Status: cephv1.ClusterStatus{
-			Cephx: &cephv1.ClusterCephxStatus{
-				RBDMirrorPeer: &cephv1.CephxStatus{},
+			Cephx: cephv1.ClusterCephxStatus{
+				RBDMirrorPeer: cephv1.CephxStatus{},
 			},
 		},
 	}
@@ -535,7 +536,8 @@ func TestAddRemoveMons(t *testing.T) {
 		"rook-ceph-mon-b",                    // b updated when c created
 		"rook-ceph-mon-b", "rook-ceph-mon-c", // b and c updated when d created
 		"rook-ceph-mon-b", "rook-ceph-mon-c", "rook-ceph-mon-d", // etc.
-		"rook-ceph-mon-b", "rook-ceph-mon-c", "rook-ceph-mon-d", "rook-ceph-mon-e"},
+		"rook-ceph-mon-b", "rook-ceph-mon-c", "rook-ceph-mon-d", "rook-ceph-mon-e",
+	},
 		testopk8s.DeploymentNamesUpdated(deploymentsUpdated))
 	testopk8s.ClearDeploymentsUpdated(deploymentsUpdated)
 
@@ -725,8 +727,8 @@ func getCephCluster(name, namespace string) *cephv1.CephCluster {
 			},
 		},
 		Status: cephv1.ClusterStatus{
-			Cephx: &cephv1.ClusterCephxStatus{
-				RBDMirrorPeer: &cephv1.CephxStatus{},
+			Cephx: cephv1.ClusterCephxStatus{
+				RBDMirrorPeer: cephv1.CephxStatus{},
 			},
 		},
 	}
