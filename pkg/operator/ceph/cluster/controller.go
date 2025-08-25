@@ -254,7 +254,7 @@ func (r *ReconcileCephCluster) Reconcile(context context.Context, request reconc
 
 func (r *ReconcileCephCluster) reconcile(request reconcile.Request) (reconcile.Result, cephv1.CephCluster, error) {
 	if err := r.opManagerContext.Err(); err != nil {
-		log.NamespacedInfo(request.Namespace, logger, "context cancelled before entering reconcile, exiting reconcile")
+		logger.Infof("context cancelled before entering reconcile for CephCluster in namespace %q, exiting reconcile", request.Namespace)
 		emptyCephCluster := cephv1.CephCluster{ObjectMeta: metav1.ObjectMeta{
 			Namespace: request.Namespace,
 			Name:      request.Name,
