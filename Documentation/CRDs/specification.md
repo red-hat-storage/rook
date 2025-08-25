@@ -5112,6 +5112,25 @@ intended use case). If this is set to less than or equal to the current key gene
 are not rotated.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>keyType</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxKeyType">
+CephxKeyType
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>KeyType specifies the desired CephX key cipher type.
+If unspecified, Ceph&rsquo;s default will be used.
+If KeyRotationPolicy is Disabled or unspecified (default), modifying this value will never
+initiate key rotation.
+If KeyRotationPolicy is set to an enabled value (any other value), modifying this may
+initiate key rotation.</p>
+</td>
+</tr>
 </tbody>
 </table>
 <h3 id="ceph.rook.io/v1.CephxKeyRotationPolicy">CephxKeyRotationPolicy
@@ -5120,6 +5139,8 @@ are not rotated.</p>
 (<em>Appears on:</em><a href="#ceph.rook.io/v1.CephxConfig">CephxConfig</a>)
 </p>
 <div>
+<p>A CephX key rotation policy controls if and when CephX keys are rotated after initial creation.
+Supported values: Disabled, KeyGeneration. Default: Disabled.</p>
 </div>
 <table>
 <thead>
@@ -5131,6 +5152,30 @@ are not rotated.</p>
 <tbody><tr><td><p>&#34;Disabled&#34;</p></td>
 <td></td>
 </tr><tr><td><p>&#34;KeyGeneration&#34;</p></td>
+<td></td>
+</tr></tbody>
+</table>
+<h3 id="ceph.rook.io/v1.CephxKeyType">CephxKeyType
+(<code>string</code> alias)</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephxConfig">CephxConfig</a>, <a href="#ceph.rook.io/v1.CephxStatus">CephxStatus</a>, <a href="#ceph.rook.io/v1.ClusterCephxConfig">ClusterCephxConfig</a>)
+</p>
+<div>
+<p>A CephX key type represents a cipher type for CephX keys.
+Supported values: aes, aes256k.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;aes&#34;</p></td>
+<td></td>
+</tr><tr><td><p>&#34;aes256k&#34;</p></td>
+<td></td>
+</tr><tr><td><p>&#34;&#34;</p></td>
 <td></td>
 </tr></tbody>
 </table>
@@ -5178,6 +5223,21 @@ compared. E.g., <code>20.2.0-0</code>.
 For all newly-created resources, this field set to the version of Ceph that created the key.
 The special value &ldquo;Uninitialized&rdquo; indicates that keys are being created for the first time.
 An empty string indicates that the version is unknown, as expected in brownfield deployments.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>keyType</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxKeyType">
+CephxKeyType
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>KeyType identifies the CephX key type for the current generation&rsquo;s keys, if known.
+If unknown, the value will be empty.</p>
 </td>
 </tr>
 </tbody>
@@ -5444,6 +5504,21 @@ ClientSecuritySpec
 <tbody>
 <tr>
 <td>
+<code>allowedCiphers</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxKeyType">
+[]CephxKeyType
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AllowedCiphers sets the Ceph config <code>auth_allowed_ciphers</code> to the list given.
+If the list is empty, Rook will enable support for all ciphers.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>daemon</code><br/>
 <em>
 <a href="#ceph.rook.io/v1.CephxConfig">
@@ -5452,6 +5527,7 @@ CephxConfig
 </em>
 </td>
 <td>
+<em>(Optional)</em>
 <p>Daemon configures CephX key settings for local Ceph daemons managed by Rook and part of the
 Ceph cluster. Daemon CephX keys can be rotated without affecting client connections.</p>
 </td>
@@ -5466,6 +5542,7 @@ CephxConfig
 </em>
 </td>
 <td>
+<em>(Optional)</em>
 <p>RBDMirrorPeer configures CephX key settings of the <code>rbd-mirror-peer</code> user that is used for creating
 bootstrap peer token used connect peer clusters. Rotating the <code>rbd-mirror-peer</code> user key will update
 the mirror peer token.
@@ -5482,6 +5559,7 @@ CephXConfigWithPriorCount
 </em>
 </td>
 <td>
+<em>(Optional)</em>
 <p>CSI configures CephX key rotation settings for the Ceph-CSI daemons in the current Kubernetes cluster.
 CSI key rotation can affect existing PV connections, so take care when exercising this option.</p>
 </td>

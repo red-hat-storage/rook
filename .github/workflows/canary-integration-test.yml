@@ -779,6 +779,11 @@ jobs:
       - name: check-ownerreferences
         run: tests/scripts/github-action-helper.sh check_ownerreferences
 
+      - name: verify CephX key rotation
+        run: |
+          tests/scripts/github-action-helper.sh test_rotate_cephx_keys
+          tests/scripts/github-action-helper.sh wait_for_ceph_to_be_ready osd 1
+
       - name: collect common logs
         if: always()
         uses: ./.github/workflows/collect-logs
@@ -1260,6 +1265,11 @@ jobs:
           kubectl -n rook-ceph get pods
           kubectl -n rook-ceph get secrets
 
+      - name: verify CephX key rotation
+        run: |
+          tests/scripts/github-action-helper.sh test_rotate_cephx_keys
+          tests/scripts/github-action-helper.sh wait_for_ceph_to_be_ready osd 1
+
       - name: collect common logs
         if: always()
         uses: ./.github/workflows/collect-logs
@@ -1325,7 +1335,7 @@ jobs:
           kubectl -n rook-ceph get pods
           kubectl -n rook-ceph get secrets
 
-      - name: wait and verify key rotation
+      - name: verify OSD DMCRYPT (KMS) key rotation
         run: tests/scripts/github-action-helper.sh verify_key_rotation
 
       - name: test osd deployment removal and re-hydration
