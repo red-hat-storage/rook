@@ -20,9 +20,14 @@ import (
 	"syscall"
 
 	"github.com/pkg/errors"
+	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	"github.com/rook/rook/pkg/clusterd"
+	"github.com/rook/rook/pkg/operator/ceph/version"
 	"github.com/rook/rook/pkg/util/exec"
 )
+
+// KeyTypeFlag is the flag used by some `ceph auth` commands to specify the CephX key (cipher) type
+const KeyTypeFlag = "--key-type"
 
 // AuthListOutput contains list of ceph user details contains entries, keys.
 type AuthListOutput struct {
@@ -36,14 +41,21 @@ type AuthListEntry struct {
 
 // AuthGetOrCreate will either get or create a user with the given capabilities.  The keyring for the
 // user will be written to the given keyring path.
-func AuthGetOrCreate(context *clusterd.Context, clusterInfo *ClusterInfo, name, keyringPath string, caps []string) error {
+func AuthGetOrCreate(context *clusterd.Context, clusterInfo *ClusterInfo, name, keyringPath, keyType string, caps []string) error {
 	logger.Infof("getting or creating ceph auth %q", name)
 	args := append([]string{"auth", "get-or-create", name, "-o", keyringPath}, caps...)
+	// allow specifying keyType='aes' even when Ceph doesn't know about key types
+	if !Aes256kKeysSupported(clusterInfo.CephVersion) && IsLegacyKeyType(keyType) {
+		keyType = "" // don't set --key-type flag
+	}
+	if keyType != "" {
+		args = append(args, KeyTypeFlag, keyType)
+	}
 	cmd := NewCephCommand(context, clusterInfo, args)
 	cmd.JsonOutput = false
-	_, err := cmd.Run()
+	buf, err := cmd.Run()
 	if err != nil {
-		return errors.Wrapf(err, "failed to auth get-or-create for %s", name)
+		return errors.Wrapf(err, "failed to auth get-or-create for %s with reason: %s", name, string(buf))
 	}
 
 	return nil
@@ -62,12 +74,19 @@ func AuthGetKey(context *clusterd.Context, clusterInfo *ClusterInfo, name string
 }
 
 // AuthGetOrCreateKey gets or creates the key for the given user.
-func AuthGetOrCreateKey(context *clusterd.Context, clusterInfo *ClusterInfo, name string, caps []string) (string, error) {
+func AuthGetOrCreateKey(context *clusterd.Context, clusterInfo *ClusterInfo, name, keyType string, caps []string) (string, error) {
 	logger.Infof("getting or creating ceph auth key %q", name)
 	args := append([]string{"auth", "get-or-create-key", name}, caps...)
+	// allow specifying keyType='aes' even when Ceph doesn't know about key types
+	if !Aes256kKeysSupported(clusterInfo.CephVersion) && IsLegacyKeyType(keyType) {
+		keyType = "" // don't set --key-type flag
+	}
+	if keyType != "" {
+		args = append(args, KeyTypeFlag, keyType)
+	}
 	buf, err := NewCephCommand(context, clusterInfo, args).Run()
 	if err != nil {
-		return "", errors.Wrapf(err, "failed get-or-create-key %s", name)
+		return "", errors.Wrapf(err, "failed get-or-create-key %s with reason: %s", name, string(buf))
 	}
 
 	return parseAuthKey(buf)
@@ -116,10 +135,37 @@ func AuthGetCaps(context *clusterd.Context, clusterInfo *ClusterInfo, name strin
 	return caps, err
 }
 
+// IsLegacyKeyType returns true if the key type is "legacy", meaning it predates Ceph's support for
+// `--key-type` arguments.
+func IsLegacyKeyType(keyType string) bool {
+	return keyType == string(cephv1.CephxKeyTypeAes)
+}
+
+// Aes256kKeysSupported returns true if the given Ceph version supports aes256k keys
+func Aes256kKeysSupported(ver version.CephVersion) bool {
+	switch ver.Major {
+	case 18:
+		return ver.IsAtLeast(version.CephVersion{Major: 18, Minor: 2, Extra: 999}) // TODO(key): update when known
+	case 19:
+		return ver.IsAtLeast(version.CephVersion{Major: 19, Minor: 2, Extra: 999}) // TODO(key): update when known
+	case 20:
+		return ver.IsAtLeast(version.CephVersion{Major: 20, Minor: 3, Extra: 0}) // TODO(key): update when known
+	default:
+		return ver.Major >= 21
+	}
+}
+
 // AuthRotate rotates a daemon's cephx auth key, retaining existing caps.
-func AuthRotate(context *clusterd.Context, clusterInfo *ClusterInfo, name string) (string, error) {
+func AuthRotate(context *clusterd.Context, clusterInfo *ClusterInfo, name, keyType string) (string, error) {
 	logger.Infof("rotating ceph auth key %q", name)
 	args := []string{"auth", "rotate", name}
+	// allow specifying keyType='aes' even when Ceph doesn't know about key types
+	if !Aes256kKeysSupported(clusterInfo.CephVersion) && IsLegacyKeyType(keyType) {
+		keyType = "" // don't set --key-type flag
+	}
+	if keyType != "" {
+		args = append(args, KeyTypeFlag, keyType)
+	}
 	buf, err := NewCephCommand(context, clusterInfo, args).Run()
 	if err != nil {
 		if code, ok := exec.ExitStatus(err); ok && code == int(syscall.EINVAL) {
