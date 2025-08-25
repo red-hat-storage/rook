@@ -655,6 +655,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -1426,6 +1432,15 @@ spec:
                             - Disabled
                             - KeyGeneration
                           type: string
+                        keyType:
+                          description: |-
+                            A CephX key type represents a cipher type for CephX keys.
+                            Supported values: aes, aes256k.
+                          enum:
+                            - aes
+                            - aes256k
+                          maxLength: 7
+                          type: string
                       type: object
                   type: object
               required:
@@ -1454,6 +1469,12 @@ spec:
                         Generation `0` indicates that keys existed prior to the implementation of key tracking.
                       format: int32
                       type: integer
+                    keyType:
+                      description: |-
+                        KeyType identifies the CephX key type for the current generation's keys, if known.
+                        If unknown, the value will be empty.
+                      maxLength: 7
+                      type: string
                   type: object
                 info:
                   additionalProperties:
@@ -3811,6 +3832,20 @@ spec:
                     cephx:
                       description: 'CephX configures CephX key settings. More: https://docs.ceph.com/en/latest/dev/cephx/'
                       properties:
+                        allowedCiphers:
+                          description: |-
+                            AllowedCiphers sets the Ceph config `auth_allowed_ciphers` to the list given.
+                            If the list is empty, Rook will enable support for all ciphers.
+                          items:
+                            description: |-
+                              A CephX key type represents a cipher type for CephX keys.
+                              Supported values: aes, aes256k.
+                            maxLength: 7
+                            type: string
+                          maxItems: 2
+                          minItems: 1
+                          type: array
+                          x-kubernetes-list-type: set
                         csi:
                           description: |-
                             CSI configures CephX key rotation settings for the Ceph-CSI daemons in the current Kubernetes cluster.
@@ -3852,6 +3887,15 @@ spec:
                                 - Disabled
                                 - KeyGeneration
                               type: string
+                            keyType:
+                              description: |-
+                                A CephX key type represents a cipher type for CephX keys.
+                                Supported values: aes, aes256k.
+                              enum:
+                                - aes
+                                - aes256k
+                              maxLength: 7
+                              type: string
                           type: object
                         daemon:
                           description: |-
@@ -3881,6 +3925,15 @@ spec:
                                 - ""
                                 - Disabled
                                 - KeyGeneration
+                              type: string
+                            keyType:
+                              description: |-
+                                A CephX key type represents a cipher type for CephX keys.
+                                Supported values: aes, aes256k.
+                              enum:
+                                - aes
+                                - aes256k
+                              maxLength: 7
                               type: string
                           type: object
                         rbdMirrorPeer:
@@ -3913,6 +3966,15 @@ spec:
                                 - ""
                                 - Disabled
                                 - KeyGeneration
+                              type: string
+                            keyType:
+                              description: |-
+                                A CephX key type represents a cipher type for CephX keys.
+                                Supported values: aes, aes256k.
+                              enum:
+                                - aes
+                                - aes256k
+                              maxLength: 7
                               type: string
                           type: object
                       type: object
@@ -6084,6 +6146,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                     cephExporter:
                       description: Ceph Exporter represents the cephx key rotation status of the ceph exporter daemon
@@ -6106,6 +6174,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                     crashCollector:
                       description: Crash Collector represents the cephx key rotation status of the crash collector daemon
@@ -6128,6 +6202,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                     csi:
                       description: CSI shows the CephX key status for Ceph-CSI components.
@@ -6150,6 +6230,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                         priorKeyCount:
                           description: PriorKeyCount reports the number of prior-generation CephX keys that remain active for the related component
                           type: integer
@@ -6175,6 +6261,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                     mon:
                       description: Mon represents the CephX key status of the Monitor daemons
@@ -6197,6 +6289,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                     osd:
                       description: OSD shows the CephX key status of of OSDs
@@ -6219,6 +6317,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                     rbdMirrorPeer:
                       description: RBDMirrorPeer represents the cephx key rotation status of the `rbd-mirror-peer` user
@@ -6241,6 +6345,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -7623,6 +7733,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -9155,6 +9271,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -11590,6 +11712,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -12505,6 +12633,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -15035,6 +15169,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -16862,6 +17002,12 @@ spec:
                             Generation `0` indicates that keys existed prior to the implementation of key tracking.
                           format: int32
                           type: integer
+                        keyType:
+                          description: |-
+                            KeyType identifies the CephX key type for the current generation's keys, if known.
+                            If unknown, the value will be empty.
+                          maxLength: 7
+                          type: string
                       type: object
                   type: object
                 conditions:
