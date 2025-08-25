@@ -17,6 +17,15 @@ spec:
   cephVersion:
     image: quay.io/ceph/ceph:v20
     allowUnsupported: true
+  security:
+    # The following cephx settings are required when Kubernetes nodes don't yet have Linux kernel
+    # support for aes256k keys.
+    cephx:
+      allowedCiphers:
+        - aes
+        - aes256k
+      csi:
+        keyType: aes
   mon:
     count: 1
     allowMultiplePerNode: true

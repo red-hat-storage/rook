@@ -362,8 +362,9 @@ func (r *ReconcileCephFilesystem) reconcile(request reconcile.Request) (reconcil
 			errors.Wrapf(err, "invalid object filesystem %q arguments", cephFilesystem.Name)
 	}
 
+	// daemon key type always takes the default from setDefaultCephxKeyType()
 	r.shouldRotateCephxKeys, err = keyring.ShouldRotateCephxKeys(cephCluster.Spec.Security.CephX.Daemon, *runningCephVersion,
-		*desiredCephVersion, cephFilesystem.Status.Cephx.Daemon)
+		*desiredCephVersion, cephFilesystem.Status.Cephx.Daemon, true)
 	if err != nil {
 		return reconcile.Result{}, *cephFilesystem, errors.Wrap(err, "failed to determine if cephx keys should be rotated")
 	}
@@ -383,7 +384,20 @@ func (r *ReconcileCephFilesystem) reconcile(request reconcile.Request) (reconcil
 	}
 
 	// update Mds cephx status
-	cephxStatus := keyring.UpdatedCephxStatus(r.shouldRotateCephxKeys, cephCluster.Spec.Security.CephX.Daemon, r.clusterInfo.CephVersion, cephFilesystem.Status.Cephx.Daemon)
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	cephxStatus := keyring.UpdatedCephxStatus(r.shouldRotateCephxKeys, cephCluster.Spec.Security.CephX.Daemon, r.clusterInfo.CephVersion, cephFilesystem.Status.Cephx.Daemon, keyType)
+
+	// Attempt to determine the authoritative key type of the MDSes for this filesystem.
+	// If this fails, leave the key type as it would have been.
+	keyPrefix := fmt.Sprintf("%s-", cephFilesystem.Name)
+	mdsKeyType, err := keyring.DetermineCephxKeyTypesForEntityType(r.context, r.clusterInfo, cephclient.AuthDumpKeysEntityTypeMds, keyPrefix)
+	if err == nil && len(mdsKeyType) == 1 {
+		log.NamespacedDebug(clusterInfo.Namespace, logger, "determined authoritative cephx key type for MDSes is %q", mdsKeyType[0])
+		cephxStatus.KeyType = cephv1.CephxKeyType(mdsKeyType[0])
+	} else {
+		log.NamespacedWarning(clusterInfo.Namespace, logger, "failed to determine authoritative cephx key type for MDSes having key types [%v]: %v", mdsKeyType, err)
+	}
+
 	_, err = r.updateStatus(observedGeneration, request.NamespacedName, cephv1.ConditionProgressing, nil, &cephxStatus)
 	if err != nil {
 		return reconcile.Result{}, *cephFilesystem, errors.Wrapf(err, "failed to set cephx status for cephFileSystem %q", request.NamespacedName)
