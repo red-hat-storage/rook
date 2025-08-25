@@ -227,6 +227,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -668,7 +672,7 @@ spec:
                     cephx:
                       properties:
                         keyGeneration:
-                          format: int32
+                          format: int64
                           maximum: 4294967295
                           minimum: 0
                           type: integer
@@ -680,6 +684,13 @@ spec:
                             - ""
                             - Disabled
                             - KeyGeneration
+                          type: string
+                        keyType:
+                          enum:
+                            - aes
+                            - aes256k
+                          maxLength: 7
+                          minLength: 3
                           type: string
                       type: object
                   type: object
@@ -695,6 +706,10 @@ spec:
                     keyGeneration:
                       format: int32
                       type: integer
+                    keyType:
+                      maxLength: 7
+                      minLength: 3
+                      type: string
                   type: object
                 info:
                   additionalProperties:
@@ -2104,6 +2119,15 @@ spec:
                   properties:
                     cephx:
                       properties:
+                        allowedCiphers:
+                          items:
+                            maxLength: 7
+                            minLength: 3
+                            type: string
+                          maxItems: 2
+                          minItems: 1
+                          type: array
+                          x-kubernetes-list-type: set
                         csi:
                           properties:
                             keepPriorKeyCountMax:
@@ -2111,7 +2135,7 @@ spec:
                               minimum: 0
                               type: integer
                             keyGeneration:
-                              format: int32
+                              format: int64
                               maximum: 4294967295
                               minimum: 0
                               type: integer
@@ -2123,12 +2147,19 @@ spec:
                                 - ""
                                 - Disabled
                                 - KeyGeneration
+                              type: string
+                            keyType:
+                              enum:
+                                - aes
+                                - aes256k
+                              maxLength: 7
+                              minLength: 3
                               type: string
                           type: object
                         daemon:
                           properties:
                             keyGeneration:
-                              format: int32
+                              format: int64
                               maximum: 4294967295
                               minimum: 0
                               type: integer
@@ -2141,11 +2172,18 @@ spec:
                                 - Disabled
                                 - KeyGeneration
                               type: string
+                            keyType:
+                              enum:
+                                - aes
+                                - aes256k
+                              maxLength: 7
+                              minLength: 3
+                              type: string
                           type: object
                         rbdMirrorPeer:
                           properties:
                             keyGeneration:
-                              format: int32
+                              format: int64
                               maximum: 4294967295
                               minimum: 0
                               type: integer
@@ -2157,6 +2195,13 @@ spec:
                                 - ""
                                 - Disabled
                                 - KeyGeneration
+                              type: string
+                            keyType:
+                              enum:
+                                - aes
+                                - aes256k
+                              maxLength: 7
+                              minLength: 3
                               type: string
                           type: object
                       type: object
@@ -3854,6 +3899,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                     cephExporter:
                       properties:
@@ -3862,6 +3911,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                     crashCollector:
                       properties:
@@ -3870,6 +3923,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                     csi:
                       properties:
@@ -3878,6 +3935,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                         priorKeyCount:
                           type: integer
                       type: object
@@ -3888,6 +3949,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                     mon:
                       properties:
@@ -3896,6 +3961,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                     osd:
                       properties:
@@ -3904,6 +3973,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                     rbdMirrorPeer:
                       properties:
@@ -3912,6 +3985,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -6062,6 +6139,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -7660,6 +7741,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -8819,6 +8904,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                   type: object
                 conditions:
@@ -10026,6 +10115,10 @@ spec:
                         keyGeneration:
                           format: int32
                           type: integer
+                        keyType:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
                       type: object
                   type: object
                 conditions:
