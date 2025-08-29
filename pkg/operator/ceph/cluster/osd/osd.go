@@ -74,6 +74,7 @@ const (
 	bluestorePVCData               = "data"
 	deviceClass                    = "device-class"
 	osdStore                       = "osd-store"
+	encrypted                      = "encrypted" // single-line backport from https://github.com/rook/rook/commit/85c81946cee86dd8178a5359b9921f2a34367b14
 
 	// CephxStatus is applied to each OSD deployment as value of this annotation key
 	cephxStatusAnnotationKey = "cephx-status"
@@ -137,7 +138,7 @@ type OrchestrationStatus struct {
 }
 
 type osdProperties struct {
-	//crushHostname refers to the hostname or PVC name when the OSD is provisioned on Nodes or PVC block device, respectively.
+	// crushHostname refers to the hostname or PVC name when the OSD is provisioned on Nodes or PVC block device, respectively.
 	crushHostname       string
 	devices             []cephv1.Device
 	pvc                 corev1.PersistentVolumeClaimVolumeSource
