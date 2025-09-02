@@ -321,8 +321,20 @@ func (c *Cluster) Start() error {
 		}
 	}
 
+	// remove the osdBootstrapKey as the osds are running
+	c.deleteOsdBootstrapKeyring()
+
 	logger.Infof("finished running OSDs in namespace %q", namespace)
 	return nil
+}
+
+func (c *Cluster) deleteOsdBootstrapKeyring() {
+	err := cephclient.AuthDelete(c.context, c.clusterInfo, "client.bootstrap-osd")
+	if err != nil {
+		logger.Debugf("failed to delete client.bootstrap-osd bootstrap key in the namespace %q. Error: %v", c.clusterInfo.Namespace, err)
+	} else {
+		logger.Debugf("successfully deleted client.bootstrap-osd bootstrap key in the namespace %q", c.clusterInfo.Namespace)
+	}
 }
 
 func (c *Cluster) postReconcileUpdateOSDProperties(desiredOSDs map[int]*OSDInfo) error {
