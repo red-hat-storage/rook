@@ -204,6 +204,9 @@ func (c *ClusterController) initializeCluster(cluster *cluster) error {
 		if err != nil {
 			if errors.Is(err, controller.ClusterInfoNoClusterNoSecret) {
 				logger.Info("clusterInfo not yet found, must be a new cluster.")
+				// ClusterInfoNoClusterNoSecret should return nil clusterInfo, but this is a
+				// mandatory condition for recoverPriorAdminCephxKeyRotation() below, so ensure it
+				clusterInfo = nil
 			} else {
 				return errors.Wrap(err, "failed to load cluster info")
 			}
@@ -211,7 +214,21 @@ func (c *ClusterController) initializeCluster(cluster *cluster) error {
 			clusterInfo.OwnerInfo = cluster.ownerInfo
 			clusterInfo.SetName(c.namespacedName.Name)
 			cluster.ClusterInfo = clusterInfo
+			if cluster.mons.ClusterInfo == nil {
+				// ClusterInfo stored in cluster.mons can be lost from the object stored in the
+				// clusterMap during admin key rotation corner cases. rehydrate it if needed
+				logger.Debugf("applying missing ClusterInfo to tracked mons info for cluster in namespace %q", cluster.Namespace)
+				cluster.mons.ClusterInfo = clusterInfo
+			}
 		}
+
+		// if necessary, recover from failed/interrupted admin key rotation
+		// this must be done before any ceph cli commands are run
+		err = recoverPriorAdminCephxKeyRotation(c.context, clusterInfo, cluster.ownerInfo, cluster.Namespace)
+		if err != nil {
+			return errors.Wrap(err, "failed to recover from prior admin cephx key rotation")
+		}
+
 		// If the local cluster has already been configured, immediately start monitoring the cluster.
 		// Test if the cluster has already been configured if the mgr deployment has been created.
 		// If the mgr does not exist, the mons have never been verified to be in quorum.
@@ -465,9 +482,16 @@ func (c *cluster) preMonStartupActions(cephVersion cephver.CephVersion) error {
 // It gets executed right after the main mon Start() method
 // Basically, it is executed between the monitors and the manager sequence
 func (c *cluster) postMonStartupActions() error {
+	// full cluster spec/status will be used to inform various cephx rotations
 	clusterObj := &cephv1.CephCluster{}
 	if err := c.context.Client.Get(c.ClusterInfo.Context, c.ClusterInfo.NamespacedName(), clusterObj); err != nil {
 		return errors.Wrapf(err, "failed to get cluster %v.", c.ClusterInfo.NamespacedName())
+	}
+
+	// rotate admin key first thing after mons are updated
+	err := rotateAdminCephxKey(c.context, c.ClusterInfo, c.ownerInfo, clusterObj) // TODO: rename?
+	if err != nil {
+		return errors.Wrapf(err, "failed to rotate admin cephx key")
 	}
 
 	// rotate mon cephx keys if required
@@ -523,6 +547,11 @@ func (c *cluster) postMonStartupActions() error {
 	if _, err := controller.CreateBootstrapPeerSecret(c.context, c.ClusterInfo, &cephv1.CephCluster{ObjectMeta: metav1.ObjectMeta{Name: c.namespacedName.Name, Namespace: c.Namespace}}, c.ownerInfo); err != nil {
 		return errors.Wrap(err, "failed to create cluster rbd bootstrap peer token")
 	}
+
+	// Delete the client.bootstrap-* keys. These keys are created automatically by Ceph and are unused.
+	// Ceph might remove these keys in the future. It is safe for Rook to remove them if they exist.
+	// client.bootstrap-osd is used by Rook and is not removed here.
+	c.deleteBootstrapKeys()
 
 	return nil
 }
@@ -868,4 +897,16 @@ func initClusterCephxStatus(c *cluster) error {
 		return nil
 	})
 	return err
+}
+
+func (c *cluster) deleteBootstrapKeys() {
+	bootstrapKeys := []string{"client.bootstrap-mds", "client.bootstrap-mgr", "client.bootstrap-rbd", "client.bootstrap-rbd-mirror", "client.bootstrap-rgw"}
+	for _, bootstrapkey := range bootstrapKeys {
+		err := client.AuthDelete(c.context, c.ClusterInfo, bootstrapkey)
+		if err != nil {
+			logger.Debugf("failed to delete bootstrap key %q in the namespace %q. Error: %v", bootstrapkey, c.Namespace, err)
+		} else {
+			logger.Infof("successfully deleted bootstrap key %q in the namespace %q", bootstrapkey, c.Namespace)
+		}
+	}
 }
