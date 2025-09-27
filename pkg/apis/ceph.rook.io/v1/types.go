@@ -2345,6 +2345,8 @@ type ObjectUserKey struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // CephObjectRealm represents a Ceph Object Store Gateway Realm
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=cephor
 type CephObjectRealm struct {
@@ -2616,6 +2618,8 @@ type KafkaEndpointSpec struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // CephBucketNotification represents a Bucket Notifications
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=cephbn
 type CephBucketNotification struct {
@@ -2697,6 +2701,8 @@ type RGWServiceSpec struct {
 
 // CephNFS represents a Ceph NFS
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:subresource:status
 type CephNFS struct {
 	metav1.TypeMeta   `json:",inline"`
