@@ -111,7 +111,7 @@ func createCSIKeyring(
 	// TODO(key): unit test --key-type during new key creation and rotation, --key-type not used when no rotation
 	key, err := client.AuthGetKey(context, clusterInfo, latestClientId)
 	if err != nil {
-		// CSI keys are non-daemon and so need to be able to be specified by users. howerver,
+		// CSI keys are non-daemon and so need to be able to be specified by users. however,
 		// `auth get-or-create` fails if the key type passed doesn't match the existing key, so only
 		// call it when key doesn't already exist
 		keyType := string(cephCluster.Spec.Security.CephX.CSI.KeyType)
