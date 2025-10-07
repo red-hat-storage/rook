@@ -67,6 +67,13 @@ spec:
                         - Disabled
                         - KeyGeneration
                         type: string
+                      keyType:
+                        enum:
+                        - aes
+                        - aes256k
+                        maxLength: 7
+                        minLength: 3
+                        type: string
                     type: object
                 type: object
             required:
@@ -81,6 +88,10 @@ spec:
                   keyGeneration:
                     format: int32
                     type: integer
+                  keyType:
+                    maxLength: 7
+                    minLength: 3
+                    type: string
                 type: object
               info:
                 additionalProperties:
