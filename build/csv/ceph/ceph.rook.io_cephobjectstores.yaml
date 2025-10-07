@@ -1671,6 +1671,8 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        type: string
                     type: object
                 type: object
               conditions:

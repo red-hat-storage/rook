@@ -67,6 +67,12 @@ spec:
                         - Disabled
                         - KeyGeneration
                         type: string
+                      keyType:
+                        enum:
+                        - ""
+                        - aes
+                        - aes256k
+                        type: string
                     type: object
                 type: object
             required:
@@ -81,6 +87,8 @@ spec:
                   keyGeneration:
                     format: int32
                     type: integer
+                  keyType:
+                    type: string
                 type: object
               info:
                 additionalProperties:
