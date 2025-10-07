@@ -1596,6 +1596,17 @@ spec:
                 properties:
                   cephx:
                     properties:
+                      allowedCiphers:
+                        items:
+                          enum:
+                          - aes
+                          - aes256k
+                          maxLength: 7
+                          type: string
+                        maxItems: 2
+                        minItems: 1
+                        type: array
+                        x-kubernetes-list-type: set
                       csi:
                         properties:
                           keepPriorKeyCountMax:
@@ -1616,6 +1627,12 @@ spec:
                             - Disabled
                             - KeyGeneration
                             type: string
+                          keyType:
+                            enum:
+                            - aes
+                            - aes256k
+                            maxLength: 7
+                            type: string
                         type: object
                       daemon:
                         properties:
@@ -1633,6 +1650,12 @@ spec:
                             - Disabled
                             - KeyGeneration
                             type: string
+                          keyType:
+                            enum:
+                            - aes
+                            - aes256k
+                            maxLength: 7
+                            type: string
                         type: object
                       rbdMirrorPeer:
                         properties:
@@ -1649,6 +1672,12 @@ spec:
                             - ""
                             - Disabled
                             - KeyGeneration
+                            type: string
+                          keyType:
+                            enum:
+                            - aes
+                            - aes256k
+                            maxLength: 7
                             type: string
                         type: object
                     type: object
@@ -3346,6 +3375,12 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        enum:
+                        - aes
+                        - aes256k
+                        maxLength: 7
+                        type: string
                     type: object
                   cephExporter:
                     properties:
@@ -3354,6 +3389,12 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        enum:
+                        - aes
+                        - aes256k
+                        maxLength: 7
+                        type: string
                     type: object
                   crashCollector:
                     properties:
@@ -3362,6 +3403,12 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        enum:
+                        - aes
+                        - aes256k
+                        maxLength: 7
+                        type: string
                     type: object
                   csi:
                     properties:
@@ -3370,6 +3417,12 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        enum:
+                        - aes
+                        - aes256k
+                        maxLength: 7
+                        type: string
                       priorKeyCount:
                         type: integer
                     type: object
@@ -3380,6 +3433,12 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        enum:
+                        - aes
+                        - aes256k
+                        maxLength: 7
+                        type: string
                     type: object
                   mon:
                     properties:
@@ -3388,6 +3447,12 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        enum:
+                        - aes
+                        - aes256k
+                        maxLength: 7
+                        type: string
                     type: object
                   osd:
                     properties:
@@ -3396,6 +3461,12 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        enum:
+                        - aes
+                        - aes256k
+                        maxLength: 7
+                        type: string
                     type: object
                   rbdMirrorPeer:
                     properties:
@@ -3404,6 +3475,12 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        enum:
+                        - aes
+                        - aes256k
+                        maxLength: 7
+                        type: string
                     type: object
                 type: object
               conditions:
