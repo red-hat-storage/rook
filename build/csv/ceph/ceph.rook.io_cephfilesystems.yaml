@@ -338,6 +338,14 @@ spec:
                     nullable: true
                     type: object
                     x-kubernetes-preserve-unknown-fields: true
+                  cacheMemoryLimitFactor:
+                    maximum: 1
+                    minimum: 0
+                    type: number
+                  cacheMemoryRequestFactor:
+                    maximum: 1
+                    minimum: 0
+                    type: number
                   labels:
                     additionalProperties:
                       type: string
