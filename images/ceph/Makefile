@@ -19,7 +19,8 @@ include ../image.mk
 CEPH_VERSION ?= v19.2.3-20250717
 
 REGISTRY_NAME = quay.io
-BASEIMAGE = $(REGISTRY_NAME)/ceph/ceph:$(CEPH_VERSION)
+# BASEIMAGE = $(REGISTRY_NAME)/ceph/ceph:$(CEPH_VERSION)
+BASEIMAGE = quay.ceph.io/ceph-ci/ceph:wip-pdonnell-73ed8e03-debug # only works with x86_64
 CEPH_IMAGE = $(BUILD_REGISTRY)/ceph-$(GOARCH)
 OPERATOR_SDK_VERSION = v1.25.0
 GOHOST := GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) go

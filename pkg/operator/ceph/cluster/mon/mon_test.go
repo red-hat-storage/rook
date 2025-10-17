@@ -1217,7 +1217,7 @@ func TestRotateMonCephxKeys(t *testing.T) {
 	}
 	c.context = &clusterd.Context{Clientset: test.New(t, 5), Executor: executor, Client: cl}
 	c.ClusterInfo = clienttest.CreateTestClusterInfo(1)
-	c.ClusterInfo.CephVersion = keyring.CephAuthMonRotateSupportedVersion
+	c.ClusterInfo.CephVersion = cephver.CephVersion{Major: 20, Minor: 3, Extra: 999}
 
 	// create rook-ceph-mon secret
 	secret := &v1.Secret{
