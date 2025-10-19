@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
@@ -35,6 +36,47 @@ func StartHostPathCleanup(namespaceDir, dataDirHostPath, monSecret string) {
 	}
 
 	cleanMonDirs(dataDirHostPath, monSecret)
+	cleanExporterDir(dataDirHostPath)
+	cleanCSIDirs(dataDirHostPath)
+}
+
+func cleanCSIDirs(dataDirHostPath string) {
+	entries, err := os.ReadDir(dataDirHostPath)
+	if err != nil {
+		logger.Errorf("failed to read directory %q. %v", dataDirHostPath, err)
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			name := entry.Name()
+			if strings.HasSuffix(name, ".csi.ceph.com") {
+				fullPath := filepath.Join(dataDirHostPath, name)
+				if err := os.RemoveAll(fullPath); err != nil {
+					logger.Errorf("failed to remove CSI directory %q. %v", fullPath, err)
+				} else {
+					logger.Infof("successfully removed CSI directory %q", fullPath)
+				}
+			}
+		}
+	}
+}
+
+func cleanExporterDir(dataDirHostPath string) {
+	exporterDir := path.Join(dataDirHostPath, "exporter")
+
+	// Check if the exporter directory exists
+	if _, err := os.Stat(exporterDir); os.IsNotExist(err) {
+		logger.Infof("exporter directory %q does not exist, skipping cleanup", exporterDir)
+		return
+	}
+
+	// Attempt to delete it
+	if err := os.RemoveAll(exporterDir); err != nil {
+		logger.Errorf("failed to clean up exporter directory %q. %v", exporterDir, err)
+	} else {
+		logger.Infof("successfully cleaned up exporter directory %q", exporterDir)
+	}
 }
 
 func cleanMonDirs(dataDirHostPath, monSecret string) {
