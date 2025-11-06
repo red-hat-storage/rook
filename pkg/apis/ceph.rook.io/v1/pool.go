@@ -46,17 +46,17 @@ func ValidateCephBlockPool(p *CephBlockPool) error {
 // validate any NamedPoolSpec
 func validatePoolSpec(ps NamedPoolSpec) error {
 	// Checks if either ErasureCoded or Replicated fields are set
-	if ps.ErasureCoded.CodingChunks <= 0 && ps.ErasureCoded.DataChunks <= 0 && ps.Replicated.TargetSizeRatio <= 0 && ps.Replicated.Size <= 0 {
+	if ps.ErasureCoded.CodingChunks <= 0 && ps.ErasureCoded.DataChunks <= 0 && ps.Replicated.Size <= 0 {
 		return errors.New("invalid pool spec: either of erasurecoded or replicated fields should be set")
 	}
 	// Check if any of the ErasureCoded fields are populated. Then check if replicated is populated. Both can't be populated at same time.
 	if ps.ErasureCoded.CodingChunks > 0 || ps.ErasureCoded.DataChunks > 0 || ps.ErasureCoded.Algorithm != "" {
-		if ps.Replicated.Size > 0 || ps.Replicated.TargetSizeRatio > 0 {
+		if ps.Replicated.Size > 0 {
 			return errors.New("invalid pool spec: both erasurecoded and replicated fields cannot be set at the same time")
 		}
 	}
 
-	if ps.Replicated.Size == 0 && ps.Replicated.TargetSizeRatio == 0 {
+	if ps.Replicated.Size == 0 {
 		// Check if datachunks is set and has value less than 2.
 		if ps.ErasureCoded.DataChunks < 2 && ps.ErasureCoded.DataChunks != 0 {
 			return errors.New("invalid pool spec: erasurecoded.datachunks needs minimum value of 2")
