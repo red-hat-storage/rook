@@ -1391,11 +1391,6 @@ spec:
                           configMapKeyRef:
                             key: ROOK_CURRENT_NAMESPACE_ONLY
                             name: ocs-operator-config
-                      - name: ROOK_CSI_ENABLE_CEPHFS
-                        valueFrom:
-                          configMapKeyRef:
-                            key: ROOK_CSI_ENABLE_CEPHFS
-                            name: ocs-operator-config
                       - name: ROOK_ALLOW_MULTIPLE_FILESYSTEMS
                         value: "false"
                       - name: ROOK_LOG_LEVEL
@@ -1422,77 +1417,15 @@ spec:
                         value: "false"
                       - name: ROOK_DISABLE_DEVICE_HOTPLUG
                         value: "true"
-                      - name: ROOK_CSI_ALLOW_UNSUPPORTED_VERSION
-                        value: "true"
                       - name: ROOK_DISABLE_ADMISSION_CONTROLLER
                         value: "true"
-                      - name: ROOK_CSIADDONS_IMAGE
-                        value: quay.io/csiaddons/k8s-sidecar:v0.8.0
-                      - name: ROOK_CSI_CEPH_IMAGE
-                        value: quay.io/cephcsi/cephcsi:v3.10.2
-                      - name: ROOK_CSI_REGISTRAR_IMAGE
-                        value: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.0
-                      - name: ROOK_CSI_RESIZER_IMAGE
-                        value: registry.k8s.io/sig-storage/csi-resizer:v1.10.0
-                      - name: ROOK_CSI_PROVISIONER_IMAGE
-                        value: registry.k8s.io/sig-storage/csi-provisioner:v4.0.0
-                      - name: ROOK_CSI_SNAPSHOTTER_IMAGE
-                        value: registry.k8s.io/sig-storage/csi-snapshotter:v7.0.1
-                      - name: ROOK_CSI_ATTACHER_IMAGE
-                        value: registry.k8s.io/sig-storage/csi-attacher:v4.5.0
                       - name: ROOK_OBC_PROVISIONER_NAME_PREFIX
                         value: openshift-storage
-                      - name: CSI_ENABLE_METADATA
-                        value: "false"
-                      - name: CSI_PLUGIN_PRIORITY_CLASSNAME
-                        value: system-node-critical
-                      - name: CSI_PROVISIONER_PRIORITY_CLASSNAME
-                        value: system-cluster-critical
-                      - name: CSI_CLUSTER_NAME
-                        valueFrom:
-                          configMapKeyRef:
-                            key: CSI_CLUSTER_NAME
-                            name: ocs-operator-config
-                      - name: CSI_DRIVER_NAME_PREFIX
-                        value: openshift-storage
-                      - name: CSI_ENABLE_TOPOLOGY
-                        valueFrom:
-                          configMapKeyRef:
-                            key: CSI_ENABLE_TOPOLOGY
-                            name: ocs-operator-config
-                      - name: CSI_TOPOLOGY_DOMAIN_LABELS
-                        valueFrom:
-                          configMapKeyRef:
-                            key: CSI_TOPOLOGY_DOMAIN_LABELS
-                            name: ocs-operator-config
-                      - name: ROOK_CSI_ENABLE_NFS
-                        valueFrom:
-                          configMapKeyRef:
-                            key: ROOK_CSI_ENABLE_NFS
-                            name: ocs-operator-config
                       - name: ROOK_CSI_DISABLE_DRIVER
                         valueFrom:
                           configMapKeyRef:
                             key: ROOK_CSI_DISABLE_DRIVER
                             name: ocs-operator-config
-                      - name: CSI_PROVISIONER_TOLERATIONS
-                        value: |-
-                          - key: node.ocs.openshift.io/storage
-                            operator: Equal
-                            value: "true"
-                            effect: NoSchedule
-                      - name: CSI_PLUGIN_TOLERATIONS
-                        value: |-
-                          - key: node.ocs.openshift.io/storage
-                            operator: Equal
-                            value: "true"
-                            effect: NoSchedule
-                      - name: CSI_LOG_LEVEL
-                        value: "5"
-                      - name: CSI_SIDECAR_LOG_LEVEL
-                        value: "1"
-                      - name: CSI_ENABLE_CSIADDONS
-                        value: "true"
                       - name: NODE_NAME
                         valueFrom:
                           fieldRef:
