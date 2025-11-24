@@ -720,7 +720,7 @@ function install_minikube_with_none_driver() {
   rm "$CNI_PLUGIN_TAR"
 
   export MINIKUBE_HOME=$HOME CHANGE_MINIKUBE_NONE_USER=true KUBECONFIG=$HOME/.kube/config
-  minikube start --kubernetes-version="$1" --driver=none --memory 6g --cpus=2 --addons ingress --cni=calico
+  minikube start --kubernetes-version="$1" --driver=none --memory 6g --cpus=2 --addons ingress --cni=calico --force
 }
 
 function toolbox() {
