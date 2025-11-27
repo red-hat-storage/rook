@@ -41,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -323,11 +324,9 @@ func (r *ReconcileCephBlockPoolRadosNamespace) reconcile(request reconcile.Reque
 	}
 
 	// If the cephBlockPool is not ready to accept commands, we should wait for it to be ready
-	if cephBlockPool.Status != nil {
-		if cephBlockPool.Status.Phase != cephv1.ConditionReady {
-			// We know the CR is present so it should a matter of second for it to become ready
-			return reconcile.Result{Requeue: true, RequeueAfter: 10 * time.Second}, radosNamespace, errors.Wrapf(err, "failed to fetch ceph blockpool %q, cannot create rados namespace %q", pool, radosNamespace.Name)
-		}
+	if cephBlockPool.Status == nil || cephBlockPool.Status.Phase != cephv1.ConditionReady {
+		// We know the CR is present so it should a matter of second for it to become ready
+		return reconcile.Result{Requeue: true, RequeueAfter: 10 * time.Second}, radosNamespace, errors.Wrapf(err, "failed to fetch ceph blockpool %q, cannot create rados namespace %q", pool, radosNamespace.Name)
 	}
 	// Create or Update rados namespace
 	err = r.createOrUpdateRadosNamespace(radosNamespace)
@@ -466,23 +465,28 @@ func (r *ReconcileCephBlockPoolRadosNamespace) deleteRadosNamespace(radosNamespa
 
 // updateStatus updates an object with a given status
 func (r *ReconcileCephBlockPoolRadosNamespace) updateStatus(client client.Client, name types.NamespacedName, status cephv1.ConditionType) {
-	cephBlockPoolRadosNamespace := &cephv1.CephBlockPoolRadosNamespace{}
-	if err := client.Get(r.opManagerContext, name, cephBlockPoolRadosNamespace); err != nil {
-		if kerrors.IsNotFound(err) {
-			logger.Debugf("CephBlockPoolRadosNamespace resource %q not found. Ignoring since object must be deleted.", name)
-			return
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		cephBlockPoolRadosNamespace := &cephv1.CephBlockPoolRadosNamespace{}
+		if err := client.Get(r.opManagerContext, name, cephBlockPoolRadosNamespace); err != nil {
+			if kerrors.IsNotFound(err) {
+				logger.Debugf("CephBlockPoolRadosNamespace resource %q not found. Ignoring since object must be deleted.", name)
+				return nil
+			}
+			return errors.Wrapf(err, "failed to retrieve ceph blockpool rados namespace %q to update status to %q", name, status)
 		}
-		logger.Warningf("failed to retrieve ceph blockpool rados namespace %q to update status to %q. %v", name, status, err)
-		return
-	}
-	if cephBlockPoolRadosNamespace.Status == nil {
-		cephBlockPoolRadosNamespace.Status = &cephv1.CephBlockPoolRadosNamespaceStatus{}
-	}
+		if cephBlockPoolRadosNamespace.Status == nil {
+			cephBlockPoolRadosNamespace.Status = &cephv1.CephBlockPoolRadosNamespaceStatus{}
+		}
 
-	cephBlockPoolRadosNamespace.Status.Phase = status
-	cephBlockPoolRadosNamespace.Status.Info = map[string]string{"clusterID": buildClusterID(cephBlockPoolRadosNamespace)}
-	if err := reporting.UpdateStatus(client, cephBlockPoolRadosNamespace); err != nil {
-		logger.Errorf("failed to set ceph blockpool rados namespace %q status to %q. %v", name, status, err)
+		cephBlockPoolRadosNamespace.Status.Phase = status
+		cephBlockPoolRadosNamespace.Status.Info = map[string]string{"clusterID": buildClusterID(cephBlockPoolRadosNamespace)}
+		if err := reporting.UpdateStatus(client, cephBlockPoolRadosNamespace); err != nil {
+			return errors.Wrapf(err, "failed to set ceph blockpool rados namespace %q status to %q", name, status)
+		}
+		return nil
+	})
+	if err != nil {
+		logger.Errorf("failed to update ceph blockpool rados namespace %q status to %q after retries. %v", name, status, err)
 		return
 	}
 	logger.Debugf("ceph blockpool rados namespace %q status updated to %q", name, status)
