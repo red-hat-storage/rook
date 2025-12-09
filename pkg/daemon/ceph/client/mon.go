@@ -164,3 +164,10 @@ func SetNewTiebreaker(context *clusterd.Context, clusterInfo *ClusterInfo, monNa
 	logger.Infof("successfully set new mon tiebreaker %q in arbiter zone", monName)
 	return nil
 }
+
+// MuteHealthWarning mutes the health warning
+func MuteHealthWarning(context *clusterd.Context, clusterInfo *ClusterInfo, warning string) error {
+	args := []string{"health", "mute", warning}
+	_, err := NewCephCommand(context, clusterInfo, args).Run()
+	return err
+}
