@@ -310,7 +310,23 @@ func (r *ReconcileCephCluster) reconcileDelete(cephCluster *cephv1.CephCluster) 
 			if err != nil {
 				return reconcile.Result{}, *cephCluster, errors.Wrapf(err, "failed to find valid ceph hosts in the cluster %q", cephCluster.Namespace)
 			}
-			go r.clusterController.startClusterCleanUp(internalCtx, cephCluster, cephHosts, monSecret, clusterFSID)
+
+			if len(cephHosts) == 0 {
+				cephHosts = getCleanupHostsFromAnnotation(cephCluster)
+				if len(cephHosts) > 0 {
+					logger.Infof("using cleanup host list from annotation for cluster %q: %v", cephCluster.Namespace, cephHosts)
+				}
+			} else if setCleanupHostsAnnotation(cephCluster, cephHosts) {
+				if err := r.client.Update(r.opManagerContext, cephCluster); err != nil {
+					logger.Warningf("failed to persist cleanup host list for cluster %q: %v", cephCluster.Namespace, err)
+				}
+			}
+
+			if len(cephHosts) == 0 {
+				logger.Warningf("no ceph hosts found for cleanup jobs in namespace %q; skipping cleanup job creation", cephCluster.Namespace)
+			} else {
+				go r.clusterController.startClusterCleanUp(internalCtx, cephCluster, cephHosts, monSecret, clusterFSID)
+			}
 		}
 	}
 
