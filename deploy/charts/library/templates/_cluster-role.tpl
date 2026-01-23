@@ -81,6 +81,7 @@ rules:
       - cephblockpools
       - cephfilesystems
       - cephnfses
+      - cephnvmeofgateways
       - cephobjectstores
       - cephobjectstoreusers
       - cephobjectrealms
