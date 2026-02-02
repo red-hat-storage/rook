@@ -515,6 +515,7 @@ spec:
                 - cephblockpools
                 - cephfilesystems
                 - cephnfses
+                - cephnvmeofgateways
                 - cephobjectstores
                 - cephobjectstoreusers
                 - cephobjectrealms
@@ -540,6 +541,7 @@ spec:
                 - cephblockpools/status
                 - cephfilesystems/status
                 - cephnfses/status
+                - cephnvmeofgateways/status
                 - cephobjectstores/status
                 - cephobjectstoreusers/status
                 - cephobjectrealms/status
@@ -561,6 +563,7 @@ spec:
                 - cephblockpools/finalizers
                 - cephfilesystems/finalizers
                 - cephnfses/finalizers
+                - cephnvmeofgateways/finalizers
                 - cephobjectstores/finalizers
                 - cephobjectstoreusers/finalizers
                 - cephobjectrealms/finalizers
@@ -1499,6 +1502,7 @@ spec:
                 - cephblockpools
                 - cephfilesystems
                 - cephnfses
+                - cephnvmeofgateways
                 - cephobjectstores
                 - cephobjectstoreusers
                 - cephobjectrealms
