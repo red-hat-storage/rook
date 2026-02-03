@@ -20,6 +20,7 @@ package cluster
 import (
 	"context"
 	"fmt"
+	"time"
 
 	csiopv1a1 "github.com/ceph/ceph-csi-operator/api/v1alpha1"
 	"github.com/coreos/pkg/capnslog"
@@ -317,7 +318,9 @@ func (r *ReconcileCephCluster) reconcileDelete(cephCluster *cephv1.CephCluster) 
 					logger.Infof("using cleanup host list from annotation for cluster %q: %v", cephCluster.Namespace, cephHosts)
 				}
 			} else if setCleanupHostsAnnotation(cephCluster, cephHosts) {
-				if err := r.client.Update(r.opManagerContext, cephCluster); err != nil {
+				persistCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+				if err := r.client.Update(persistCtx, cephCluster); err != nil {
 					logger.Warningf("failed to persist cleanup host list for cluster %q: %v", cephCluster.Namespace, err)
 				}
 			}
