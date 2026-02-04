@@ -25,16 +25,17 @@ runs:
     - name: Install cri-dockerd
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        curl -LO https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.21/cri-dockerd_0.3.21.3-0.ubuntu-focal_amd64.deb
-        sudo dpkg -i cri-dockerd_0.3.21.3-0.ubuntu-focal_amd64.deb
-        rm -f cri-dockerd_0.3.21.3-0.ubuntu-focal_amd64.deb
+        ARCH=$(go env GOARCH)
+        curl -LO https://github.com/Mirantis/cri-dockerd/releases/download/v0.3.21/cri-dockerd_0.3.21.3-0.ubuntu-focal_${ARCH}.deb
+        sudo dpkg -i cri-dockerd_0.3.21.3-0.ubuntu-focal_${ARCH}.deb
+        rm -f cri-dockerd_0.3.21.3-0.ubuntu-focal_${ARCH}.deb
 
     - name: Setup Minikube
       uses: medyagh/setup-minikube@latest
       with:
         # lock minikube version to ensure release branch CI doesn't fail when latest minikube no
         # longer supports older k8s version we lock to
-        minikube-version: "1.37.0"
+        minikube-version: "1.38.0"
         kubernetes-version: ${{ inputs.kubernetes-version }}
         driver: none
         container-runtime: docker

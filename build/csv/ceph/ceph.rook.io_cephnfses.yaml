@@ -1195,6 +1195,17 @@ spec:
                   hostNetwork:
                     nullable: true
                     type: boolean
+                  image:
+                    maxLength: 1572864
+                    minLength: 1
+                    type: string
+                  imagePullPolicy:
+                    enum:
+                    - IfNotPresent
+                    - Always
+                    - Never
+                    - ""
+                    type: string
                   labels:
                     additionalProperties:
                       type: string

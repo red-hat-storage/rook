@@ -420,7 +420,6 @@ spec:
               resources:
                 - configmaps
                 - nodes
-                - nodes/proxy
                 - persistentvolumes
               verbs:
                 - get
@@ -460,7 +459,6 @@ spec:
               resources:
                 - pods
                 - nodes
-                - nodes/proxy
                 - secrets
                 - configmaps
               verbs:
