@@ -35,15 +35,14 @@ require (
 	github.com/kube-object-storage/lib-bucket-provisioner v0.0.0-20221122204822-d1a8c34382f1
 	github.com/libopenstorage/secrets v0.0.0-20240416031220-a17cf7f72c6c
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.88.0
-	github.com/prometheus-operator/prometheus-operator/pkg/client v0.88.0
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.88.1
+	github.com/prometheus-operator/prometheus-operator/pkg/client v0.88.1
 	github.com/rook/rook/pkg/apis v0.0.0-20241216163035-3170ac6a0c58
 	github.com/sethvargo/go-password v0.3.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/sykesm/zap-logfmt v0.0.4
-	go.uber.org/automaxprocs v1.6.0
 	go.uber.org/zap v1.27.1
 	golang.org/x/sync v0.19.0
 	gopkg.in/ini.v1 v1.67.1
