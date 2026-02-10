@@ -19,7 +19,6 @@ package cluster
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -44,9 +43,9 @@ import (
 
 const (
 	clusterCleanUpPolicyRetryInterval = 5 //seconds
+	clusterCleanUpPolicyWaitTimeout   = 15 * time.Minute
 	// CleanupAppName is the cluster clean up job name
-	CleanupAppName         = "rook-ceph-cleanup"
-	cleanupHostsAnnotation = "ceph.rook.io/cleanup-hosts"
+	CleanupAppName = "rook-ceph-cleanup"
 )
 
 var (
@@ -61,76 +60,18 @@ var (
 	sanitizeIterationDefault int32 = 1
 )
 
-func (c *ClusterController) startClusterCleanUp(ctx context.Context, cluster *cephv1.CephCluster, cephHosts []string, monSecret, clusterFSID string) {
+func (c *ClusterController) startClusterCleanUp(context context.Context, cluster *cephv1.CephCluster, cephHosts []string, monSecret, clusterFSID string) {
 	logger.Infof("starting clean up for cluster %q", cluster.Name)
-
-	// Check if cleanup jobs already exist before waiting for daemons
-	// This handles the case where the operator restarts during cleanup
-	existingJobs, err := c.getExistingCleanupJobs(cluster.Namespace, cephHosts)
+	err := c.waitForCephDaemonCleanUp(context, cluster, time.Duration(clusterCleanUpPolicyRetryInterval)*time.Second)
 	if err != nil {
-		logger.Warningf("failed to check for existing cleanup jobs: %v", err)
-	} else if len(existingJobs) > 0 {
-		logger.Infof("found %d existing cleanup jobs", len(existingJobs))
-		var (
-			checkCtx context.Context
-			cancel   context.CancelFunc
-		)
-		if ctx.Err() != nil {
-			checkCtx, cancel = context.WithTimeout(context.Background(), time.Minute)
-		} else {
-			checkCtx, cancel = context.WithTimeout(ctx, time.Minute)
-		}
-		defer cancel()
-		remainingHosts, err := c.getCephHostsWithContext(checkCtx, cluster.Namespace)
-		if err != nil {
-			logger.Warningf("failed to verify ceph daemons after finding cleanup jobs: %v", err)
-			return
-		}
-		if len(remainingHosts) == 0 {
-			// If jobs already exist and daemons are gone, create any missing jobs
-			c.startCleanUpJobs(ctx, cluster, cephHosts, monSecret, clusterFSID)
-			return
-		}
-		logger.Infof("ceph daemons still running on %d hosts, waiting for cleanup", len(remainingHosts))
-	}
-
-	err = c.waitForCephDaemonCleanUp(ctx, cluster, time.Duration(clusterCleanUpPolicyRetryInterval)*time.Second)
-	if err != nil {
-		// If context was cancelled (operator restart), proceed with cleanup jobs using
-		// the original cephHosts list that was determined before the restart.
-		// This handles the operator restart scenario where the context gets cancelled,
-		// but we should still ensure daemons are gone before creating cleanup jobs.
-		contextErr := ctx.Err()
-		logger.Debugf("waitForCephDaemonCleanUp failed: %v, context.Err(): %v, cephHosts count: %d", err, contextErr, len(cephHosts))
-		if contextErr != nil {
-			checkCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
-			defer cancel()
-			remainingHosts, checkErr := c.getCephHostsWithContext(checkCtx, cluster.Namespace)
-			if checkErr != nil {
-				logger.Warningf("failed to verify ceph daemons after context cancellation: %v", checkErr)
-				return
-			}
-			if len(remainingHosts) > 0 {
-				logger.Infof("context cancelled and ceph daemons still running on %d hosts, skipping cleanup jobs", len(remainingHosts))
-				return
-			}
-			if len(cephHosts) > 0 {
-				logger.Infof("context cancelled but ceph daemons are gone, proceeding with cleanup jobs for %d known hosts: %v", len(cephHosts), cephHosts)
-				c.startCleanUpJobs(checkCtx, cluster, cephHosts, monSecret, clusterFSID)
-			} else {
-				logger.Warningf("context cancelled but cephHosts is empty (%d hosts), cannot create cleanup jobs", len(cephHosts))
-			}
-			return
-		}
-		logger.Debugf("context not cancelled, error is: %v", err)
 		logger.Errorf("failed to wait till ceph daemons are destroyed. %v", err)
 		return
 	}
 
-	c.startCleanUpJobs(ctx, cluster, cephHosts, monSecret, clusterFSID)
+	c.startCleanUpJobs(cluster, cephHosts, monSecret, clusterFSID)
 }
 
-func (c *ClusterController) startCleanUpJobs(ctx context.Context, cluster *cephv1.CephCluster, cephHosts []string, monSecret, clusterFSID string) {
+func (c *ClusterController) startCleanUpJobs(cluster *cephv1.CephCluster, cephHosts []string, monSecret, clusterFSID string) {
 	for _, hostName := range cephHosts {
 		logger.Infof("starting clean up job on node %q", hostName)
 		jobName := k8sutil.TruncateNodeNameForJob("cluster-cleanup-job-%s", hostName)
@@ -153,7 +94,7 @@ func (c *ClusterController) startCleanUpJobs(ctx context.Context, cluster *cephv
 		cephv1.GetCleanupAnnotations(cluster.Spec.Annotations).ApplyToObjectMeta(&job.ObjectMeta)
 		cephv1.GetCleanupLabels(cluster.Spec.Labels).ApplyToObjectMeta(&job.ObjectMeta)
 
-		if err := k8sutil.RunReplaceableJob(ctx, c.context.Clientset, job, true); err != nil {
+		if err := k8sutil.RunReplaceableJob(c.OpManagerCtx, c.context.Clientset, job, true); err != nil {
 			logger.Errorf("failed to run cluster clean up job on node %q. %v", hostName, err)
 		}
 	}
@@ -257,11 +198,23 @@ func getCleanupPlacement(c cephv1.ClusterSpec) cephv1.Placement {
 }
 
 func (c *ClusterController) waitForCephDaemonCleanUp(context context.Context, cluster *cephv1.CephCluster, retryInterval time.Duration) error {
+	return c.waitForCephDaemonCleanUpWithTimeout(context, cluster, retryInterval, clusterCleanUpPolicyWaitTimeout)
+}
+
+func (c *ClusterController) waitForCephDaemonCleanUpWithTimeout(parentContext context.Context, cluster *cephv1.CephCluster, retryInterval, timeout time.Duration) error {
 	logger.Infof("waiting for all the ceph daemons to be cleaned up in the cluster %q", cluster.Namespace)
+	waitContext, cancel := context.WithTimeout(context.TODO(), timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(retryInterval)
+	defer ticker.Stop()
+
+	parentDone := parentContext.Done()
+
 	for {
 		select {
-		case <-time.After(retryInterval):
-			cephHosts, err := c.getCephHostsWithContext(context, cluster.Namespace)
+		case <-ticker.C:
+			cephHosts, err := c.getCephHosts(waitContext, cluster.Namespace)
 			if err != nil {
 				return errors.Wrap(err, "failed to list ceph daemon nodes")
 			}
@@ -273,18 +226,20 @@ func (c *ClusterController) waitForCephDaemonCleanUp(context context.Context, cl
 
 			logger.Debugf("waiting for ceph daemons in cluster %q to be cleaned up. Retrying in %q",
 				cluster.Namespace, retryInterval.String())
-		case <-context.Done():
-			return errors.Errorf("cancelling the host cleanup job. %s", context.Err())
+		case <-parentDone:
+			// The operator context can be canceled during restart. Keep waiting with a bounded timeout
+			// so cleanup jobs can still be created if daemon cleanup finishes shortly after.
+			logger.Warningf("operator context was canceled while waiting for ceph daemons in cluster %q to be cleaned up. "+
+				"continuing wait for up to %q", cluster.Namespace, timeout.String())
+			parentDone = nil
+		case <-waitContext.Done():
+			return errors.Wrapf(waitContext.Err(), "timed out waiting for ceph daemons in cluster %q to be cleaned up after %q", cluster.Namespace, timeout.String())
 		}
 	}
 }
 
 // getCephHosts returns a list of host names where ceph daemon pods are running
-func (c *ClusterController) getCephHosts(namespace string) ([]string, error) {
-	return c.getCephHostsWithContext(c.OpManagerCtx, namespace)
-}
-
-func (c *ClusterController) getCephHostsWithContext(ctx context.Context, namespace string) ([]string, error) {
+func (c *ClusterController) getCephHosts(ctx context.Context, namespace string) ([]string, error) {
 	cephAppNames := []string{mon.AppName, mgr.AppName, osd.AppName, object.AppName, mds.AppName, rbd.AppName, mirror.AppName}
 	nodeNameList := sets.New[string]()
 	hostNameList := []string{}
@@ -326,75 +281,4 @@ func (c *ClusterController) getCleanUpDetails(cephClusterSpec *cephv1.ClusterSpe
 	}
 
 	return clusterInfo.MonitorSecret, clusterInfo.FSID, nil
-}
-
-// getExistingCleanupJobs checks if cleanup jobs already exist for the given hosts
-func (c *ClusterController) getExistingCleanupJobs(namespace string, cephHosts []string) ([]string, error) {
-	existingJobs := []string{}
-	labelSelector := fmt.Sprintf("%s=true", CleanupAppName)
-	jobList, err := c.context.Clientset.BatchV1().Jobs(namespace).List(c.OpManagerCtx, metav1.ListOptions{LabelSelector: labelSelector})
-	if err != nil {
-		return existingJobs, errors.Wrap(err, "failed to list cleanup jobs")
-	}
-
-	// Create a set of expected job names
-	expectedJobNames := sets.New[string]()
-	for _, hostName := range cephHosts {
-		jobName := k8sutil.TruncateNodeNameForJob("cluster-cleanup-job-%s", hostName)
-		expectedJobNames.Insert(jobName)
-	}
-
-	// Check which expected jobs already exist
-	for _, job := range jobList.Items {
-		if expectedJobNames.Has(job.Name) {
-			existingJobs = append(existingJobs, job.Name)
-		}
-	}
-
-	return existingJobs, nil
-}
-
-func getCleanupHostsFromAnnotation(cluster *cephv1.CephCluster) []string {
-	if cluster.Annotations == nil {
-		return nil
-	}
-	rawHosts := strings.TrimSpace(cluster.Annotations[cleanupHostsAnnotation])
-	if rawHosts == "" {
-		return nil
-	}
-	return normalizeCleanupHosts(strings.Split(rawHosts, ","))
-}
-
-func setCleanupHostsAnnotation(cluster *cephv1.CephCluster, cephHosts []string) bool {
-	normalized := normalizeCleanupHosts(cephHosts)
-	if len(normalized) == 0 {
-		return false
-	}
-
-	if cluster.Annotations == nil {
-		cluster.Annotations = map[string]string{}
-	}
-
-	current := normalizeCleanupHosts(strings.Split(cluster.Annotations[cleanupHostsAnnotation], ","))
-	currentRaw := strings.Join(current, ",")
-	normalizedRaw := strings.Join(normalized, ",")
-	if currentRaw == normalizedRaw {
-		return false
-	}
-
-	cluster.Annotations[cleanupHostsAnnotation] = normalizedRaw
-	return true
-}
-
-func normalizeCleanupHosts(cephHosts []string) []string {
-	normalizedSet := sets.New[string]()
-	for _, host := range cephHosts {
-		host = strings.TrimSpace(host)
-		if host != "" {
-			normalizedSet.Insert(host)
-		}
-	}
-	normalized := normalizedSet.UnsortedList()
-	sort.Strings(normalized)
-	return normalized
 }

@@ -17,7 +17,9 @@ limitations under the License.
 package cluster
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -44,11 +46,11 @@ func TestCleanupJobSpec(t *testing.T) {
 		},
 	}
 	clientset := testop.New(t, 3)
-	context := &clusterd.Context{
+	clusterContext := &clusterd.Context{
 		Clientset:     clientset,
 		RookClientset: rookfake.NewSimpleClientset(),
 	}
-	controller := NewClusterController(context, "")
+	controller := NewClusterController(clusterContext, "")
 	podTemplateSpec := controller.cleanUpJobTemplateSpec(cluster, "monSecret", "28b87851-8dc1-46c8-b1ec-90ec51a47c89")
 	assert.Equal(t, expectedHostPath, podTemplateSpec.Spec.Containers[0].Env[0].Value)
 	assert.Equal(t, expectedNamespace, podTemplateSpec.Spec.Containers[0].Env[1].Value)
@@ -87,4 +89,70 @@ func TestCleanupPlacement(t *testing.T) {
 	}
 	p = getCleanupPlacement(c)
 	assert.Equal(t, 6, len(p.Tolerations))
+}
+
+func TestWaitForCephDaemonCleanUpParentContextCanceled(t *testing.T) {
+	cluster := &cephv1.CephCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cluster-a",
+			Namespace: "test-rook-ceph",
+		},
+	}
+	clientset := testop.New(t, 3)
+	clusterContext := &clusterd.Context{
+		Clientset:     clientset,
+		RookClientset: rookfake.NewSimpleClientset(),
+	}
+	controller := NewClusterController(clusterContext, "")
+
+	parentCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := controller.waitForCephDaemonCleanUpWithTimeout(parentCtx, cluster, 10*time.Millisecond, 300*time.Millisecond)
+	assert.NoError(t, err)
+}
+
+func TestWaitForCephDaemonCleanUpTimeout(t *testing.T) {
+	clusterNamespace := "test-rook-ceph"
+	cluster := &cephv1.CephCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cluster-a",
+			Namespace: clusterNamespace,
+		},
+	}
+
+	daemonPod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rook-ceph-osd-0",
+			Namespace: clusterNamespace,
+			Labels: map[string]string{
+				"app": "rook-ceph-osd",
+			},
+		},
+		Spec: v1.PodSpec{
+			NodeName: "worker-0",
+		},
+	}
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "worker-0",
+			Labels: map[string]string{
+				v1.LabelHostname: "worker-0-hostname",
+			},
+		},
+	}
+	clientset := testop.New(t, 3)
+	_, err := clientset.CoreV1().Pods(clusterNamespace).Create(context.Background(), daemonPod, metav1.CreateOptions{})
+	assert.NoError(t, err)
+	_, err = clientset.CoreV1().Nodes().Create(context.Background(), node, metav1.CreateOptions{})
+	assert.NoError(t, err)
+	clusterContext := &clusterd.Context{
+		Clientset:     clientset,
+		RookClientset: rookfake.NewSimpleClientset(),
+	}
+	controller := NewClusterController(clusterContext, "")
+
+	err = controller.waitForCephDaemonCleanUpWithTimeout(context.Background(), cluster, 10*time.Millisecond, 120*time.Millisecond)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "timed out waiting for ceph daemons")
 }

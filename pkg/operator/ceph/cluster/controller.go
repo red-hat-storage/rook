@@ -20,7 +20,6 @@ package cluster
 import (
 	"context"
 	"fmt"
-	"time"
 
 	csiopv1a1 "github.com/ceph/ceph-csi-operator/api/v1alpha1"
 	"github.com/coreos/pkg/capnslog"
@@ -307,29 +306,11 @@ func (r *ReconcileCephCluster) reconcileDelete(cephCluster *cephv1.CephCluster) 
 		}
 
 		if doCleanup {
-			cephHosts, err := r.clusterController.getCephHosts(cephCluster.Namespace)
+			cephHosts, err := r.clusterController.getCephHosts(r.opManagerContext, cephCluster.Namespace)
 			if err != nil {
 				return reconcile.Result{}, *cephCluster, errors.Wrapf(err, "failed to find valid ceph hosts in the cluster %q", cephCluster.Namespace)
 			}
-
-			if len(cephHosts) == 0 {
-				cephHosts = getCleanupHostsFromAnnotation(cephCluster)
-				if len(cephHosts) > 0 {
-					logger.Infof("using cleanup host list from annotation for cluster %q: %v", cephCluster.Namespace, cephHosts)
-				}
-			} else if setCleanupHostsAnnotation(cephCluster, cephHosts) {
-				persistCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
-				defer cancel()
-				if err := r.client.Update(persistCtx, cephCluster); err != nil {
-					logger.Warningf("failed to persist cleanup host list for cluster %q: %v", cephCluster.Namespace, err)
-				}
-			}
-
-			if len(cephHosts) == 0 {
-				logger.Warningf("no ceph hosts found for cleanup jobs in namespace %q; skipping cleanup job creation", cephCluster.Namespace)
-			} else {
-				go r.clusterController.startClusterCleanUp(internalCtx, cephCluster, cephHosts, monSecret, clusterFSID)
-			}
+			go r.clusterController.startClusterCleanUp(internalCtx, cephCluster, cephHosts, monSecret, clusterFSID)
 		}
 	}
 
