@@ -1483,6 +1483,7 @@ spec:
                     name: rook-config
                   - emptyDir: {}
                     name: default-config-dir
+                priorityClassName: system-cluster-critical
       permissions:
         - rules:
             - apiGroups:
