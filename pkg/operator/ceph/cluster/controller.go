@@ -306,7 +306,7 @@ func (r *ReconcileCephCluster) reconcileDelete(cephCluster *cephv1.CephCluster) 
 		}
 
 		if doCleanup {
-			cephHosts, err := r.clusterController.getCephHosts(cephCluster.Namespace)
+			cephHosts, err := r.clusterController.getCephHosts(r.opManagerContext, cephCluster.Namespace)
 			if err != nil {
 				return reconcile.Result{}, *cephCluster, errors.Wrapf(err, "failed to find valid ceph hosts in the cluster %q", cephCluster.Namespace)
 			}
