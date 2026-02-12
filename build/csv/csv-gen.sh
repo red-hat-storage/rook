@@ -88,6 +88,9 @@ function generate_csv() {
     sed -i'.bak' -e "s|$LATEST_ROOK_CSI_ATTACHER_IMAGE|$ROOK_CSI_ATTACHER_IMAGE|g" "$CSV_FILE_NAME"
     sed -i'.bak' -e "s|$LATEST_ROOK_CSIADDONS_IMAGE|$ROOK_CSIADDONS_IMAGE|g" "$CSV_FILE_NAME"
 
+    # Add priorityClassName for the operator deployment
+    $yq '.spec.install.spec.deployments[0].spec.template.spec.priorityClassName = "system-cluster-critical"' --inplace "$CSV_FILE_NAME"
+
     rm "$CSV_FILE_NAME.bak"
 
     mv "../../build/csv/ceph/$PLATFORM/manifests/"* "../../build/csv/ceph/"
