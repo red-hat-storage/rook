@@ -20,7 +20,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.11
 	github.com/aws/smithy-go v1.24.0
 	github.com/banzaicloud/k8s-objectmatcher v1.8.0
-	github.com/ceph/ceph-csi-operator/api v0.0.0-20250812090115-fdfb97fda6ee
+	github.com/ceph/ceph-csi-operator/api v0.0.0-20260205113234-c2ca44439222
 	github.com/ceph/ceph-csi/api v0.0.0-20241216133622-88b7e0d6684f
 	github.com/ceph/go-ceph v0.37.0
 	github.com/coreos/pkg v0.0.0-20240122114842-bbd7aa9bf6fb
@@ -35,8 +35,8 @@ require (
 	github.com/kube-object-storage/lib-bucket-provisioner v0.0.0-20221122204822-d1a8c34382f1
 	github.com/libopenstorage/secrets v0.0.0-20240416031220-a17cf7f72c6c
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.88.1
-	github.com/prometheus-operator/prometheus-operator/pkg/client v0.88.1
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.89.0
+	github.com/prometheus-operator/prometheus-operator/pkg/client v0.89.0
 	github.com/rook/rook/pkg/apis v0.0.0-20241216163035-3170ac6a0c58
 	github.com/sethvargo/go-password v0.3.1
 	github.com/spf13/cobra v1.10.2
@@ -54,7 +54,7 @@ require (
 	k8s.io/client-go v0.35.0
 	k8s.io/cloud-provider v0.35.0
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
-	sigs.k8s.io/controller-runtime v0.22.4
+	sigs.k8s.io/controller-runtime v0.23.0
 	sigs.k8s.io/mcs-api v0.3.0
 	sigs.k8s.io/yaml v1.6.0
 )

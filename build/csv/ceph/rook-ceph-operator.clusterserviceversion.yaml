@@ -436,6 +436,14 @@ spec:
                 - get
                 - watch
             - apiGroups:
+                - events.k8s.io
+              resources:
+                - events
+              verbs:
+                - create
+                - patch
+                - update
+            - apiGroups:
                 - storage.k8s.io
               resources:
                 - storageclasses
@@ -484,6 +492,14 @@ spec:
                 - create
                 - update
                 - delete
+            - apiGroups:
+                - events.k8s.io
+              resources:
+                - events
+              verbs:
+                - create
+                - patch
+                - update
             - apiGroups:
                 - storage.k8s.io
               resources:
@@ -864,6 +880,14 @@ spec:
                 - update
                 - patch
             - apiGroups:
+                - events.k8s.io
+              resources:
+                - events
+              verbs:
+                - create
+                - patch
+                - update
+            - apiGroups:
                 - storage.k8s.io
               resources:
                 - volumeattachments
@@ -1011,6 +1035,14 @@ spec:
                 - create
                 - update
                 - patch
+            - apiGroups:
+                - events.k8s.io
+              resources:
+                - events
+              verbs:
+                - create
+                - patch
+                - update
             - apiGroups:
                 - storage.k8s.io
               resources:
@@ -1199,6 +1231,14 @@ spec:
                 - create
                 - update
                 - patch
+            - apiGroups:
+                - events.k8s.io
+              resources:
+                - events
+              verbs:
+                - create
+                - patch
+                - update
             - apiGroups:
                 - storage.k8s.io
               resources:
@@ -1443,6 +1483,7 @@ spec:
                     name: rook-config
                   - emptyDir: {}
                     name: default-config-dir
+                priorityClassName: system-cluster-critical
       permissions:
         - rules:
             - apiGroups:

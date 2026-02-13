@@ -96,6 +96,9 @@ function generate_csv() {
     # after all yq processing, pretty print the file
     yq --prettyPrint --inplace "$CSV_FILE_NAME"
 
+    # Add priorityClassName for the operator deployment
+    $yq '.spec.install.spec.deployments[0].spec.template.spec.priorityClassName = "system-cluster-critical"' --inplace "$CSV_FILE_NAME"
+
     # We don't need to include these files in csv as ocs-operator creates its own.
     rm -rf "../../build/csv/ceph/$PLATFORM/manifests/rook-ceph-operator-config_v1_configmap.yaml"
 
