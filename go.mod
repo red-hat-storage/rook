@@ -15,14 +15,14 @@ replace (
 require (
 	github.com/IBM/keyprotect-go-client v0.15.1
 	github.com/aws/aws-sdk-go v1.55.8
-	github.com/aws/aws-sdk-go-v2/config v1.32.7
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.7
+	github.com/aws/aws-sdk-go-v2/config v1.32.9
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.9
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.11
-	github.com/aws/smithy-go v1.24.0
+	github.com/aws/smithy-go v1.24.1
 	github.com/banzaicloud/k8s-objectmatcher v1.8.0
 	github.com/ceph/ceph-csi-operator/api v0.0.0-20260205113234-c2ca44439222
 	github.com/ceph/ceph-csi/api v0.0.0-20241216133622-88b7e0d6684f
-	github.com/ceph/go-ceph v0.37.0
+	github.com/ceph/go-ceph v0.38.0
 	github.com/coreos/pkg v0.0.0-20240122114842-bbd7aa9bf6fb
 	github.com/csi-addons/kubernetes-csi-addons v0.14.0
 	github.com/gemalto/kmip-go v0.1.0
@@ -47,14 +47,14 @@ require (
 	golang.org/x/sync v0.19.0
 	gopkg.in/ini.v1 v1.67.1
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.35.0
-	k8s.io/apiextensions-apiserver v0.35.0
-	k8s.io/apimachinery v0.35.0
-	k8s.io/cli-runtime v0.35.0
-	k8s.io/client-go v0.35.0
-	k8s.io/cloud-provider v0.35.0
+	k8s.io/api v0.35.1
+	k8s.io/apiextensions-apiserver v0.35.1
+	k8s.io/apimachinery v0.35.1
+	k8s.io/cli-runtime v0.35.1
+	k8s.io/client-go v0.35.1
+	k8s.io/cloud-provider v0.35.1
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
-	sigs.k8s.io/controller-runtime v0.23.0
+	sigs.k8s.io/controller-runtime v0.23.1
 	sigs.k8s.io/mcs-api v0.3.0
 	sigs.k8s.io/yaml v1.6.0
 )
@@ -78,8 +78,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.30.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.13 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.30.10 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.14 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
@@ -95,7 +95,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gemalto/flume v1.0.0 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.1 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.22.1 // indirect
 	github.com/go-openapi/jsonreference v0.21.2 // indirect
@@ -165,7 +165,7 @@ require (
 	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/time v0.13.0 // indirect
@@ -180,7 +180,7 @@ require (
 	sigs.k8s.io/kustomize/api v0.20.1 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.20.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v6 v6.3.2-0.20260122202528-d9cc6641c482 // indirect
 )
 
 exclude (
