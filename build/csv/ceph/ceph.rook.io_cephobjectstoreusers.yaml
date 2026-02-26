@@ -188,6 +188,17 @@ spec:
                       x-kubernetes-map-type: atomic
                   type: object
                 type: array
+              opMask:
+                items:
+                  enum:
+                  - read
+                  - write
+                  - delete
+                  type: string
+                maxItems: 3
+                minItems: 0
+                type: array
+                x-kubernetes-list-type: set
               quotas:
                 nullable: true
                 properties:
