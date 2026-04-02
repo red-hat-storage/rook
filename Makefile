@@ -47,7 +47,10 @@ SHELL := /usr/bin/env bash
 # Can be used or additional go build flags
 BUILDFLAGS ?=
 LDFLAGS ?=
-TAGS ?=
+# Required for go-ceph rgw/admin account APIs which are gated behind
+# the ceph_preview build tag. Can be removed when go-ceph promotes
+# the account API out of preview.
+TAGS ?= ceph_preview
 
 # turn on more verbose build
 V ?= 0
@@ -78,6 +81,8 @@ SERVER_PACKAGES = $(GO_PROJECT)/cmd/rook
 
 # tests packages that will be compiled into binaries
 TEST_PACKAGES = $(GO_PROJECT)/tests/integration
+
+CHECKMAKE=go run github.com/checkmake/checkmake/cmd/checkmake@v0.3.2
 
 # the root go project
 GO_PROJECT=github.com/rook/rook
@@ -118,8 +123,12 @@ build.version:
 	@mkdir -p $(OUTPUT_DIR)
 	@echo "$(VERSION)" > $(OUTPUT_DIR)/version
 
-build.common: export SKIP_GEN_CRD_DOCS=true
-build.common: build.version helm.build mod.check crds gen-rbac
+# This target exists only for setting the variable
+.PHONY: build.common.var
+build.common.var: export SKIP_GEN_CRD_DOCS=true
+
+.PHONY: build.common
+build.common:  build.common.var build.version helm.build mod.check crds gen-rbac
 	@$(MAKE) go.init
 	@$(MAKE) go.validate
 	@$(MAKE) -C images/ceph list-image
@@ -127,12 +136,15 @@ build.common: build.version helm.build mod.check crds gen-rbac
 do.build.platform.%:
 	@$(MAKE) PLATFORM=$* go.build
 
+.PHONY: do.build.parallel
 do.build.parallel: $(foreach p,$(PLATFORMS_TO_BUILD_FOR), do.build.platform.$(p))
 
+.PHONY: build
 build: build.common ## Only build for linux platform
 	@$(MAKE) go.build PLATFORM=linux_$(GOARCH)
 	@$(MAKE) -C images PLATFORM=linux_$(GOARCH)
 
+.PHONY: build.all
 build.all: build.common ## Build source code for all platforms.
 ifneq ($(GOHOSTARCH),amd64)
 	$(error cross platform image build only supported on amd64 host currently)
@@ -140,6 +152,7 @@ endif
 	@$(MAKE) do.build.parallel
 	@$(MAKE) -C images build.all
 
+.PHONY: install
 install: build.common
 	@$(MAKE) go.install
 
@@ -153,10 +166,12 @@ test: ## Runs unit tests.
 test-integration: ## Runs integration tests.
 	@$(MAKE) go.test.integration
 
+.PHONY: vet
 vet: ## Runs lint checks on go sources.
 	@$(MAKE) go.init
 	@$(MAKE) go.vet
 
+.PHONY: fmt
 fmt: $(YQ) ## Check formatting of go sources.
 	@$(MAKE) go.fmt
 
@@ -179,7 +194,6 @@ yamllint:
 	yamllint -c .yamllint deploy/examples/ --no-warnings
 
 .PHONY: helm.lint
-
 helm.lint: ## Check the helm charts
 	ct lint --charts=./deploy/charts/rook-ceph,./deploy/charts/rook-ceph-cluster --validate-yaml=false --validate-maintainers=false
 	helm -n rook-ceph template deploy/charts/rook-ceph > templated.yaml
@@ -197,27 +211,36 @@ pylint:
 
 .PHONY: checkmake
 checkmake:
-	checkmake Makefile
+	@$(CHECKMAKE) Makefile
+
 .PHONY: shellcheck
 shellcheck:
 	shellcheck --severity=warning --format=gcc --shell=bash $(shell find $(ROOT_DIR) -type f -name '*.sh') build/reset build/sed-in-place
 
+.PHONY: gen.codegen
 gen.codegen: codegen
+.PHONY: codegen
 codegen: ${CODE_GENERATOR} ## Run code generators.
 	@build/codegen/codegen.sh
 
+.PHONY: mod.check
 mod.check: go.mod.check ## Check if any go modules changed.
+
+.PHONY: mod.update
 mod.update: go.mod.update ## Update all go modules.
 
+.PHONY: clean
 clean: ## Remove all files that are created by building.
 	@$(MAKE) helm.dependency.clean
 	@$(MAKE) go.mod.clean
 	@$(MAKE) -C images clean
 	@rm -fr $(OUTPUT_DIR) $(WORK_DIR)
 
+.PHONY: distclean
 distclean: clean ## Remove all files that are created by building or configuring.
 	@rm -fr $(CACHE_DIR)
 
+.PHONY: prune
 prune: ## Prune cached artifacts.
 	@$(MAKE) -C images prune
 
@@ -235,21 +258,26 @@ csv-clean: ## Remove existing OLM files.
 	@$(MAKE) -C images/ceph csv-clean
 
 gen.crds: crds
+.PHONY: crds
 crds: $(CONTROLLER_GEN) $(YQ)
 	@echo Updating CRD manifests
 	@build/crds/build-crds.sh $(CONTROLLER_GEN) $(YQ)
 	@GOBIN=$(GOBIN) build/crds/generate-crd-docs.sh
 	@build/crds/validate-csv-crd-list.sh
 
+.PHONY: gen.rbac
 gen.rbac: gen-rbac
+.PHONY: gen-rbac
 gen-rbac: $(HELM) $(YQ) helm.dependency.build ## Generate RBAC from Helm charts
 	@# output only stdout to the file; stderr for debugging should keep going to stderr
 	HELM=$(HELM) ./build/rbac/gen-common.sh
 	HELM=$(HELM) ./build/rbac/gen-nfs-rbac.sh
 
+.PHONY: gen.docs
 gen.docs: docs ## generate docs
 .PHONY: docs
 docs: helm-docs ## generate documentation
+.PHONY: gen.helm-docs
 gen.helm-docs: helm-docs
 helm-docs: $(HELM_DOCS) ## Use helm-docs to generate documentation from helm charts
 	$(HELM_DOCS) -c deploy/charts/rook-ceph \
@@ -267,20 +295,20 @@ docs-preview: ## Preview the documentation through mkdocs
 docs-build:  ## Build the documentation to the `site/` directory
 	mkdocs build --strict
 
+.PHONY: gen.crd-docs
 gen.crd-docs: generate-docs-crds
 generate-docs-crds: ## Build the documentation for CRD
 	@GOBIN=$(GOBIN) build/crds/generate-crd-docs.sh
 
+.PHONY: generate
 generate: gen.codegen gen.crds gen.rbac gen.docs gen.crd-docs ## Update all generated files (code, manifests, charts, and docs).
 
 
-.PHONY: all build.common
-.PHONY: build build.all install test check vet fmt codegen gen.codegen gen.rbac gen.crds gen.crd-docs gen.docs gen.helm-docs generate mod.check clean distclean prune
 
 # ====================================================================================
 # Help
+# available options:
 define HELPTEXT
-available options:
     DEBUG        Whether to generate debug symbols. Default is 0.
     PLATFORM     The platform to build.
     SUITE        The test suite to run.
@@ -296,4 +324,5 @@ help: ## Show this help menu.
 	@echo ""
 	@grep --no-filename -E '^[a-zA-Z_%-. ]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@echo ""
+	@echo "available options:"
 	@echo "$$HELPTEXT"

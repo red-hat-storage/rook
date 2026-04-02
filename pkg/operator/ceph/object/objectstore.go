@@ -43,6 +43,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	validation "k8s.io/apimachinery/pkg/util/validation"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -72,6 +73,30 @@ var (
 
 	// An user with system privileges for dashboard service
 	DashboardUser = "dashboard-admin"
+
+	zonePoolNSSuffix = map[string]string{
+		"domain_root":         ".meta.root",
+		"control_pool":        ".control",
+		"gc_pool":             ".log.gc",
+		"lc_pool":             ".log.lc",
+		"log_pool":            ".log",
+		"intent_log_pool":     ".log.intent",
+		"usage_log_pool":      ".log.usage",
+		"roles_pool":          ".meta.roles",
+		"reshard_pool":        ".log.reshard",
+		"user_keys_pool":      ".meta.users.keys",
+		"user_email_pool":     ".meta.users.email",
+		"user_swift_pool":     ".meta.users.swift",
+		"user_uid_pool":       ".meta.users.uid",
+		"otp_pool":            ".otp",
+		"notif_pool":          ".log.notif",
+		"topics_pool":         ".meta.topics",        // introduced in Ceph v19
+		"account_pool":        ".meta.account",       // introduced in Ceph v19
+		"group_pool":          ".meta.group",         // introduced in Ceph v19
+		"restore_pool":        ".log.restore",        // introduced in Ceph v20
+		"bucket_logging_pool": ".log.bucket-logging", // introduced in Ceph v20
+		"dedup_pool":          ".dedup",              // introduced in Ceph v20
+	}
 )
 
 type idType struct {
@@ -701,7 +726,9 @@ func DeletePools(ctx *Context, lastStore bool, poolPrefix string) error {
 		return errors.Wrapf(err, "failed to list erasure code profiles for cluster %s", ctx.clusterInfo.Namespace)
 	}
 	// cleans up the EC profile for the data pool only. Metadata pools don't support EC (only replication is supported).
-	ecProfileName := cephclient.GetErasureCodeProfileForPool(ctx.Name)
+	// The profile name must match the full pool name used during creation (e.g., "<store>.rgw.buckets.data_ecprofile").
+	dataPool := poolName(poolPrefix, dataPoolName)
+	ecProfileName := cephclient.GetErasureCodeProfileForPool(dataPool)
 	for i := range erasureCodes {
 		if erasureCodes[i] == ecProfileName {
 			if err := cephclient.DeleteErasureCodeProfile(ctx.Context, ctx.clusterInfo, ecProfileName); err != nil {
@@ -909,32 +936,28 @@ func adjustZoneDefaultPools(objContext *Context, zone map[string]interface{}, sp
 	// add zone namespace to metadata pool to safely share accorss rgw instances or zones.
 	// in non-multisite case zone name equals to rgw instance name
 	defaultMetaPool = defaultMetaPool + ":" + name
-	zonePoolNSSuffix := map[string]string{
-		"domain_root":     ".meta.root",
-		"control_pool":    ".control",
-		"gc_pool":         ".log.gc",
-		"lc_pool":         ".log.lc",
-		"log_pool":        ".log",
-		"intent_log_pool": ".log.intent",
-		"usage_log_pool":  ".log.usage",
-		"roles_pool":      ".meta.roles",
-		"reshard_pool":    ".log.reshard",
-		"user_keys_pool":  ".meta.users.keys",
-		"user_email_pool": ".meta.users.email",
-		"user_swift_pool": ".meta.users.swift",
-		"user_uid_pool":   ".meta.users.uid",
-		"otp_pool":        ".otp",
-		"notif_pool":      ".log.notif",
-		"topics_pool":     ".meta.topics",  // introduced in Ceph v19
-		"account_pool":    ".meta.account", // introduced in Ceph v19
-		"group_pool":      ".meta.group",   // introduced in Ceph v19
-	}
 	for pool, nsSuffix := range zonePoolNSSuffix {
 		// replace rgw internal index pools with namespaced metadata pool
 		namespacedPool := defaultMetaPool + nsSuffix
+
+		// check if old pool has data BEFORE overwriting the zone property
+		prev, _ := zone[pool].(string)
+		if prev != "" && prev != namespacedPool {
+			empty, err := checkPoolIsEmpty(objContext, prev)
+			if err != nil {
+				return nil, fmt.Errorf("zone pool field %q: unable to check old pool %q: %w", pool, prev, err)
+			}
+			if !empty {
+				log.NamedWarning(objContext.NsName(), logger,
+					"zone pool field %q is being remapped from %q which still contains data", pool, prev)
+				continue
+			}
+		}
+
 		prev, err := updateObjProperty(zone, namespacedPool, pool)
 		if err != nil {
 			log.NamedInfo(objContext.NsName(), logger, "unable to apply rados namespace to shared pool: %v", err)
+			continue
 		}
 		if namespacedPool != prev {
 			log.NamedDebug(objContext.NsName(), logger, "update shared pool %s for zone %s: %s -> %s", pool, name, prev, namespacedPool)
@@ -957,6 +980,45 @@ func adjustZoneDefaultPools(objContext *Context, zone map[string]interface{}, sp
 	}
 
 	return zone, nil
+}
+
+func ZoneJsonPoolKeys() sets.Set[string] {
+	s := sets.New[string]()
+	for k := range zonePoolNSSuffix {
+		s.Insert(k)
+	}
+	return s
+}
+
+func checkPoolIsEmpty(objContext *Context, name string) (bool, error) {
+	poolName, namespace, isNamespaced := strings.Cut(name, ":")
+
+	poolExists, err := cephclient.IsPoolPresent(objContext.Context, objContext.clusterInfo, poolName)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if pool %q exists: %w", poolName, err)
+	}
+	if !poolExists {
+		return true, nil
+	}
+
+	if isNamespaced {
+		hasObjects, err := cephclient.RadosNamespaceHasObjects(objContext.Context, objContext.clusterInfo, poolName, namespace)
+		if err != nil {
+			return false, fmt.Errorf("failed to check pool %q namespace %q: %w", poolName, namespace, err)
+		}
+		return !hasObjects, nil
+	}
+
+	stats, err := cephclient.GetPoolStats(objContext.Context, objContext.clusterInfo)
+	if err != nil {
+		return false, fmt.Errorf("failed to get pool stats: %w", err)
+	}
+	for _, p := range stats.Pools {
+		if p.Name == poolName && p.Stats.Objects > 0 {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // configurePoolsConcurrently checks if operator pod resources are set or not
@@ -1184,20 +1246,25 @@ func enableRGWDashboard(context *Context) error {
 func disableRGWDashboard(context *Context) {
 	log.NamedInfo(context.NsName(), logger, "disabling the dashboard api user and secret key")
 
-	_, _, err := GetUser(context, DashboardUser)
-	if err != nil {
-		log.NamedInfo(context.NsName(), logger, "unable to fetch the user %q details from this objectstore %q", DashboardUser, context.Name)
-	} else {
-		log.NamedInfo(context.NsName(), logger, "deleting rgw dashboard user")
-		_, err = DeleteUser(context, DashboardUser)
+	// GetUser and DeleteUser are radosgw-admin non-raw commands that trigger full RGW
+	// initialization and auto-create pools. Guard them so we don't create ghost pools
+	// when called during object store deletion after pools are already removed.
+	if poolsExistForNonRawOps(context) {
+		_, _, err := GetUser(context, DashboardUser)
 		if err != nil {
-			log.NamedWarning(context.NsName(), logger, "failed to delete ceph user %q. %v", DashboardUser, err)
+			log.NamedInfo(context.NsName(), logger, "unable to fetch the user %q details from this objectstore %q", DashboardUser, context.Name)
+		} else {
+			log.NamedInfo(context.NsName(), logger, "deleting rgw dashboard user")
+			_, err = DeleteUser(context, DashboardUser)
+			if err != nil {
+				log.NamedWarning(context.NsName(), logger, "failed to delete ceph user %q. %v", DashboardUser, err)
+			}
 		}
 	}
 
 	args := []string{"dashboard", "reset-rgw-api-access-key"}
 	cephCmd := cephclient.NewCephCommand(context.Context, context.clusterInfo, args)
-	_, err = cephCmd.RunWithTimeout(exec.CephCommandsTimeout)
+	_, err := cephCmd.RunWithTimeout(exec.CephCommandsTimeout)
 	if err != nil {
 		log.NamedWarning(context.NsName(), logger, "failed to reset user accesskey for user %q. %v", DashboardUser, err)
 	}
@@ -1301,4 +1368,72 @@ func SetDefaultRealm(objContext *Context, realmName string) error {
 
 	log.NamedInfo(objContext.NsName(), logger, "successfully set realm %q as default", realmName+"/"+objContext.clusterInfo.Namespace)
 	return nil
+}
+
+// InitializeObjectStoreContext finds the CephObjectStore by storeName, verifies it
+// is initialized (has running RGW pods or is external), creates a multisite context,
+// and initializes the admin ops API client.
+func InitializeObjectStoreContext(
+	clusterdContext *clusterd.Context,
+	clusterInfo *cephclient.ClusterInfo,
+	k8sClient client.Client,
+	opManagerContext context.Context,
+	storeName string,
+	newAdminOpsCtxFunc func(*Context, *cephv1.ObjectStoreSpec) (*AdminOpsContext, error),
+) (*AdminOpsContext, *cephv1.CephObjectStore, error) {
+	store, err := getObjectStore(k8sClient, opManagerContext, storeName, clusterInfo.Namespace)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to get object store %q", storeName)
+	}
+
+	if !store.Spec.IsExternal() {
+		if err := checkRGWPodsRunning(k8sClient, opManagerContext, clusterInfo.Namespace, storeName); err != nil {
+			return nil, nil, errors.Wrapf(err, "failed to detect if object store %q is initialized", storeName)
+		}
+	}
+
+	objContext, err := NewMultisiteContext(clusterdContext, clusterInfo, store)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to create multisite context for object store %q", store.Name)
+	}
+
+	opsContext, err := newAdminOpsCtxFunc(objContext, &store.Spec)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to initialize rgw admin ops client api")
+	}
+
+	return opsContext, store, nil
+}
+
+func getObjectStore(k8sClient client.Client, ctx context.Context, storeName, namespace string) (*cephv1.CephObjectStore, error) {
+	store := &cephv1.CephObjectStore{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Name: storeName, Namespace: namespace}, store); err != nil {
+		return nil, errors.Wrapf(err, "could not find CephObjectStore %q", storeName)
+	}
+	return store, nil
+}
+
+func checkRGWPodsRunning(k8sClient client.Client, ctx context.Context, namespace, storeName string) error {
+	pods := &v1.PodList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingLabels(labelsForRgw(storeName)),
+	}
+
+	if err := k8sClient.List(ctx, pods, listOpts...); err != nil {
+		if kerrors.IsNotFound(err) {
+			return errors.Wrap(err, "no rgw pod could not be found")
+		}
+		return errors.Wrap(err, "failed to list rgw pods")
+	}
+
+	if len(pods.Items) > 0 {
+		return nil
+	}
+
+	return errors.New("no rgw pod found")
+}
+
+func labelsForRgw(name string) map[string]string {
+	return map[string]string{"rgw": name, k8sutil.AppAttr: AppName}
 }

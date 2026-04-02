@@ -365,6 +365,7 @@ spec:
                             - dataPoolName
                             - name
                             type: object
+                          maxItems: 10
                           type: array
                       required:
                       - dataPoolName
