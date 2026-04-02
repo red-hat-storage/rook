@@ -21,6 +21,12 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Required for go-ceph rgw/admin account APIs which are gated behind
+  # the ceph_preview build tag. Can be removed when go-ceph promotes
+  # the account API out of preview.
+  GOFLAGS: "-tags=ceph_preview"
+
 jobs:
   TestCephHelmSuite:
     if: ${{ github.event_name == 'pull_request' && github.ref != 'refs/heads/master' && !contains(github.event.pull_request.labels.*.name, 'skip-ci') }}
@@ -37,7 +43,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Helm
-        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
         with:
           version: ${{ matrix.helm-version }}
 

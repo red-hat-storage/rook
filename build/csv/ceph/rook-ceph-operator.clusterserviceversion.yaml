@@ -532,6 +532,7 @@ spec:
                 - cephnvmeofgateways
                 - cephobjectstores
                 - cephobjectstoreusers
+                - cephobjectstoreaccounts
                 - cephobjectrealms
                 - cephobjectzonegroups
                 - cephobjectzones
@@ -558,6 +559,7 @@ spec:
                 - cephnvmeofgateways/status
                 - cephobjectstores/status
                 - cephobjectstoreusers/status
+                - cephobjectstoreaccounts/status
                 - cephobjectrealms/status
                 - cephobjectzonegroups/status
                 - cephobjectzones/status
@@ -580,6 +582,7 @@ spec:
                 - cephnvmeofgateways/finalizers
                 - cephobjectstores/finalizers
                 - cephobjectstoreusers/finalizers
+                - cephobjectstoreaccounts/finalizers
                 - cephobjectrealms/finalizers
                 - cephobjectzonegroups/finalizers
                 - cephobjectzones/finalizers

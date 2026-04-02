@@ -2714,6 +2714,49 @@ string
 </tr>
 </tbody>
 </table>
+<h3 id="ceph.rook.io/v1.AccountRootUserSpec">AccountRootUserSpec
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ObjectStoreAccountSpec">ObjectStoreAccountSpec</a>)
+</p>
+<div>
+<p>AccountRootUserSpec defines the configuration for the account root user</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>skipCreate</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>SkipCreate when set to true, the root user will not be created for this account.
+This can be useful if the user wants to manually manage the root user outside of Rook.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>displayName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DisplayName for the root user</p>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="ceph.rook.io/v1.AdditionalVolumeMount">AdditionalVolumeMount
 </h3>
 <div>
@@ -4032,6 +4075,18 @@ int64
 </tr>
 <tr>
 <td>
+<code>port</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Port is the listening port of the ceph-exporter process. Defaults to 9926.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>hostNetwork</code><br/>
 <em>
 bool
@@ -4647,6 +4702,60 @@ Allow any string so that over-specified legacy clusters do not break on CRD upda
 </tr><tr><td><p>&#34;public&#34;</p></td>
 <td></td>
 </tr></tbody>
+</table>
+<h3 id="ceph.rook.io/v1.CephObjectStoreAccount">CephObjectStoreAccount
+</h3>
+<div>
+<p>CephObjectStoreAccount represent the RGW user account</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>metadata</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#objectmeta-v1-meta">
+Kubernetes meta/v1.ObjectMeta
+</a>
+</em>
+</td>
+<td>
+Refer to the Kubernetes API documentation for the fields of the
+<code>metadata</code> field.
+</td>
+</tr>
+<tr>
+<td>
+<code>spec,omitzero</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.ObjectStoreAccountSpec">
+ObjectStoreAccountSpec
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>status,omitzero</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.ObjectStoreAccountStatus">
+ObjectStoreAccountStatus
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+</td>
+</tr>
+</tbody>
 </table>
 <h3 id="ceph.rook.io/v1.CephStatus">CephStatus
 </h3>
@@ -7883,6 +7992,46 @@ int
 </tr>
 </tbody>
 </table>
+<h3 id="ceph.rook.io/v1.FloatingMonSpec">FloatingMonSpec
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.MonSpec">MonSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>name</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name is the identifier for the floating monitor (recommended &ldquo;c&rdquo;)</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>configmapName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>ConfigMapName is the name of the ConfigMap containing key-value pairs
+of template variables for the floating mon deployment.</p>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="ceph.rook.io/v1.GaneshaRADOSSpec">GaneshaRADOSSpec
 </h3>
 <p>
@@ -9084,7 +9233,7 @@ int
 <h3 id="ceph.rook.io/v1.Labels">Labels
 (<code>map[string]string</code> alias)</h3>
 <p>
-(<em>Appears on:</em><a href="#ceph.rook.io/v1.FilesystemMirroringSpec">FilesystemMirroringSpec</a>, <a href="#ceph.rook.io/v1.GaneshaServerSpec">GaneshaServerSpec</a>, <a href="#ceph.rook.io/v1.GatewaySpec">GatewaySpec</a>, <a href="#ceph.rook.io/v1.MetadataServerSpec">MetadataServerSpec</a>, <a href="#ceph.rook.io/v1.NVMeOFGatewaySpec">NVMeOFGatewaySpec</a>, <a href="#ceph.rook.io/v1.RBDMirroringSpec">RBDMirroringSpec</a>)
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.FilesystemMirroringSpec">FilesystemMirroringSpec</a>, <a href="#ceph.rook.io/v1.GaneshaServerSpec">GaneshaServerSpec</a>, <a href="#ceph.rook.io/v1.GatewaySpec">GatewaySpec</a>, <a href="#ceph.rook.io/v1.MetadataServerSpec">MetadataServerSpec</a>, <a href="#ceph.rook.io/v1.NVMeOFGatewaySpec">NVMeOFGatewaySpec</a>, <a href="#ceph.rook.io/v1.RBDMirroringSpec">RBDMirroringSpec</a>, <a href="#ceph.rook.io/v1.RGWServiceSpec">RGWServiceSpec</a>)
 </p>
 <div>
 <p>Labels are label for a given daemons</p>
@@ -10127,6 +10276,22 @@ If set, Rook will not remove mons with given IDs from quorum.
 This parameter is used only for local Rook cluster running in normal mode
 and will be ignored if external or stretched mode is used.
 leading</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>floatingMon,omitempty,omitzero</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.FloatingMonSpec">
+FloatingMonSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>FloatingMon is the specification of the floating monitor for two-node clusters.
+The floating mon is backed by a synchronously replicated store (e.g. DRBD)
+and can be scheduled on either node. Template variables are supplied via a ConfigMap.</p>
 </td>
 </tr>
 </tbody>
@@ -11623,6 +11788,140 @@ If spec.sharedPools are also empty, then RGW pools (spec.dataPool and spec.metad
 </p>
 <div>
 </div>
+<h3 id="ceph.rook.io/v1.ObjectStoreAccountSpec">ObjectStoreAccountSpec
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephObjectStoreAccount">CephObjectStoreAccount</a>)
+</p>
+<div>
+<p>ObjectStoreAccountSpec represent the spec of a RGW Account</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>store</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Store is the CephObjectStore the account will be associated with</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>name</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Name is the desired display name of the RGW account if different from the CephObjectStoreAccount CR name.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>accountID</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AccountID uniquely identifies an account and resource ownership. Format should be RGW followed by 17 digits
+(e.g., RGW00889737169837717). If not specified, the ID will be automatically generated.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>rootUser</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.AccountRootUserSpec">
+AccountRootUserSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RootUser configures the root user for the account. The root user is created by default
+and has default permissions across all account resources.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ceph.rook.io/v1.ObjectStoreAccountStatus">ObjectStoreAccountStatus
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephObjectStoreAccount">CephObjectStoreAccount</a>)
+</p>
+<div>
+<p>ObjectStoreAccountStatus represents the status of a CephObjectStoreAccount resource</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>phase</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+</td>
+</tr>
+<tr>
+<td>
+<code>accountID</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AccountID associated with the RGW user account</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>rootAccountSecretName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RootAccountSecretName is the name of the Kubernetes secret containing the root user&rsquo;s access credentials</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>observedGeneration</code><br/>
+<em>
+int64
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ObservedGeneration is the latest generation observed by the controller.</p>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="ceph.rook.io/v1.ObjectStoreHostingSpec">ObjectStoreHostingSpec
 </h3>
 <p>
@@ -13044,7 +13343,8 @@ string
 </em>
 </td>
 <td>
-<p>DataPoolName is the data pool used to store ObjectStore objects data.</p>
+<p>DataPoolName is the data pool used to store ObjectStore objects data.
+WARNING: Do not change this field after creation. Pool names are used in RADOS namespaces and renaming leads to data loss.</p>
 </td>
 </tr>
 </tbody>
@@ -13096,7 +13396,8 @@ string
 </em>
 </td>
 <td>
-<p>The metadata pool used to store ObjectStore bucket index.</p>
+<p>The metadata pool used to store ObjectStore bucket index.
+WARNING: Do not change this field after creation. Pool names are used in RADOS namespaces and renaming leads to data loss.</p>
 </td>
 </tr>
 <tr>
@@ -13107,7 +13408,8 @@ string
 </em>
 </td>
 <td>
-<p>The data pool used to store ObjectStore objects data.</p>
+<p>The data pool used to store ObjectStore objects data.
+WARNING: Do not change this field after creation. Pool names are used in RADOS namespaces and renaming leads to data loss.</p>
 </td>
 </tr>
 <tr>
@@ -13120,7 +13422,8 @@ string
 <td>
 <em>(Optional)</em>
 <p>The data pool used to store ObjectStore data that cannot use erasure coding (ex: multi-part uploads).
-If dataPoolName is not erasure coded, then there is no need for dataNonECPoolName.</p>
+If dataPoolName is not erasure coded, then there is no need for dataNonECPoolName.
+WARNING: Do not change this field after creation. Pool names are used in RADOS namespaces and renaming leads to data loss.</p>
 </td>
 </tr>
 <tr>
@@ -13708,6 +14011,20 @@ Annotations
 <p>The annotations-related configuration to add/set on each rgw service.
 nullable
 optional</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>labels</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.Labels">
+Labels
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The labels-related configuration to add/set on each rgw service.</p>
 </td>
 </tr>
 </tbody>

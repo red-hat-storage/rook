@@ -508,6 +508,12 @@ type CephExporterSpec struct {
 	// +kubebuilder:default=5
 	StatsPeriodSeconds int64 `json:"statsPeriodSeconds,omitempty"`
 
+	// Port is the listening port of the ceph-exporter process. Defaults to 9926.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	Port int32 `json:"port,omitempty"`
+
 	// Whether host networking is enabled for CephExporter. If not set, the network settings from CephCluster.spec.networking will be applied.
 	// +nullable
 	// +optional
@@ -797,6 +803,29 @@ type MonSpec struct {
 	// leading
 	// +optional
 	ExternalMonIDs []string `json:"externalMonIDs,omitempty"`
+
+	// FloatingMon is the specification of the floating monitor for two-node clusters.
+	// The floating mon is backed by a synchronously replicated store (e.g. DRBD)
+	// and can be scheduled on either node. Template variables are supplied via a ConfigMap.
+	// +optional
+	FloatingMon FloatingMonSpec `json:"floatingMon,omitempty,omitzero"`
+}
+
+// +kubebuilder:validation:MinProperties=2
+type FloatingMonSpec struct {
+	// Name is the identifier for the floating monitor (recommended "c")
+	// +kubebuilder:validation:Pattern=`^[a-z]$`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=1
+	// +required
+	Name string `json:"name,omitempty"`
+
+	// ConfigMapName is the name of the ConfigMap containing key-value pairs
+	// of template variables for the floating mon deployment.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +required
+	ConfigMapName string `json:"configmapName,omitempty"`
 }
 
 // VolumeClaimTemplate is a simplified version of K8s corev1's PVC. It has no type meta or status.
@@ -1809,23 +1838,27 @@ type PoolPlacementSpec struct {
 	Default bool `json:"default"`
 
 	// The metadata pool used to store ObjectStore bucket index.
+	// WARNING: Do not change this field after creation. Pool names are used in RADOS namespaces and renaming leads to data loss.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	MetadataPoolName string `json:"metadataPoolName"`
 
 	// The data pool used to store ObjectStore objects data.
+	// WARNING: Do not change this field after creation. Pool names are used in RADOS namespaces and renaming leads to data loss.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	DataPoolName string `json:"dataPoolName"`
 
 	// The data pool used to store ObjectStore data that cannot use erasure coding (ex: multi-part uploads).
 	// If dataPoolName is not erasure coded, then there is no need for dataNonECPoolName.
+	// WARNING: Do not change this field after creation. Pool names are used in RADOS namespaces and renaming leads to data loss.
 	// +optional
 	DataNonECPoolName string `json:"dataNonECPoolName,omitempty"`
 
 	// StorageClasses can be selected by user to override dataPoolName during object creation.
 	// Each placement has default STANDARD StorageClass pointing to dataPoolName.
 	// This list allows defining additional StorageClasses on top of default STANDARD storage class.
+	// +kubebuilder:validation:MaxItems=10
 	// +optional
 	StorageClasses []PlacementStorageClassSpec `json:"storageClasses,omitempty"`
 }
@@ -1842,6 +1875,7 @@ type PlacementStorageClassSpec struct {
 	Name string `json:"name"`
 
 	// DataPoolName is the data pool used to store ObjectStore objects data.
+	// WARNING: Do not change this field after creation. Pool names are used in RADOS namespaces and renaming leads to data loss.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	DataPoolName string `json:"dataPoolName"`
@@ -2729,6 +2763,95 @@ type RGWServiceSpec struct {
 	// nullable
 	// optional
 	Annotations Annotations `json:"annotations,omitempty"`
+	// The labels-related configuration to add/set on each rgw service.
+	// +optional
+	Labels Labels `json:"labels,omitempty"`
+}
+
+// +genclient
+// +genclient:noStatus
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:subresource:status
+// CephObjectStoreAccount represent the RGW user account
+type CephObjectStoreAccount struct {
+	metav1.TypeMeta `json:",inline"`
+	// +required
+	metav1.ObjectMeta `json:"metadata"`
+	// +required
+	Spec ObjectStoreAccountSpec `json:"spec,omitzero"`
+	// +optional
+	Status *ObjectStoreAccountStatus `json:"status,omitzero"` //nolint:kubeapilinter // MinProperties cannot be applied to a struct pointer field
+}
+
+// ObjectStoreAccountSpec represent the spec of a RGW Account
+type ObjectStoreAccountSpec struct {
+	// Store is the CephObjectStore the account will be associated with
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:XValidation:message="store is immutable",rule="self == oldSelf"
+	Store string `json:"store,omitempty"`
+	// Name is the desired display name of the RGW account if different from the CephObjectStoreAccount CR name.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9 ._-]+$`
+	Name string `json:"name,omitempty"`
+	// AccountID uniquely identifies an account and resource ownership. Format should be RGW followed by 17 digits
+	// (e.g., RGW00889737169837717). If not specified, the ID will be automatically generated.
+	// +optional
+	// +kubebuilder:validation:MinLength=20
+	// +kubebuilder:validation:MaxLength=20
+	// +kubebuilder:validation:Pattern=`^RGW\d{17}$`
+	// +kubebuilder:validation:XValidation:message="accountID is immutable",rule="self == oldSelf"
+	AccountID string `json:"accountID,omitempty"`
+	// RootUser configures the root user for the account. The root user is created by default
+	// and has default permissions across all account resources.
+	// +optional
+	RootUser *AccountRootUserSpec `json:"rootUser,omitempty"` //nolint:kubeapilinter // MinProperties cannot be applied to a struct pointer field
+}
+
+// AccountRootUserSpec defines the configuration for the account root user
+type AccountRootUserSpec struct {
+	// SkipCreate when set to true, the root user will not be created for this account.
+	// This can be useful if the user wants to manually manage the root user outside of Rook.
+	// +optional
+	SkipCreate *bool `json:"skipCreate,omitempty"`
+	// DisplayName for the root user
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^[\w+=,.@-]+$`
+	DisplayName string `json:"displayName,omitempty"`
+}
+
+// ObjectStoreAccountStatus represents the status of a CephObjectStoreAccount resource
+type ObjectStoreAccountStatus struct {
+	// +optional
+	Phase string `json:"phase,omitempty"` //nolint:kubeapilinter // Conditions are preferred over Phase
+	// +optional
+	// AccountID associated with the RGW user account
+	// +kubebuilder:validation:MinLength=20
+	// +kubebuilder:validation:MaxLength=20
+	AccountID string `json:"accountID,omitempty"`
+	// RootAccountSecretName is the name of the Kubernetes secret containing the root user's access credentials
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	RootAccountSecretName string `json:"rootAccountSecretName,omitempty"`
+	// ObservedGeneration is the latest generation observed by the controller.
+	// +optional
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
+}
+
+// CephObjectStoreAccountList represents the Ceph object store accounts
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type CephObjectStoreAccountList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+	Items           []CephObjectStoreAccount `json:"items"`
 }
 
 // +genclient

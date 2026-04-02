@@ -34,8 +34,11 @@ import (
 	"github.com/rook/rook/pkg/operator/k8sutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -51,16 +54,8 @@ const (
 	exporterKeyName                  = "rook-ceph-exporter-keyring"
 )
 
-var MinVersionForCephExporter = cephver.CephVersion{Major: 18, Minor: 0, Extra: 0}
-
 // createOrUpdateCephExporter is a wrapper around controllerutil.CreateOrUpdate
 func (r *ReconcileNode) createOrUpdateCephExporter(node corev1.Node, tolerations []corev1.Toleration, cephCluster cephv1.CephCluster, cephVersion *cephver.CephVersion) (controllerutil.OperationResult, error) {
-	// CephVersion change is done temporarily, as some regression was detected in Ceph version 17.2.6 which is summarised here https://github.com/ceph/ceph/pull/50718#issuecomment-1505608312.
-	// Thus, disabling ceph-exporter for now until all the regression are fixed.
-	if !cephVersion.IsAtLeast(MinVersionForCephExporter) {
-		log.NamespacedInfo(cephCluster.Namespace, logger, "Skipping exporter reconcile on ceph version %q", cephVersion.String())
-		return controllerutil.OperationResultNone, nil
-	}
 	if cephCluster.Spec.Monitoring.MetricsDisabled {
 		log.NamespacedInfo(cephCluster.Namespace, logger, "Skipping exporter reconcile since monitoring.metricsDisabled is true")
 		return controllerutil.OperationResultNone, nil
@@ -178,6 +173,13 @@ func getCephExporterChownInitContainer(cephCluster cephv1.CephCluster) corev1.Co
 	)
 }
 
+func getExporterMetricsPort(cephCluster cephv1.CephCluster) int32 {
+	if cephCluster.Spec.Monitoring.Exporter != nil && cephCluster.Spec.Monitoring.Exporter.Port != 0 {
+		return cephCluster.Spec.Monitoring.Exporter.Port
+	}
+	return int32(DefaultMetricsPort)
+}
+
 func getCephExporterDaemonContainer(cephCluster cephv1.CephCluster, cephVersion cephver.CephVersion) corev1.Container {
 	cephImage := cephCluster.Spec.CephVersion.Image
 	dataPathMap := config.NewDatalessDaemonDataPathMap(cephCluster.GetNamespace(), cephCluster.Spec.DataDirHostPath)
@@ -187,6 +189,7 @@ func getCephExporterDaemonContainer(cephCluster cephv1.CephCluster, cephVersion 
 	exporterEnvVar := generateExporterEnvVar()
 	envVars := append(controller.DaemonEnvVars(&cephCluster.Spec), exporterEnvVar)
 
+	metricsPort := getExporterMetricsPort(cephCluster)
 	prioLimit, statsPeriod := defaultPrioLimit, defaultStatsPeriod
 	if cephCluster.Spec.Monitoring.Exporter != nil {
 		prioLimit = strconv.Itoa(int(cephCluster.Spec.Monitoring.Exporter.PerfCountersPrioLimit))
@@ -194,7 +197,7 @@ func getCephExporterDaemonContainer(cephCluster cephv1.CephCluster, cephVersion 
 	}
 	args := []string{
 		"--sock-dir", sockDir,
-		"--port", strconv.Itoa(int(DefaultMetricsPort)),
+		"--port", strconv.Itoa(int(metricsPort)),
 		"--prio-limit", prioLimit,
 		"--stats-period", statsPeriod,
 	}
@@ -206,7 +209,7 @@ func getCephExporterDaemonContainer(cephCluster cephv1.CephCluster, cephVersion 
 
 	containerPort := corev1.ContainerPort{
 		Name:          "http-metrics",
-		ContainerPort: int32(DefaultMetricsPort),
+		ContainerPort: metricsPort,
 		Protocol:      corev1.ProtocolTCP,
 	}
 
@@ -241,7 +244,7 @@ func MakeCephExporterMetricsService(cephCluster cephv1.CephCluster, servicePortM
 			Ports: []corev1.ServicePort{
 				{
 					Name:     servicePortMetricName,
-					Port:     int32(DefaultMetricsPort),
+					Port:     getExporterMetricsPort(cephCluster),
 					Protocol: corev1.ProtocolTCP,
 				},
 			},
@@ -300,11 +303,47 @@ func applyCephExporterLabels(cephCluster cephv1.CephCluster, serviceMonitor *mon
 	}
 }
 
+// deleteOrphanedExporterDeployments lists all ceph-exporter deployments in the given namespace
+// and deletes any whose target node (stored in the node_name label) no longer exists in the cluster.
+// This cleans up stale Pending exporter pods that were left behind when a node was removed while
+// the operator was not running.
+func (r *ReconcileNode) deleteOrphanedExporterDeployments(namespace string) error {
+	deploymentList := &appsv1.DeploymentList{}
+	err := r.client.List(r.opManagerContext, deploymentList,
+		client.MatchingLabels{k8sutil.AppAttr: cephExporterAppName},
+		client.InNamespace(namespace),
+	)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list exporter deployments in namespace %q", namespace)
+	}
+
+	for i := range deploymentList.Items {
+		d := deploymentList.Items[i]
+		nodeName, ok := d.Labels[NodeNameLabel]
+		if !ok {
+			continue
+		}
+		node := &corev1.Node{}
+		err := r.client.Get(r.opManagerContext, types.NamespacedName{Name: nodeName}, node)
+		if err != nil {
+			if kerrors.IsNotFound(err) {
+				log.NamespacedInfo(namespace, logger, "deleting orphaned ceph-exporter deployment %q: target node %q no longer exists", d.Name, nodeName)
+				if delErr := r.deleteDeployment(d); delErr != nil {
+					return errors.Wrapf(delErr, "failed to delete orphaned exporter deployment %q in namespace %q", d.Name, namespace)
+				}
+			} else {
+				return errors.Wrapf(err, "failed to check existence of node %q for exporter deployment %q", nodeName, d.Name)
+			}
+		}
+	}
+	return nil
+}
+
 func applyPrometheusAnnotations(cephCluster cephv1.CephCluster, objectMeta *metav1.ObjectMeta) {
 	if len(cephv1.GetCephExporterAnnotations(cephCluster.Spec.Annotations)) == 0 {
 		t := cephv1.Annotations{
 			"prometheus.io/scrape": "true",
-			"prometheus.io/port":   strconv.Itoa(int(DefaultMetricsPort)),
+			"prometheus.io/port":   strconv.Itoa(int(getExporterMetricsPort(cephCluster))),
 		}
 
 		t.ApplyToObjectMeta(objectMeta)
