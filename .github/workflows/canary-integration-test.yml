@@ -7,10 +7,6 @@ on:
         description: "JSON list of Ceph images for creating Ceph cluster"
         default: '["quay.io/ceph/ceph:v19"]'
         type: string
-      kubernetes-version:
-        description: kubernetes version to use for the workflow
-        default: '["v1.35.0"]'
-        type: string
 
 defaults:
   run:
@@ -27,7 +23,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -41,9 +36,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "deploy/examples/cluster-test.yaml" "${{ matrix.ceph-image }}"
@@ -464,7 +457,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -478,9 +470,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "deploy/examples/cluster-test.yaml" "${{ matrix.ceph-image }}"
@@ -550,7 +540,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -563,9 +552,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "deploy/examples/cluster-test.yaml" "${{ matrix.ceph-image }}"
@@ -609,7 +596,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -623,9 +609,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "deploy/examples/cluster-test.yaml" "${{ matrix.ceph-image }}"
@@ -669,7 +653,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -683,9 +666,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "deploy/examples/cluster-test.yaml" "${{ matrix.ceph-image }}"
@@ -735,7 +716,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -749,9 +729,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "deploy/examples/cluster-test.yaml" "${{ matrix.ceph-image }}"
@@ -795,7 +773,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -809,9 +786,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "deploy/examples/cluster-test.yaml" "${{ matrix.ceph-image }}"
@@ -860,7 +835,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -874,9 +848,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "tests/manifests/test-cluster-on-pvc-encrypted.yaml" "${{ matrix.ceph-image }}"
@@ -974,7 +946,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -988,9 +959,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "tests/manifests/test-cluster-on-pvc-encrypted.yaml" "${{ matrix.ceph-image }}"
@@ -1035,7 +1004,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -1049,9 +1017,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "tests/manifests/test-cluster-on-pvc-encrypted.yaml" "${{ matrix.ceph-image }}"
@@ -1107,7 +1073,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -1121,9 +1086,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "tests/manifests/test-cluster-on-pvc-encrypted.yaml" "${{ matrix.ceph-image }}"
@@ -1213,7 +1176,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -1227,9 +1189,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "tests/manifests/test-cluster-on-pvc-encrypted.yaml" "${{ matrix.ceph-image }}"
@@ -1276,7 +1236,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -1290,9 +1249,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "tests/manifests/test-cluster-on-pvc-encrypted.yaml" "${{ matrix.ceph-image }}"
@@ -1349,7 +1306,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -1363,9 +1319,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "tests/manifests/test-cluster-on-pvc-encrypted.yaml" "${{ matrix.ceph-image }}"
@@ -1447,7 +1401,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -1461,9 +1414,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "tests/manifests/test-cluster-on-pvc-encrypted.yaml" "${{ matrix.ceph-image }}"
@@ -1525,7 +1476,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -1539,9 +1489,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "tests/manifests/test-cluster-on-pvc-encrypted.yaml" "${{ matrix.ceph-image }}"
@@ -1591,7 +1539,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -1605,9 +1552,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "deploy/examples/cluster-test.yaml" "${{ matrix.ceph-image }}"
@@ -1882,7 +1827,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -1896,9 +1840,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "deploy/examples/cluster-test.yaml" "${{ matrix.ceph-image }}"
@@ -1987,7 +1929,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
@@ -2011,8 +1952,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           artifact-name: ${{ github.job }}-${{ matrix.ceph-image }}
           ceph-image: ${{ matrix.ceph-image }}
-          kubernetes-version: ${{ matrix.kubernetes-version }}
-
       - name: consider (post-job) debugging
         uses: ./.github/workflows/upterm_debug
         with:
@@ -2024,7 +1963,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -2038,9 +1976,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image "deploy/examples/cluster-multus-test.yaml" "${{ matrix.ceph-image }}"
@@ -2115,7 +2051,6 @@ jobs:
     strategy:
       matrix:
         ceph-image: ${{ fromJson(inputs.ceph_images) }}
-        kubernetes-version: ${{ fromJson(inputs.kubernetes-version) }}
     steps:
       - name: checkout
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
@@ -2129,9 +2064,7 @@ jobs:
           debug-ci: ${{ contains(github.event.pull_request.labels.*.name, 'debug-ci') }}
 
       - name: setup cluster resources
-        uses: ./.github/workflows/integration-test-setup-cluster-resources
-        with:
-          kubernetes-version: ${{ matrix.kubernetes-version }}
+        uses: ./.github/workflows/canary-test-config
 
       - name: set Ceph version in CephCluster manifest
         run: tests/scripts/github-action-helper.sh replace_ceph_image  "deploy/examples/cluster-test.yaml" "${{ matrix.ceph-image }}"

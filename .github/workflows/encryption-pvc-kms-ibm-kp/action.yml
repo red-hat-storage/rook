@@ -13,9 +13,6 @@ inputs:
   ceph-image:
     description: the name of ceph image
     required: true
-  kubernetes-version:
-    description: kubernetes version to use for the workflow
-    required: true
 
 runs:
   using: "composite"
@@ -29,9 +26,7 @@ runs:
       run: echo "IBM_KP_SERVICE_INSTANCE_ID and IBM_KP_SERVICE_API_KEY must be set in the environment" && exit 0
 
     - name: setup cluster resources
-      uses: ./.github/workflows/integration-test-setup-cluster-resources
-      with:
-        kubernetes-version: ${{ inputs.kubernetes-version }}
+      uses: ./.github/workflows/canary-test-config
 
     - name: set Ceph version in CephCluster manifest
       shell: bash --noprofile --norc -eo pipefail -x {0}
