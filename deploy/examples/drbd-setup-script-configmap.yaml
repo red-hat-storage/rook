@@ -1,0 +1,9 @@
+apiVersion: v1
+data:
+  # The below field will contain the "drbd-setup.sh" script.
+  # Use the updated configmap with the base64 encoded script value stored under
+  # build/csv/ceph directory (populated by build/csv/csv-gen.sh).
+  script: ""
+kind: ConfigMap
+metadata:
+  name: rook-ceph-drbd-setup-script

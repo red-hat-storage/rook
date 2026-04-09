@@ -16,6 +16,8 @@ OPERATOR_SDK_VERSION="v1.25.0"
 CSV_FILE_NAME="../../build/csv/ceph/$PLATFORM/manifests/rook-ceph-operator.clusterserviceversion.yaml"
 EXTERNAL_CLUSTER_SCRIPT_CONFIGMAP="../../build/csv/ceph/$PLATFORM/manifests/rook-ceph-external-cluster-script-config_v1_configmap.yaml"
 CEPH_EXTERNAL_SCRIPT_FILE="../../deploy/examples/create-external-cluster-resources.py"
+DRBD_SETUP_SCRIPT_CONFIGMAP="../../build/csv/ceph/$PLATFORM/manifests/rook-ceph-drbd-setup-script_v1_configmap.yaml"
+DRBD_SETUP_SCRIPT_FILE="../../deploy/examples/drbd-setup.sh"
 ASSEMBLE_FILE_COMMON="../../deploy/olm/assemble/metadata-common.yaml"
 ASSEMBLE_FILE_OCP="../../deploy/olm/assemble/metadata-ocp.yaml"
 
@@ -104,6 +106,27 @@ function generate_csv() {
 
     # Update the "create-external-resources.py" script value in external-cluster-script-configmap
     yq eval-all ".data.script = (load_str(\"$CEPH_EXTERNAL_SCRIPT_FILE\") | @base64)" --inplace "$EXTERNAL_CLUSTER_SCRIPT_CONFIGMAP"
+
+    # When running "make gen-csv" (this script), you may set DRBD_IMAGE and/or DRBD_VERSION in the
+    # environment to replace the defaults in deploy/examples/drbd-setup.sh in the embedded ConfigMap.
+    drbd_tmp="$(mktemp)"
+    if [[ -n "${DRBD_IMAGE:-}" || -n "${DRBD_VERSION:-}" ]]; then
+      local _drbd_img_line_re='^DRBD_IMAGE="\$\{DRBD_IMAGE:-([^}]+)\}"(.*)$'
+      local _drbd_ver_line_re='^DRBD_VERSION="\$\{DRBD_VERSION:-([^}]+)\}"(.*)$'
+      local _drbd_line
+      while IFS= read -r _drbd_line || [[ -n "${_drbd_line}" ]]; do
+        if [[ -n "${DRBD_IMAGE:-}" && ${_drbd_line} =~ ${_drbd_img_line_re} ]]; then
+          _drbd_line="DRBD_IMAGE=\"\${DRBD_IMAGE:-${DRBD_IMAGE}}\""${BASH_REMATCH[2]}
+        elif [[ -n "${DRBD_VERSION:-}" && ${_drbd_line} =~ ${_drbd_ver_line_re} ]]; then
+          _drbd_line="DRBD_VERSION=\"\${DRBD_VERSION:-${DRBD_VERSION}}\""${BASH_REMATCH[2]}
+        fi
+        printf '%s\n' "${_drbd_line}"
+      done <"${DRBD_SETUP_SCRIPT_FILE}" >"${drbd_tmp}"
+    else
+      cp "${DRBD_SETUP_SCRIPT_FILE}" "${drbd_tmp}"
+    fi
+    yq eval-all ".data.script = (load_str(\"$drbd_tmp\") | @base64)" --inplace "$DRBD_SETUP_SCRIPT_CONFIGMAP"
+    rm -f "$drbd_tmp"
 
     # Darwin systems have Unix sed, which needs a suffix for the `-i` arg. Use `.bak` and then
     # delete the `.bak` file afterwards. This also works on GNU sed used by most Linux distros.
