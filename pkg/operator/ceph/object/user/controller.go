@@ -21,8 +21,10 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"slices"
 	"sort"
+	"time"
 
 	"github.com/ceph/go-ceph/rgw/admin"
 	"github.com/coreos/pkg/capnslog"
@@ -59,6 +61,10 @@ const (
 	appName        = object.AppName
 	controllerName = "ceph-object-store-user-controller"
 )
+
+// iamDisplayNamePattern is the pattern that must match for account users.
+// Account users are referenced by display name in IAM policy ARNs, so the name must be IAM-compatible.
+var iamDisplayNamePattern = regexp.MustCompile(`^[\w+=,.@-]+$`)
 
 // newMultisiteAdminOpsCtxFunc help us mocking the admin ops API client in unit test
 var newMultisiteAdminOpsCtxFunc = object.NewMultisiteAdminOpsContext
@@ -358,6 +364,15 @@ func (r *ReconcileObjectStoreUser) reconcile(request reconcile.Request) (reconci
 		return reconcile.Result{}, *cephObjectStoreUser, errors.Wrapf(err, "invalid pool CR %q spec", cephObjectStoreUser.Name)
 	}
 
+	// Resolve account reference if set
+	if cephObjectStoreUser.Spec.AccountRef.Name != "" {
+		accountID, result, err := r.resolveAccountRef(cephObjectStoreUser)
+		if err != nil {
+			return result, *cephObjectStoreUser, err
+		}
+		userConfig.AccountID = accountID
+	}
+
 	// CREATE/UPDATE CEPH USER
 	reconcileResponse, err = r.reconcileCephUser(cephObjectStoreUser, userConfig)
 	if err != nil {
@@ -427,6 +442,8 @@ func (r *ReconcileObjectStoreUser) createOrUpdateCephUser(u *cephv1.CephObjectSt
 		logCreateOrUpdate = fmt.Sprintf("updated ceph object user %q", u.Name)
 	}
 
+	// Generate the user caps "string" for the live user, since the API does not return the caps in a "string" format as a list of Cap structs. Since go-ceph will only set caps via the "string" format, we need to generate the string format for the live user to compare with the target user caps "string".
+	liveUser.UserCaps = generateUserCaps(&liveUser)
 	// Update caps, if necessary
 	log.NamedTrace(nsName, logger, "user capabilities(id: %s, caps: %#v, user caps: %s, op mask: %s)",
 		liveUser.ID, liveUser.Caps, liveUser.UserCaps, liveUser.OpMask)
@@ -493,14 +510,9 @@ func (r *ReconcileObjectStoreUser) createOrUpdateCephUser(u *cephv1.CephObjectSt
 }
 
 func (r *ReconcileObjectStoreUser) initializeObjectStoreContext(u *cephv1.CephObjectStoreUser) error {
-	err := r.objectStoreInitialized(u)
+	opsContext, store, err := object.InitializeObjectStoreContext(r.context, r.clusterInfo, r.client, r.opManagerContext, u.Spec.Store, newMultisiteAdminOpsCtxFunc)
 	if err != nil {
-		return errors.Wrapf(err, "failed to detect if object store %q is initialized", u.Spec.Store)
-	}
-
-	store, err := r.getObjectStore(u)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get object store %q", u.Spec.Store)
+		return err
 	}
 
 	// Check if the object store allows users to be created in any namespace
@@ -518,16 +530,6 @@ func (r *ReconcileObjectStoreUser) initializeObjectStoreContext(u *cephv1.CephOb
 		return errors.Wrapf(err, "failed to get CephObjectStore %q advertise endpoint for object store user", u.Spec.Store)
 	}
 	r.advertiseEndpoint = advertiseEndpoint
-
-	objContext, err := object.NewMultisiteContext(r.context, r.clusterInfo, store)
-	if err != nil {
-		return errors.Wrapf(err, "Multisite failed to set on object context for object store user")
-	}
-
-	opsContext, err := newMultisiteAdminOpsCtxFunc(objContext, &store.Spec)
-	if err != nil {
-		return errors.Wrap(err, "failed to initialized rgw admin ops client api")
-	}
 	r.objContext = opsContext
 
 	return nil
@@ -646,7 +648,6 @@ func generateUserConfig(user *cephv1.CephObjectStoreUser) (*admin.User, error) {
 	}
 
 	userConfig.OpMask = opMask
-	userConfig.UserCaps = generateUserCaps(userConfig)
 
 	return userConfig, nil
 }
@@ -705,36 +706,6 @@ func (r *ReconcileObjectStoreUser) reconcileCephUserSecret(cephObjectStoreUser *
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileObjectStoreUser) objectStoreInitialized(cephObjectStoreUser *cephv1.CephObjectStoreUser) error {
-	nsName := opcontroller.NsName(cephObjectStoreUser.Namespace, cephObjectStoreUser.Name)
-	cephObjectStore, err := r.getObjectStore(cephObjectStoreUser)
-	if err != nil {
-		return err
-	}
-	log.NamedDebug(nsName, logger, "CephObjectStore exists")
-
-	// If the rgw is external just return
-	// since there are no pods running
-	if cephObjectStore.Spec.IsExternal() {
-		return nil
-	}
-
-	// There are no pods running when the cluster is external
-	// Unless you pass the admin key...
-	pods, err := r.getRgwPodList(cephObjectStoreUser)
-	if err != nil {
-		return err
-	}
-
-	// check if at least one pod is running
-	if len(pods.Items) > 0 {
-		log.NamedDebug(nsName, logger, "%d RGW pods found where object store user %q is created", len(pods.Items), cephObjectStoreUser.Name)
-		return nil
-	}
-
-	return errors.New("no rgw pod found")
-}
-
 func (r *ReconcileObjectStoreUser) getObjectStore(user *cephv1.CephObjectStoreUser) (*cephv1.CephObjectStore, error) {
 	storeName := user.Spec.Store
 	nsName := client.ObjectKeyFromObject(user)
@@ -757,27 +728,6 @@ func (r *ReconcileObjectStoreUser) getObjectStore(user *cephv1.CephObjectStoreUs
 	}
 
 	return nil, errors.Errorf("could not find CephObjectStore %q referenced by CephObjectStoreUser %q", storeName, nsName)
-}
-
-func (r *ReconcileObjectStoreUser) getRgwPodList(cephObjectStoreUser *cephv1.CephObjectStoreUser) (*corev1.PodList, error) {
-	pods := &corev1.PodList{}
-
-	// check if ObjectStore is initialized
-	// rook does this by starting the RGW pod(s)
-	listOpts := []client.ListOption{
-		client.InNamespace(clusterStoreNamespace(cephObjectStoreUser)),
-		client.MatchingLabels(labelsForRgw(cephObjectStoreUser.Spec.Store)),
-	}
-
-	err := r.client.List(r.opManagerContext, pods, listOpts...)
-	if err != nil {
-		if kerrors.IsNotFound(err) {
-			return pods, errors.Wrap(err, "no rgw pod could not be found")
-		}
-		return pods, errors.Wrap(err, "failed to list rgw pods")
-	}
-
-	return pods, nil
 }
 
 // Namespace where the object store and cluster are expected to be found
@@ -815,11 +765,55 @@ func (r *ReconcileObjectStoreUser) validateUser(u *cephv1.CephObjectStoreUser) e
 	if u.Spec.Store == "" {
 		return errors.New("missing store")
 	}
+	// When accountRef is set, validate that displayName is IAM-compatible
+	if u.Spec.AccountRef.Name != "" {
+		displayName := u.Spec.DisplayName
+		if displayName == "" {
+			displayName = u.Name
+		}
+		if !iamDisplayNamePattern.MatchString(displayName) {
+			return fmt.Errorf("displayName %q is not IAM-compatible (must match [\\w+=,.@-]+) when accountRef is set", displayName)
+		}
+	}
 	return nil
 }
 
-func labelsForRgw(name string) map[string]string {
-	return map[string]string{"rgw": name, k8sutil.AppAttr: appName}
+// waitForRequeueIfRGWAccountNotReady waits for the referenced CephObjectStoreAccount to be ready
+var waitForRequeueIfRGWAccountNotReady = reconcile.Result{Requeue: true, RequeueAfter: 10 * time.Second}
+
+// resolveAccountRef looks up the CephObjectStoreAccount referenced by accountRef, validates
+// that the store fields match, and returns the account ID. If the account is not yet ready,
+// it returns an empty account ID and a requeue result.
+func (r *ReconcileObjectStoreUser) resolveAccountRef(u *cephv1.CephObjectStoreUser) (string, reconcile.Result, error) {
+	nsName := opcontroller.NsName(u.Namespace, u.Name)
+	accountName := u.Spec.AccountRef.Name
+
+	account := &cephv1.CephObjectStoreAccount{}
+	err := r.client.Get(r.opManagerContext, types.NamespacedName{Name: accountName, Namespace: u.Namespace}, account)
+	if err != nil {
+		if kerrors.IsNotFound(err) {
+			return "", waitForRequeueIfRGWAccountNotReady, fmt.Errorf("referenced CephObjectStoreAccount %q not found", accountName)
+		}
+		return "", reconcile.Result{}, errors.Wrapf(err, "failed to get CephObjectStoreAccount %q", accountName)
+	}
+
+	// Validate that the store field matches
+	if account.Spec.Store != u.Spec.Store {
+		return "", reconcile.Result{}, fmt.Errorf("store %q on CephObjectStoreUser does not match store %q on referenced CephObjectStoreAccount %q", u.Spec.Store, account.Spec.Store, accountName)
+	}
+
+	// Wait for the account to be ready
+	if account.Status == nil || account.Status.Phase != k8sutil.ReadyStatus {
+		return "", waitForRequeueIfRGWAccountNotReady, fmt.Errorf("referenced CephObjectStoreAccount %q is not ready", accountName)
+	}
+
+	accountID := account.Status.AccountID
+	if accountID == "" {
+		return "", waitForRequeueIfRGWAccountNotReady, fmt.Errorf("referenced CephObjectStoreAccount %q has no account ID yet", accountName)
+	}
+
+	log.NamedDebug(nsName, logger, "resolved account reference %q to account ID %q", accountName, accountID)
+	return accountID, reconcile.Result{}, nil
 }
 
 // updateStatus updates an object with a given status

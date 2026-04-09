@@ -36,11 +36,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 func assertCephExporterArgs(t *testing.T, args []string, ipv6 bool) {
+	assertCephExporterArgsWithPort(t, args, ipv6, "9926")
+}
+
+func assertCephExporterArgsWithPort(t *testing.T, args []string, ipv6 bool, port string) {
 	var expectedArgsLen int
 	if ipv6 {
 		expectedArgsLen = 10
@@ -53,7 +58,7 @@ func assertCephExporterArgs(t *testing.T, args []string, ipv6 bool) {
 	assert.Equal(t, "--sock-dir", args[0])
 	assert.Equal(t, "/run/ceph", args[1])
 	assert.Equal(t, "--port", args[2])
-	assert.Equal(t, "9926", args[3])
+	assert.Equal(t, port, args[3])
 	assert.Equal(t, "--prio-limit", args[4])
 	assert.Equal(t, "5", args[5])
 	assert.Equal(t, "--stats-period", args[6])
@@ -143,6 +148,25 @@ func TestCreateOrUpdateCephExporter(t *testing.T) {
 		assert.Equal(t, "3", args[5])
 		assert.Equal(t, "--stats-period", args[6])
 		assert.Equal(t, "7", args[7])
+	})
+
+	t.Run("exporter custom port", func(t *testing.T) {
+		cephCluster.Spec.Monitoring.Exporter = &cephv1.CephExporterSpec{
+			PerfCountersPrioLimit: 5,
+			StatsPeriodSeconds:    5,
+			Port:                  9927,
+		}
+		res, err := r.createOrUpdateCephExporter(node, tolerations, cephCluster, cephVersion)
+		assert.NoError(t, err)
+		assert.Equal(t, controllerutil.OperationResult("updated"), res)
+
+		err = r.client.Get(ctx, types.NamespacedName{Namespace: "rook-ceph", Name: name}, &deploy)
+		assert.NoError(t, err)
+
+		podSpec := deploy.Spec.Template
+		args := podSpec.Spec.Containers[0].Args
+		assertCephExporterArgsWithPort(t, args, false, "9927")
+		assert.Equal(t, int32(9927), podSpec.Spec.Containers[0].Ports[0].ContainerPort)
 	})
 }
 
@@ -408,8 +432,17 @@ func TestServiceSpec(t *testing.T) {
 	assert.NotNil(t, s)
 	assert.Equal(t, "rook-ceph-exporter", s.Name)
 	assert.Equal(t, 1, len(s.Spec.Ports))
+	assert.Equal(t, int32(DefaultMetricsPort), s.Spec.Ports[0].Port)
 	assert.Equal(t, 2, len(s.Labels))
 	assert.Equal(t, 2, len(s.Spec.Selector))
+
+	t.Run("custom exporter port", func(t *testing.T) {
+		cephCluster.Spec.Monitoring.Exporter = &cephv1.CephExporterSpec{Port: 9927}
+		s, err := MakeCephExporterMetricsService(cephCluster, exporterServiceMetricName, scheme.Scheme)
+		assert.NoError(t, err)
+		assert.NotNil(t, s)
+		assert.Equal(t, int32(9927), s.Spec.Ports[0].Port)
+	})
 }
 
 func TestApplyCephExporterLabels(t *testing.T) {
@@ -451,4 +484,102 @@ func TestApplyCephExporterLabels(t *testing.T) {
 	sm.Spec.Endpoints[0].RelabelConfigs = nil
 	applyCephExporterLabels(cephCluster, sm)
 	assert.Nil(t, sm.Spec.Endpoints[0].RelabelConfigs)
+}
+
+func TestDeleteOrphanedExporterDeployments(t *testing.T) {
+	const namespace = "rook-ceph"
+	ctx := context.TODO()
+
+	s := scheme.Scheme
+	err := appsv1.AddToScheme(s)
+	assert.NoError(t, err)
+	err = corev1.AddToScheme(s)
+	assert.NoError(t, err)
+
+	// helper to build a ceph-exporter Deployment with an optional node_name label
+	makeExporterDeployment := func(name, nodeName string) *appsv1.Deployment {
+		labels := map[string]string{
+			k8sutil.AppAttr: cephExporterAppName,
+		}
+		if nodeName != "" {
+			labels[NodeNameLabel] = nodeName
+		}
+		return &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				Labels:    labels,
+			},
+		}
+	}
+
+	makeNode := func(name string) *corev1.Node {
+		return &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+		}
+	}
+
+	t.Run("no deployments - no error", func(t *testing.T) {
+		r := &ReconcileNode{
+			client:           fake.NewClientBuilder().WithScheme(s).Build(),
+			opManagerContext: ctx,
+		}
+		assert.NoError(t, r.deleteOrphanedExporterDeployments(namespace))
+	})
+
+	t.Run("deployment whose node still exists is not deleted", func(t *testing.T) {
+		deploy := makeExporterDeployment("exporter-existing", "node1")
+		node := makeNode("node1")
+		r := &ReconcileNode{
+			client:           fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(deploy, node).Build(),
+			opManagerContext: ctx,
+		}
+		assert.NoError(t, r.deleteOrphanedExporterDeployments(namespace))
+
+		remaining := &appsv1.DeploymentList{}
+		assert.NoError(t, r.client.List(ctx, remaining, client.InNamespace(namespace)))
+		assert.Len(t, remaining.Items, 1)
+	})
+
+	t.Run("deployment whose node no longer exists is deleted", func(t *testing.T) {
+		deploy := makeExporterDeployment("exporter-orphaned", "gone-node")
+		r := &ReconcileNode{
+			client:           fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(deploy).Build(),
+			opManagerContext: ctx,
+		}
+		assert.NoError(t, r.deleteOrphanedExporterDeployments(namespace))
+
+		remaining := &appsv1.DeploymentList{}
+		assert.NoError(t, r.client.List(ctx, remaining, client.InNamespace(namespace)))
+		assert.Empty(t, remaining.Items)
+	})
+
+	t.Run("deployment without node_name label is skipped", func(t *testing.T) {
+		deploy := makeExporterDeployment("exporter-no-label", "")
+		r := &ReconcileNode{
+			client:           fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(deploy).Build(),
+			opManagerContext: ctx,
+		}
+		assert.NoError(t, r.deleteOrphanedExporterDeployments(namespace))
+
+		remaining := &appsv1.DeploymentList{}
+		assert.NoError(t, r.client.List(ctx, remaining, client.InNamespace(namespace)))
+		assert.Len(t, remaining.Items, 1)
+	})
+
+	t.Run("mixed: one orphaned one healthy deployment", func(t *testing.T) {
+		deployOrphaned := makeExporterDeployment("exporter-orphaned", "gone-node")
+		deployHealthy := makeExporterDeployment("exporter-healthy", "live-node")
+		node := makeNode("live-node")
+		r := &ReconcileNode{
+			client:           fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(deployOrphaned, deployHealthy, node).Build(),
+			opManagerContext: ctx,
+		}
+		assert.NoError(t, r.deleteOrphanedExporterDeployments(namespace))
+
+		remaining := &appsv1.DeploymentList{}
+		assert.NoError(t, r.client.List(ctx, remaining, client.InNamespace(namespace)))
+		assert.Len(t, remaining.Items, 1)
+		assert.Equal(t, "exporter-healthy", remaining.Items[0].Name)
+	})
 }

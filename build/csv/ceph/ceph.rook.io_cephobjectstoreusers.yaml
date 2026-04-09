@@ -37,6 +37,19 @@ spec:
             type: object
           spec:
             properties:
+              accountRef:
+                properties:
+                  name:
+                    maxLength: 2048
+                    minLength: 1
+                    pattern: ^[a-zA-Z0-9 ._-]+$
+                    type: string
+                required:
+                - name
+                type: object
+                x-kubernetes-validations:
+                - message: accountRef is immutable
+                  rule: self == oldSelf
               capabilities:
                 nullable: true
                 properties:

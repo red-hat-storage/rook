@@ -43,6 +43,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func configureSSEWithVaultAgent(c *clusterConfig) {
+	c.store.Spec.Security = &cephv1.ObjectStoreSecuritySpec{}
+	c.store.Spec.Security.ServerSideEncryptionS3 = cephv1.KeyManagementServiceSpec{ConnectionDetails: map[string]string{}}
+	c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails["KMS_PROVIDER"] = "vault"
+	c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails["VAULT_ADDR"] = "http://127.0.0.1:8100"
+	c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails["VAULT_AUTH_METHOD"] = "agent"
+}
+
 func configureSSE(t *testing.T, c *clusterConfig, kms bool, s3 bool) {
 	c.store.Spec.Security = &cephv1.ObjectStoreSecuritySpec{}
 	if kms {
@@ -991,6 +999,25 @@ func TestAWSServerSideEncryption(t *testing.T) {
 		assert.True(t, checkRGWOptions(rgwContainer.Args, c.sseKMSVaultTLSOptions(true)))
 		assert.True(t, checkRGWOptions(rgwContainer.Args, c.sseS3VaultTLSOptions(true)))
 	})
+
+	t.Run("SSE-S3 with vault agent auth sets agent options instead of token options", func(t *testing.T) {
+		configureSSEWithVaultAgent(c)
+		c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails["VAULT_SECRET_ENGINE"] = "transit"
+		rgwContainer, err := c.makeDaemonContainer(rgwConfig)
+		assert.NoError(t, err)
+		assert.True(t, checkRGWOptions(rgwContainer.Args, c.sseS3DefaultOptions(true)))
+		assert.True(t, checkRGWOptions(rgwContainer.Args, c.sseS3VaultAgentOptions(true)))
+		assert.False(t, checkRGWOptions(rgwContainer.Args, c.sseS3VaultTokenOptions(true)))
+		assert.False(t, checkRGWOptions(rgwContainer.Args, c.sseS3VaultTLSOptions(false)))
+	})
+
+	t.Run("SSE-S3 with vault agent auth rejects tokenSecretName", func(t *testing.T) {
+		configureSSEWithVaultAgent(c)
+		c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails["VAULT_SECRET_ENGINE"] = "transit"
+		c.store.Spec.Security.ServerSideEncryptionS3.TokenSecretName = "vault-token"
+		_, err := c.makeDaemonContainer(rgwConfig)
+		assert.Error(t, err)
+	})
 }
 
 func TestRgwCommandFlags(t *testing.T) {
@@ -1714,4 +1741,22 @@ func TestRgwReadAffinity(t *testing.T) {
 			assert.Equal(t, tt.isCrushLocationArgSet, slices.Contains(container.Command, `exec radosgw --crush-location="host=${NODE_NAME//./-}" "$@"`))
 		})
 	}
+}
+
+func TestGenerateServiceLabels(t *testing.T) {
+	store := simpleStore()
+	store.Spec.Gateway.Service = &cephv1.RGWServiceSpec{
+		Labels: cephv1.Labels{"my-label": "my-value"},
+	}
+	info := clienttest.CreateTestClusterInfo(1)
+	c := &clusterConfig{
+		clusterInfo: info,
+		store:       store,
+		clusterSpec: &cephv1.ClusterSpec{},
+	}
+	svc := c.generateService(store)
+	// Verify custom labels are applied
+	assert.Equal(t, "my-value", svc.ObjectMeta.Labels["my-label"])
+	// Verify default labels are still present
+	assert.Equal(t, "rook-ceph-rgw", svc.ObjectMeta.Labels["app"])
 }

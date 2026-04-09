@@ -19,6 +19,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -40,10 +41,12 @@ import (
 	"github.com/rook/rook/tests/framework/clients"
 	"github.com/rook/rook/tests/framework/installer"
 	"github.com/rook/rook/tests/framework/utils"
-	"github.com/rook/rook/tests/integration/object/bucketowner"
+	bucketowner "github.com/rook/rook/tests/integration/object/bucket/owner"
 	topickafka "github.com/rook/rook/tests/integration/object/topic/kafka"
-	"github.com/rook/rook/tests/integration/object/user/opmask"
-	"github.com/rook/rook/tests/integration/object/user/userkeys"
+	usercaps "github.com/rook/rook/tests/integration/object/user/caps"
+	userkeys "github.com/rook/rook/tests/integration/object/user/keys"
+	useropmask "github.com/rook/rook/tests/integration/object/user/opmask"
+	"github.com/rook/rook/tests/integration/object/util/sharedstore"
 )
 
 const (
@@ -145,6 +148,33 @@ func runObjectE2ETest(helper *clients.TestClient, k8sh *utils.K8sHelper, install
 	logger.Infof("Running on Rook Cluster %s", namespace)
 	createCephObjectStore(s.T(), helper, k8sh, installer, namespace, storeName, 3, tlsEnable, swiftAndKeystone)
 
+	// Canary test: verify all *_pool fields in zone.json are covered by Rook's zonePoolNSSuffix map.
+	// This catches new RGW pool fields added in newer Ceph versions that Rook doesn't yet handle,
+	// which would cause ghost default pools when shared pools are configured.
+	// Run right after store creation when the zone is fresh and definitely accessible.
+	s.T().Run("all zone.json pool fields are covered by Rook shared pool mapping", func(t *testing.T) {
+		output, err := installer.Execute("radosgw-admin",
+			[]string{"zone", "get", fmt.Sprintf("--rgw-zone=%s", storeName), fmt.Sprintf("--rgw-realm=%s", storeName)}, namespace)
+		require.NoError(t, err, "failed to get zone config; output: %s", output)
+		require.NotEmpty(t, output, "zone config is empty")
+
+		var zoneConfig map[string]interface{}
+		err = json.Unmarshal([]byte(output), &zoneConfig)
+		require.NoError(t, err, "failed to parse zone config JSON; output: %s", output)
+
+		knownPools := rgw.ZoneJsonPoolKeys()
+		for field, val := range zoneConfig {
+			if _, ok := val.(string); !ok {
+				continue
+			}
+			if !strings.HasSuffix(field, "_pool") {
+				continue
+			}
+			assert.Contains(t, knownPools, field,
+				"RGW zone.json contains unknown pool field %q — add it to zonePoolNSSuffix in pkg/operator/ceph/object/objectstore.go", field)
+		}
+	})
+
 	// test that a second object store can be created (and deleted) while the first exists
 	s.T().Run("run a second object store", func(t *testing.T) {
 		otherStoreName := "other-" + storeName
@@ -157,10 +187,20 @@ func runObjectE2ETest(helper *clients.TestClient, k8sh *utils.K8sHelper, install
 	// now test operation of the first object store
 	testObjectStoreOperations(s, helper, k8sh, settings, storeName, swiftAndKeystone)
 
-	bucketowner.TestObjectBucketClaimBucketOwner(s.T(), k8sh, installer, logger, tlsEnable)
-	userkeys.TestObjectStoreUserKeys(s.T(), k8sh, installer, logger, tlsEnable)
-	topickafka.TestBucketTopicKafka(s.T(), k8sh, installer, logger, tlsEnable)
-	opmask.TestObjectStoreUserOpMask(s.T(), k8sh, installer, logger, tlsEnable)
+	// The namespaced test packages below all skip when TLS is enabled, so only set up the
+	// shared store when it will actually be used.
+	var sharedObjectStore *cephv1.CephObjectStore
+	if !tlsEnable {
+		var teardownSharedStore func()
+		sharedObjectStore, teardownSharedStore = sharedstore.Setup(s.T(), k8sh)
+		defer teardownSharedStore()
+
+		bucketowner.TestObjectBucketClaimBucketOwner(s.T(), k8sh, installer, logger, tlsEnable, sharedObjectStore)
+		userkeys.TestObjectStoreUserKeys(s.T(), k8sh, installer, logger, tlsEnable, sharedObjectStore)
+		topickafka.TestBucketTopicKafka(s.T(), k8sh, installer, logger, tlsEnable, sharedObjectStore)
+		useropmask.TestObjectStoreUserOpMask(s.T(), k8sh, installer, logger, tlsEnable, sharedObjectStore)
+		usercaps.TestObjectStoreUserCaps(s.T(), k8sh, installer, logger, tlsEnable, sharedObjectStore)
+	}
 
 	bucketNotificationTestStoreName := "bucket-notification-" + storeName
 	createCephObjectStore(s.T(), helper, k8sh, installer, namespace, bucketNotificationTestStoreName, 1, tlsEnable, swiftAndKeystone)

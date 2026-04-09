@@ -203,7 +203,7 @@ metadata:
     repository: https://github.com/red-hat-storage/rook
     containerImage: docker.io/rook/ceph:v1.17.0.29.g2348ff689
     operators.operatorframework.io/operator-type: non-standalone
-  name: rook-ceph-operator.v4.20.0
+  name: rook-ceph-operator.v4.22.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -532,6 +532,7 @@ spec:
                 - cephnvmeofgateways
                 - cephobjectstores
                 - cephobjectstoreusers
+                - cephobjectstoreaccounts
                 - cephobjectrealms
                 - cephobjectzonegroups
                 - cephobjectzones
@@ -558,6 +559,7 @@ spec:
                 - cephnvmeofgateways/status
                 - cephobjectstores/status
                 - cephobjectstoreusers/status
+                - cephobjectstoreaccounts/status
                 - cephobjectrealms/status
                 - cephobjectzonegroups/status
                 - cephobjectzones/status
@@ -580,6 +582,7 @@ spec:
                 - cephnvmeofgateways/finalizers
                 - cephobjectstores/finalizers
                 - cephobjectstoreusers/finalizers
+                - cephobjectstoreaccounts/finalizers
                 - cephobjectrealms/finalizers
                 - cephobjectzonegroups/finalizers
                 - cephobjectzones/finalizers
@@ -1875,7 +1878,7 @@ spec:
   provider:
     name: Red Hat
     url: https://www.redhat.com
-  version: 4.20.0
+  version: 4.22.0
   minKubeVersion: 1.16.0
   relatedImages:
     - image: docker.io/rook/ceph:v1.17.0.29.g2348ff689

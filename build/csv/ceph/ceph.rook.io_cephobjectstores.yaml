@@ -1170,6 +1170,10 @@ spec:
                         additionalProperties:
                           type: string
                         type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        type: object
                     type: object
                   sslCertificateRef:
                     nullable: true
@@ -1640,6 +1644,7 @@ spec:
                             - dataPoolName
                             - name
                             type: object
+                          maxItems: 10
                           type: array
                       required:
                       - dataPoolName

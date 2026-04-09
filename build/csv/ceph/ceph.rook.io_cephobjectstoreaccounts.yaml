@@ -1,0 +1,98 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  creationTimestamp: null
+  name: cephobjectstoreaccounts.ceph.rook.io
+spec:
+  group: ceph.rook.io
+  names:
+    kind: CephObjectStoreAccount
+    listKind: CephObjectStoreAccountList
+    plural: cephobjectstoreaccounts
+    singular: cephobjectstoreaccount
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              accountID:
+                maxLength: 20
+                minLength: 20
+                pattern: ^RGW\d{17}$
+                type: string
+                x-kubernetes-validations:
+                - message: accountID is immutable
+                  rule: self == oldSelf
+              name:
+                maxLength: 2048
+                minLength: 1
+                pattern: ^[a-zA-Z0-9 ._-]+$
+                type: string
+              rootUser:
+                properties:
+                  displayName:
+                    maxLength: 64
+                    minLength: 1
+                    pattern: ^[\w+=,.@-]+$
+                    type: string
+                  skipCreate:
+                    type: boolean
+                type: object
+              store:
+                maxLength: 253
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: store is immutable
+                  rule: self == oldSelf
+            required:
+            - store
+            type: object
+          status:
+            properties:
+              accountID:
+                maxLength: 20
+                minLength: 20
+                type: string
+              observedGeneration:
+                format: int64
+                type: integer
+              phase:
+                type: string
+              rootAccountSecretName:
+                maxLength: 253
+                minLength: 1
+                type: string
+            type: object
+        required:
+        - metadata
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null
