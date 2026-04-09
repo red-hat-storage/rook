@@ -139,6 +139,8 @@ func (m *CephManifestsMaster) GetToolbox() string {
 //**********************************************************************************
 
 func (m *CephManifestsMaster) GetCephCluster() string {
+	m.settings.CephVersion.AllowUnsupported = true // TODO(key) force true while testing key type builds before release
+
 	crushRoot := "# crushRoot not specified; Rook will use `default`"
 	if m.settings.Mons == 1 {
 		crushRoot = `crushRoot: "custom-root"`

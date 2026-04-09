@@ -19,7 +19,7 @@ spec:
       serviceAccountName: rook-ceph-default
       containers:
         - name: rook-ceph-tools
-          image: quay.io/ceph/ceph:v19
+          image: quay.io/brgardne/ceph:wip-pdonnell-testing-20260718.230903-centos-stream9 # TODO(key): fix before merge
           command:
             - /bin/bash
             - -c

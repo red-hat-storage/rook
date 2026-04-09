@@ -44,10 +44,10 @@ import (
 const (
 	// test with the latest releases
 	squidTestImage    = "quay.io/ceph/ceph:v19"
-	tentacleTestImage = "quay.io/ceph/ceph:v20"
+	tentacleTestImage = "quay.io/brgardne/ceph:wip-pdonnell-testing-20260718.230903-centos-stream9"
 	// test with the current development versions
 	squidDevelTestImage    = "quay.ceph.io/ceph-ci/ceph:squid"
-	tentacleDevelTestImage = "quay.ceph.io/ceph-ci/ceph:tentacle"
+	tentacleDevelTestImage = "quay.io/brgardne/ceph:wip-pdonnell-testing-20260718.230903-centos-stream9" // (actually main) TODO(key): fix before merge
 	// test with the latest Ceph main image
 	mainTestImage      = "quay.ceph.io/ceph-ci/ceph:main"
 	cephOperatorLabel  = "app=rook-ceph-operator"
