@@ -466,13 +466,22 @@ spec:
                 - ""
               resources:
                 - pods
-                - nodes
                 - secrets
                 - configmaps
               verbs:
                 - get
                 - list
                 - watch
+            - apiGroups:
+                - ""
+              resources:
+                - nodes
+              verbs:
+                - get
+                - list
+                - watch
+                - patch
+                - update
             - apiGroups:
                 - ""
                 - discovery.k8s.io

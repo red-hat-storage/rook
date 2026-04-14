@@ -484,6 +484,8 @@ func (c *ClusterController) reconcileCephCluster(clusterObj *cephv1.CephCluster,
 	c.clusterMap.Store(clustr.Namespace, clustr)
 	log.NamedInfo(clustr.namespacedName, logger, "reconciling ceph cluster")
 
+	c.startGoRoutineForFloatingMon(c.OpManagerCtx, clustr, clusterObj)
+
 	// Start the main ceph cluster orchestration
 	return c.initializeCluster(clustr)
 }
@@ -517,6 +519,8 @@ func (c *ClusterController) requestClusterDelete(clusterObj *cephv1.CephCluster)
 				existingCluster.monitoringRoutines.Delete(daemon)
 			}
 		}
+
+		cancelFloatingMonGoRoutine(existingCluster)
 	}
 
 	if clusterObj.Spec.CleanupPolicy.AllowUninstallWithVolumes {
