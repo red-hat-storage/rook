@@ -310,8 +310,6 @@ rules:
     resources:
       # Pod access is needed for fencing
       - pods
-      # Node access is needed for determining nodes where mons should run
-      - nodes
       # Rook watches secrets which it uses to configure access to external resources.
       # e.g., external Ceph cluster or object store
       - secrets
@@ -321,6 +319,18 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+      - ""
+    resources:
+      # Node access is needed for determining nodes where mons should run
+      # plus needed during the fencing event to add node annotations and add node taints.
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+      - update
   - apiGroups:
       - ""
       - "discovery.k8s.io"
