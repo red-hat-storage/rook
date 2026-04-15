@@ -47,9 +47,9 @@ _wait_succeeded() {
 }
 
 # TODO: bump default image tag when a new one is published.
-DRBD_IMAGE="${DRBD_IMAGE:-quay.io/rhceph-dev/odf4-drbd-rhel9:v4.21.0-1}" # ODF DRBD image (drbdadm + sources)
+DRBD_IMAGE="${DRBD_IMAGE:-quay.io/rhceph-dev/odf4-odf-drbd-rhel9:v4.22}" # ODF DRBD image (drbdadm + sources)
 # TODO: bump when tarball inside the image changes.
-DRBD_VERSION="${DRBD_VERSION:-9.2.15}"                                   # Must match DRBD source version in DRBD_IMAGE
+DRBD_VERSION="${DRBD_VERSION:-9.2.17}"                                   # Must match DRBD source version in DRBD_IMAGE
 
 DRBD_CONF_PATH="${DRBD_CONF_PATH:-/etc/drbd.conf}"               # Main file: include of ${DRBD_DIR_PATH}/*.res only
 DRBD_DIR_PATH="${DRBD_DIR_PATH:-/etc/drbd.d}"                    # Per-resource .res files (actual DRBD definition)
