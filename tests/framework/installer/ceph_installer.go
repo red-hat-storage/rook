@@ -47,7 +47,7 @@ const (
 	tentacleTestImage = "quay.io/ceph/ceph:v20"
 	// test with the current development versions
 	squidDevelTestImage    = "quay.ceph.io/ceph-ci/ceph:squid"
-	tentacleDevelTestImage = "quay.ceph.io/ceph-ci/ceph:tentacle"
+	tentacleDevelTestImage = "quay.ceph.io/ceph-ci/ceph:wip-pdonnell-testing-20260415.142642-centos-stream9" // actually main
 	// test with the latest Ceph main image
 	mainTestImage      = "quay.ceph.io/ceph-ci/ceph:main"
 	cephOperatorLabel  = "app=rook-ceph-operator"
@@ -99,7 +99,7 @@ func ReturnCephVersion() cephv1.CephVersionSpec {
 		return TentacleDevelVersion
 	default:
 		// Default to the latest stable version
-		return SquidVersion
+		return TentacleDevelVersion
 	}
 }
 
@@ -625,6 +625,8 @@ func (h *CephInstaller) InstallRook() (bool, error) {
 
 // UninstallRook uninstalls rook from k8s
 func (h *CephInstaller) UninstallRook() {
+	fmt.Printf("h: %#v\n", h)
+	fmt.Printf("h.Manifests: %#v\n", h.Manifests)
 	h.UninstallRookFromMultipleNS(h.Manifests)
 }
 
