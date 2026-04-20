@@ -17,8 +17,7 @@
 # Set locale `LC_ALL=C` because different OSes have different sort behavior;
 # `C` sorting order is based on the byte values,
 # Reference: https://blog.zhimingwang.org/macos-lc_collate-hunt
-LC_ALL=C
-export LC_ALL
+export LC_ALL=C
 
 .PHONY: all
 all: build
@@ -32,6 +31,7 @@ all: build
 CONTROLLER_GEN_VERSION=v0.19.0
 CT_VERSION := v3.13.0
 KUSTOMIZE_VERSION := v5.3.0
+MARKDOWNLINT_IMAGE_VERSION := v0.22.0
 
 # include here and not earlier so that the version numbers are available
 # where needed
@@ -124,16 +124,15 @@ include build/makelib/golang.mk
 # ====================================================================================
 # Targets
 
+.PHONY: build.version
 build.version:
 	@mkdir -p $(OUTPUT_DIR)
 	@echo "$(VERSION)" > $(OUTPUT_DIR)/version
 
-# This target exists only for setting the variable
-.PHONY: build.common.var
-build.common.var: export SKIP_GEN_CRD_DOCS=true
+
 
 .PHONY: build.common
-build.common:  build.common.var build.version helm.build mod.check crds gen-rbac
+build.common: build.version helm.build mod.check crds.manifests gen.rbac
 	@$(MAKE) go.init
 	@$(MAKE) go.validate
 	@$(MAKE) -C images/ceph list-image
@@ -188,11 +187,11 @@ golangci-lint: $(YQ)
 
 .PHONY: markdownlint
 markdownlint: ## Check formatting of documentation sources
-	markdownlint-cli2 "Documentation/**/**.md" "#Documentation/Helm-Charts/**" --config .markdownlint-cli2.cjs
+	@$(MARKDOWNLINT) "Documentation/**/**.md" "#Documentation/Helm-Charts/**" --config .markdownlint-cli2.cjs
 
 .PHONY: markdownlint.fix
 markdownlint.fix: ## Check and fix formatting of documentation sources
-	markdownlint-cli2 "Documentation/**/**.md" "#Documentation/Helm-Charts/**" --fix --config .markdownlint-cli2.cjs
+	@$(MARKDOWNLINT) "Documentation/**/**.md" "#Documentation/Helm-Charts/**" --fix --config .markdownlint-cli2.cjs
 
 .PHONY: yamllint
 yamllint:
@@ -249,26 +248,21 @@ distclean: clean ## Remove all files that are created by building or configuring
 prune: ## Prune cached artifacts.
 	@$(MAKE) -C images prune
 
-# Change how CRDs are generated for CSVs
-gen-csv: export MAX_DESC_LEN=0 # sets the description length to 0 since CSV cannot be bigger than 1MB
-gen-csv: export NO_OB_OBC_VOL_GEN=true
-gen-csv: csv-clean crds ## Generate a CSV file for OLM.
-	$(MAKE) -C images/ceph csv
+.PHONY: gen.crds
+gen.crds: crds.manifests crds.docs
 
-bundle:
-	@echo generate rook bundle
-	@build/bundle/gen-bundle.sh
-
-csv-clean: ## Remove existing OLM files.
-	@$(MAKE) -C images/ceph csv-clean
-
-gen.crds: crds
-.PHONY: crds
-crds: $(CONTROLLER_GEN) $(YQ)
+.PHONY: crds.manifests
+crds.manifests: $(CONTROLLER_GEN) $(YQ)
 	@echo Updating CRD manifests
 	@build/crds/build-crds.sh $(CONTROLLER_GEN) $(YQ)
-	@GOBIN=$(GOBIN) build/crds/generate-crd-docs.sh
-	@build/crds/validate-csv-crd-list.sh
+
+.PHONY: crds.docs
+crds.docs: ## Build the documentation for CRDs
+	@# default behavior: generate unless user sets SKIP_GEN_CRD_DOCS=true
+	@SKIP_GEN_CRD_DOCS=$(SKIP_GEN_CRD_DOCS) GOBIN=$(GOBIN) build/crds/generate-crd-docs.sh
+
+.PHONY: crds
+crds: crds.manifests crds.docs
 
 .PHONY: gen.rbac
 gen.rbac: gen-rbac
@@ -302,13 +296,23 @@ docs-build:  ## Build the documentation to the `site/` directory
 
 .PHONY: gen.crd-docs
 gen.crd-docs: generate-docs-crds
-generate-docs-crds: ## Build the documentation for CRD
-	@GOBIN=$(GOBIN) build/crds/generate-crd-docs.sh
+generate-docs-crds: crds.docs ## Build the documentation for CRDs
 
 .PHONY: generate
-generate: gen.codegen gen.crds gen.rbac gen.docs gen.crd-docs ## Update all generated files (code, manifests, charts, and docs).
+generate: gen.codegen gen.crds gen.rbac ## Update all generated files (code, manifests, charts, and docs).
 
+# Change how CRDs are generated for CSVs
+gen-csv: export MAX_DESC_LEN=0 # sets the description length to 0 since CSV cannot be bigger than 1MB
+gen-csv: export NO_OB_OBC_VOL_GEN=true
+gen-csv: csv-clean crds.manifests ## Generate a CSV file for OLM.
+	$(MAKE) -C images/ceph csv
 
+bundle:
+	@echo generate rook bundle
+	@build/bundle/gen-bundle.sh
+
+csv-clean: ## Remove existing OLM files.
+	@$(MAKE) -C images/ceph csv-clean
 
 # ====================================================================================
 # Help
