@@ -248,27 +248,21 @@ distclean: clean ## Remove all files that are created by building or configuring
 prune: ## Prune cached artifacts.
 	@$(MAKE) -C images prune
 
-# Change how CRDs are generated for CSVs
-gen-csv: export MAX_DESC_LEN=0 # sets the description length to 0 since CSV cannot be bigger than 1MB
-gen-csv: export NO_OB_OBC_VOL_GEN=true
-gen-csv: csv-clean crds ## Generate a CSV file for OLM.
-	$(MAKE) -C images/ceph csv
-
-bundle:
-	@echo generate rook bundle
-	@build/bundle/gen-bundle.sh
-
-csv-clean: ## Remove existing OLM files.
-	@$(MAKE) -C images/ceph csv-clean
-
+.PHONY: gen.crds
 gen.crds: crds.manifests crds.docs
 
 .PHONY: crds.manifests
 crds.manifests: $(CONTROLLER_GEN) $(YQ)
 	@echo Updating CRD manifests
 	@build/crds/build-crds.sh $(CONTROLLER_GEN) $(YQ)
-	@GOBIN=$(GOBIN) build/crds/generate-crd-docs.sh
-	@build/crds/validate-csv-crd-list.sh
+
+.PHONY: crds.docs
+crds.docs: ## Build the documentation for CRDs
+	@# default behavior: generate unless user sets SKIP_GEN_CRD_DOCS=true
+	@SKIP_GEN_CRD_DOCS=$(SKIP_GEN_CRD_DOCS) GOBIN=$(GOBIN) build/crds/generate-crd-docs.sh
+
+.PHONY: crds
+crds: crds.manifests crds.docs
 
 .PHONY: gen.rbac
 gen.rbac: gen-rbac
@@ -307,7 +301,18 @@ generate-docs-crds: crds.docs ## Build the documentation for CRDs
 .PHONY: generate
 generate: gen.codegen gen.crds gen.rbac ## Update all generated files (code, manifests, charts, and docs).
 
+# Change how CRDs are generated for CSVs
+gen-csv: export MAX_DESC_LEN=0 # sets the description length to 0 since CSV cannot be bigger than 1MB
+gen-csv: export NO_OB_OBC_VOL_GEN=true
+gen-csv: csv-clean crds.manifests ## Generate a CSV file for OLM.
+	$(MAKE) -C images/ceph csv
 
+bundle:
+	@echo generate rook bundle
+	@build/bundle/gen-bundle.sh
+
+csv-clean: ## Remove existing OLM files.
+	@$(MAKE) -C images/ceph csv-clean
 
 # ====================================================================================
 # Help

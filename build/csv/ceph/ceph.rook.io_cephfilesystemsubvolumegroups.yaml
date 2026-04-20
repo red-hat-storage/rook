@@ -55,6 +55,13 @@ spec:
                 x-kubernetes-validations:
                 - message: ClusterID is immutable
                   rule: self == oldSelf
+              csiMetadataRadosNamespace:
+                maxLength: 1024
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: CSIMetadataRadosNamespace is immutable
+                  rule: self == oldSelf
               dataPoolName:
                 type: string
               filesystemName:
