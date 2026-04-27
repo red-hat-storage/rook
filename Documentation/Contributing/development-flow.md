@@ -136,6 +136,12 @@ rook
 
 To submit a change, create a branch in your fork and then submit a pull request (PR) from the branch.
 
+### Begin with an Issue
+
+Before working on code changes requiring more than a simple bug fix, maintainers recommend creating a GitHub issue, including filling in the issue template.
+Discuss options for appropriate issue resolution with maintainers, and get confirmation before creating a pull request.
+This can help avoid unnecessary work needed when the design approach needs substantially changed before a contribution can be merged.
+
 ### Design Document
 
 For new features of significant scope and complexity, a design document is recommended before work begins on the implementation.
@@ -250,14 +256,13 @@ Common cases that may need tests:
 
 ## Linting
 
-Run `make lint` to run all linters. This will require the following CLI tools to be installed on the system:
+Run `make lint` to run several linters. This will require
+the [pylint](https://www.pylint.org/) CLI tool to be installed on the system in the PATH
 
-* [yamllint](https://www.yamllint.com/)
-* [shellcheck](https://www.shellcheck.net/)
-* [pylint](https://www.pylint.org/)
-
-Many of those tools are available via `brew` for MacOS or as Linux distribution packages.
-Otherwise refer to the respective project websites for installation instructions.
+pylint is available via `brew` for MacOS and as a distribution package
+for many Linux distributions. It can also be installed into the system
+or a python virtual environment (venv) with `pip`.
+Refer to the respective project website for more installation instructions.
 
 !!! tip
     Run `make help` to see a list of all possible make targets
