@@ -1680,6 +1680,12 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        enum:
+                        - aes
+                        - aes256k
+                        maxLength: 7
+                        type: string
                     type: object
                 type: object
               conditions:
