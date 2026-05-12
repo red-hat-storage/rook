@@ -44,14 +44,18 @@ type AuthListEntry struct {
 func AuthGetOrCreate(context *clusterd.Context, clusterInfo *ClusterInfo, name, keyringPath, keyType string, caps []string) error {
 	logger.Infof("getting or creating ceph auth %q", name)
 	args := append([]string{"auth", "get-or-create", name, "-o", keyringPath}, caps...)
+	// allow specifying keyType='aes' even when Ceph doesn't know about key types
+	if !Aes256kKeysSupported(clusterInfo.CephVersion) && IsLegacyKeyType(keyType) {
+		keyType = "" // don't set --key-type flag
+	}
 	if keyType != "" {
 		args = append(args, KeyTypeFlag, keyType)
 	}
 	cmd := NewCephCommand(context, clusterInfo, args)
 	cmd.JsonOutput = false
-	_, err := cmd.Run()
+	buf, err := cmd.Run()
 	if err != nil {
-		return errors.Wrapf(err, "failed to auth get-or-create for %s", name)
+		return errors.Wrapf(err, "failed to auth get-or-create for %s with reason: %s", name, string(buf))
 	}
 
 	return nil
@@ -73,6 +77,10 @@ func AuthGetKey(context *clusterd.Context, clusterInfo *ClusterInfo, name string
 func AuthGetOrCreateKey(context *clusterd.Context, clusterInfo *ClusterInfo, name, keyType string, caps []string) (string, error) {
 	logger.Infof("getting or creating ceph auth key %q", name)
 	args := append([]string{"auth", "get-or-create-key", name}, caps...)
+	// allow specifying keyType='aes' even when Ceph doesn't know about key types
+	if !Aes256kKeysSupported(clusterInfo.CephVersion) && IsLegacyKeyType(keyType) {
+		keyType = "" // don't set --key-type flag
+	}
 	if keyType != "" {
 		args = append(args, KeyTypeFlag, keyType)
 	}

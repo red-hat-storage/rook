@@ -937,6 +937,55 @@ function check_keys_not_exists() {
   done
 }
 
+function test_rotate_cephx_keys() {
+  patch=$(cat <<EOF
+spec:
+  security:
+    cephx:
+      daemon:
+        keyRotationPolicy: KeyGeneration
+        keyGeneration: 2
+      csi:
+        keyRotationPolicy: KeyGeneration
+        keyGeneration: 2
+        keepPriorKeyCountMax: 1 # keep one prior key also
+        keyType: aes # keep the old aes key type when the host kernel does not yet support aes256k
+EOF
+)
+
+  cluster_name="$(kubectl -n rook-ceph get cephcluster -o name --no-headers)"
+
+  # e.g., cephcluster.ceph.rook.io/my-cluster
+  kubectl -n rook-ceph patch "$cluster_name" --type merge -p "$patch"
+
+  # wait for OSD key to be rotated (last cluster key to be rotated)
+  # at approx 300 seconds, mon rotation begins
+  timeout 600 bash <<EOF
+until [[ \$(kubectl -n rook-ceph get "$cluster_name" -o jsonpath='{.status.cephx.osd.keyGeneration}') -eq 2 ]]; do
+  echo "waiting for OSD CephX keys to be rotated"
+  kubectl -n rook-ceph get "$cluster_name" -o jsonpath='{.status.cephx}'
+  sleep 5
+done
+EOF
+
+  # check cephx rotation status
+  stat="$(kubectl -n rook-ceph get "$cluster_name" -o jsonpath='{.status.cephx}')"
+  echo "$stat" | jq # show output for debugging
+
+  # assertions
+  [[ "$(echo "$stat" | jq -r '.osd.keyGeneration')" == "2" ]]
+  [[ "$(echo "$stat" | jq -r '.csi.keyGeneration')" == "2" ]]
+  [[ "$(echo "$stat" | jq -r '.csi.keyType')" == "aes" ]] # requested rotation to legacy type
+  [[ "$(echo "$stat" | jq -r '.rbdMirrorPeer.keyGeneration')" == "1" ]] # did not request rotation
+
+  # check ceph internal key info
+  toolbox=$(kubectl get pod -l app=rook-ceph-tools -n rook-ceph -o jsonpath='{.items[*].metadata.name}')
+  { # 'ceph auth dump-keys' is a new command. don't fail CI if it doesn't exist in the test version
+    auth="$(kubectl -n rook-ceph exec "$toolbox" -- ceph auth dump-keys --format=json-pretty)"
+    echo "$auth" | jq # show output for debugging
+  } || true
+}
+
 FUNCTION="$1"
 shift # remove function arg now that we've recorded it
 # call the function with the remainder of the user-provided args
