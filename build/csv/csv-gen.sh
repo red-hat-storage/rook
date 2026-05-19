@@ -20,6 +20,7 @@ DRBD_SETUP_SCRIPT_CONFIGMAP="../../build/csv/ceph/$PLATFORM/manifests/rook-ceph-
 DRBD_SETUP_SCRIPT_FILE="../../deploy/examples/drbd-setup.sh"
 ASSEMBLE_FILE_COMMON="../../deploy/olm/assemble/metadata-common.yaml"
 ASSEMBLE_FILE_OCP="../../deploy/olm/assemble/metadata-ocp.yaml"
+NETWORK_POLICIES_DIR="${BUILD_ROOT}/deploy/olm/networkpolicies"
 
 LATEST_ROOK_CSI_CEPH_IMAGE="quay.io/cephcsi/cephcsi:v3.10.2"
 LATEST_ROOK_CSI_REGISTRAR_IMAGE="registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.0"
@@ -146,6 +147,13 @@ function generate_csv() {
     sed -i'.bak' -e "s|$LATEST_ROOK_CSIADDONS_IMAGE|$ROOK_CSIADDONS_IMAGE|g" "$CSV_FILE_NAME"
 
     rm "$CSV_FILE_NAME.bak"
+
+    # Copy NetworkPolicy manifests into the bundle so OLM applies them at install time.
+    # These cover the operator controller pod and all Ceph operand pods.
+    if [ -d "$NETWORK_POLICIES_DIR" ]; then
+        echo "=== copying NetworkPolicy manifests into bundle"
+        cp "$NETWORK_POLICIES_DIR"/*.yaml "../../build/csv/ceph/$PLATFORM/manifests/"
+    fi
 
     mv "../../build/csv/ceph/$PLATFORM/manifests/"* "../../build/csv/ceph/"
     rm -rf "../../build/csv/ceph/$PLATFORM"

@@ -1,0 +1,17 @@
+# The rook-ceph-operator controller pod needs to talk to the Kubernetes API server
+# (host-networked, variable IP/port) and manage operand pods. Since the API server
+# endpoint cannot be targeted by namespaceSelector/podSelector, we allow all egress
+# per the NetworkPolicy best practices guidance.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rook-ceph-operator
+spec:
+  podSelector:
+    matchLabels:
+      app: rook-ceph-operator
+  policyTypes:
+  - Ingress
+  - Egress
+  egress:
+  - {}
