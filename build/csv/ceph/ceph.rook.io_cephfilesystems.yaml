@@ -77,6 +77,18 @@ spec:
                         dataChunks:
                           minimum: 0
                           type: integer
+                        stripeUnit:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          enum:
+                          - 4Ki
+                          - 16Ki
+                          - 64Ki
+                          - 256Ki
+                          - 1Mi
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
                       required:
                       - codingChunks
                       - dataChunks
@@ -220,6 +232,18 @@ spec:
                       dataChunks:
                         minimum: 0
                         type: integer
+                      stripeUnit:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        enum:
+                        - 4Ki
+                        - 16Ki
+                        - 64Ki
+                        - 256Ki
+                        - 1Mi
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
                     required:
                     - codingChunks
                     - dataChunks
