@@ -55,8 +55,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
-
-	cephcsi "github.com/ceph/ceph-csi/api/deploy/kubernetes"
 )
 
 const (
@@ -1240,6 +1238,7 @@ func (c *Cluster) saveMonConfig() error {
 		return errors.Wrap(err, "failed to write connection config for new mons")
 	}
 
+<<<<<<< HEAD
 	monEndpoints := csi.MonEndpoints(c.ClusterInfo.AllMonitors(), c.spec.RequireMsgr2())
 	csiConfigEntry := &csi.CSIClusterConfigEntry{
 		Namespace: c.ClusterInfo.Namespace,
@@ -1256,6 +1255,9 @@ func (c *Cluster) saveMonConfig() error {
 	// for downstream we do not need to set the csi operator enable as the client operator will own it
 	// if the external mode is enable we should not check the enableCsiOperator
 	if (c.spec.External.Enable && len(c.ClusterInfo.AllMonitors()) > 0) || (csi.EnableCSIOperator() && len(c.ClusterInfo.AllMonitors()) > 0) {
+=======
+	if len(c.ClusterInfo.AllMonitors()) > 0 {
+>>>>>>> upstream
 		err := csi.CreateUpdateCephConnection(c.context.Client, c.ClusterInfo, c.spec)
 		if err != nil {
 			return errors.Wrap(err, "failed to create/update cephConnection")

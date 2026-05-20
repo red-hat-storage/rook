@@ -457,6 +457,14 @@ func createReplicatedPoolForApp(context *clusterd.Context, clusterInfo *ClusterI
 
 	// The crush rule name is the same as the pool unless we have a stretch cluster.
 	crushRuleName := pool.Name
+
+	// Check if the pool already exists before creating crush rules
+	poolExists := false
+	poolDetails, err := GetPoolDetails(context, clusterInfo, pool.Name)
+	if err == nil {
+		poolExists = true
+	}
+
 	if clusterSpec.IsStretchCluster() {
 		// A stretch cluster enforces using the same crush rule for all pools.
 		// The stretch cluster rule is created initially by the operator when the stretch cluster is configured
@@ -478,14 +486,17 @@ func createReplicatedPoolForApp(context *clusterd.Context, clusterInfo *ClusterI
 		} else {
 			// create a crush rule for a replicated pool, if a failure domain is specified
 			checkFailureDomain = true
-			if err := createReplicationCrushRule(context, clusterInfo, clusterSpec, crushRuleName, pool); err != nil {
-				return errors.Wrapf(err, "failed to create replicated crush rule %q", crushRuleName)
+			// Only create the initial crush rule if the pool doesn't exist yet.
+			// Any updates to the crush rule will be applied later in the reconcile.
+			if !poolExists {
+				if err := createReplicationCrushRule(context, clusterInfo, clusterSpec, crushRuleName, pool); err != nil {
+					return errors.Wrapf(err, "failed to create replicated crush rule %q", crushRuleName)
+				}
 			}
 		}
 	}
 
-	poolDetails, err := GetPoolDetails(context, clusterInfo, pool.Name)
-	if err != nil {
+	if !poolExists {
 		// Create the pool since it doesn't exist yet
 		// If there was some error other than ENOENT (not exists), go ahead and ensure the pool is created anyway
 		args := []string{"osd", "pool", "create", pool.Name, pgCount, "replicated", crushRuleName, "--size", strconv.FormatUint(uint64(pool.Replicated.Size), 10)}
@@ -607,6 +618,15 @@ func CleanupUnusedCrushRules(context *clusterd.Context, clusterInfo *ClusterInfo
 		return err
 	}
 
+	// Skip cleanup when no pools exist yet. During initial cluster setup, this function
+	// runs after MGR startup but before pools are created. Deleting the default
+	// "replicated_rule" in this window leaves the cluster with zero CRUSH rules, causing
+	// Ceph internal modules (e.g. devicehealth) to crash when they try to create pools.
+	if len(usedRules) == 0 {
+		logger.Infof("no crush rules are in use yet, skipping cleanup")
+		return nil
+	}
+
 	crushMap, err := GetCrushMap(context, clusterInfo)
 	if err != nil {
 		return err
@@ -616,6 +636,10 @@ func CleanupUnusedCrushRules(context *clusterd.Context, clusterInfo *ClusterInfo
 	for _, rule := range crushMap.Rules {
 		if _, inUse := usedRules[rule.Name]; inUse {
 			logger.Debugf("crush rule %q is still in use", rule.Name)
+			continue
+		}
+		if rule.Name == "replicated_rule" {
+			logger.Debugf("skipping deletion of default crush rule %q", rule.Name)
 			continue
 		}
 		logger.Infof("crush rule %q is unused and will be deleted", rule.Name)

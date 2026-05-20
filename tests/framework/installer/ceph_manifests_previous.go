@@ -24,7 +24,7 @@ import (
 
 const (
 	// The version from which the upgrade test will start
-	Version1_18 = "v1.18.8"
+	Version1_19 = "v1.19.5"
 )
 
 // CephManifestsPreviousVersion wraps rook yaml definitions
@@ -39,10 +39,6 @@ func (m *CephManifestsPreviousVersion) Settings() *TestCephSettings {
 
 func (m *CephManifestsPreviousVersion) GetCRDs(k8shelper *utils.K8sHelper) string {
 	return m.settings.readManifestFromGitHub("crds.yaml")
-}
-
-func (m *CephManifestsPreviousVersion) GetCSINFSRBAC() string {
-	return m.settings.readManifestFromGitHub("/csi/nfs/rbac.yaml")
 }
 
 func (m *CephManifestsPreviousVersion) GetCSIOperator() string {

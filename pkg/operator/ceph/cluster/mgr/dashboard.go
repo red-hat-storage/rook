@@ -248,7 +248,7 @@ func (c *Cluster) createSelfSignedCert() (bool, error) {
 	// retry a few times in the case that the mgr module is not ready to accept commands
 	for i := 0; i < 5; i++ {
 		_, err := client.NewCephCommand(c.context, c.clusterInfo, args).RunWithTimeout(exec.CephCommandsTimeout)
-		if err == context.DeadlineExceeded {
+		if errors.Is(err, context.DeadlineExceeded) {
 			log.NamespacedWarning(c.clusterInfo.Namespace, logger, "cert creation timed out. trying again")
 			continue
 		}
@@ -373,6 +373,7 @@ func GeneratePassword(length int, keyType KeyType) (string, error) {
 		return "", errors.Wrap(err, "failed to generate password")
 	}
 	for i, pass := range passwd {
+		// #nosec G115 -- len(passwordChars) is small (constant string) and fits in a byte
 		passwd[i] = passwordChars[pass%byte(len(passwordChars))]
 	}
 	return string(passwd), nil

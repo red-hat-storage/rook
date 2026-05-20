@@ -296,7 +296,7 @@ func add(opManagerContext context.Context, mgr manager.Manager, r reconcile.Reco
 			mgr.GetCache(),
 			&corev1.ConfigMap{TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: corev1.SchemeGroupVersion.String()}},
 			handler.TypedEnqueueRequestsFromMapFunc(cmHandler),
-			predicateForOperatorConfigCMWatcher(),
+			predicateForClusterConfigMapWatcher(opManagerContext, mgr.GetClient()),
 		),
 	)
 	if err != nil {
@@ -551,13 +551,7 @@ func (c *ClusterController) requestClusterDelete(clusterObj *cephv1.CephCluster)
 }
 
 func (c *ClusterController) checkIfVolumesExist(cluster *cephv1.CephCluster) error {
-	if csi.CSIEnabled() {
-		err := c.csiVolumesAllowForDeletion(cluster)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return c.csiVolumesAllowForDeletion(cluster)
 }
 
 func (c *ClusterController) csiVolumesAllowForDeletion(cluster *cephv1.CephCluster) error {

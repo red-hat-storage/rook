@@ -559,6 +559,28 @@ func (c *Cluster) resolveNode(nodeName, deviceClass string) *cephv1.Node {
 	return rookNode
 }
 
+// perDeviceClassForOSD returns the per-device deviceClass from the CR that
+// provisioned this OSD, or "" if no matching device spec is found.
+func perDeviceClassForOSD(osd *OSDInfo, devices []cephv1.Device) string {
+	if osd.BlockPath == "" {
+		return ""
+	}
+	short := strings.TrimPrefix(osd.BlockPath, "/dev/")
+	for _, device := range devices {
+		deviceConfig := device.Config[osdconfig.DeviceClassKey]
+		if deviceConfig == "" {
+			continue
+		}
+		if device.Name != "" && strings.TrimPrefix(device.Name, "/dev/") == short {
+			return deviceConfig
+		}
+		if device.FullPath != "" && device.FullPath == osd.BlockPath {
+			return deviceConfig
+		}
+	}
+	return ""
+}
+
 func (c *Cluster) getOSDPropsForNode(nodeName, deviceClass string) (osdProperties, error) {
 	// fully resolve the storage config and resources for this node
 	n := c.resolveNode(nodeName, deviceClass)
@@ -797,8 +819,11 @@ func (c *Cluster) getOSDInfo(d *appsv1.Deployment) (OSDInfo, error) {
 
 	osd.Store = d.Labels[osdStore]
 	osd.DeviceType = d.Labels[deviceType]
+	// Detect encryption from the block path as a fallback for deployments that predate the
+	// "encrypted" label. On upgrade, the label won't exist yet, but the dmcrypt block path
+	// is always present on encrypted OSDs regardless of the Rook version that created them.
 	osd.Encrypted = false
-	if d.Labels[encrypted] == "true" {
+	if d.Labels[encrypted] == "true" || strings.Contains(osd.BlockPath, "-dmcrypt") {
 		osd.Encrypted = true
 	}
 
