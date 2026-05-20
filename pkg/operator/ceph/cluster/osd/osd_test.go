@@ -201,7 +201,7 @@ func TestAddRemoveNode(t *testing.T) {
 	cmErr := createDiscoverConfigmap(nodeName, "rook-system", clientset)
 	assert.Nil(t, cmErr)
 
-	statusMapWatcher := watch.NewFake()
+	statusMapWatcher := watch.NewRaceFreeFake()
 	clientset.PrependWatchReactor("configmaps", k8stesting.DefaultWatchReactor(statusMapWatcher, nil))
 
 	clusterInfo := &cephclient.ClusterInfo{
@@ -361,7 +361,7 @@ func TestAddRemoveNode(t *testing.T) {
 	c = New(context, clusterInfo, cephCluster.Spec, "myversion")
 
 	// reset the orchestration status watcher
-	statusMapWatcher = watch.NewFake()
+	statusMapWatcher = watch.NewRaceFreeFake()
 	clientset.PrependWatchReactor("configmaps", k8stesting.DefaultWatchReactor(statusMapWatcher, nil))
 
 	startErr = nil
@@ -837,6 +837,54 @@ func TestGetOSDInfo(t *testing.T) {
 		assert.Equal(t, osdInfo.DeviceType, updatedOSDInfo.DeviceType)
 		assert.True(t, updatedOSDInfo.Encrypted)
 		assert.Equal(t, pvcName, updatedOSDInfo.PVCName)
+	})
+
+	t.Run("detect encryption from dmcrypt block path when encrypted label is missing", func(t *testing.T) {
+		osdInfo := &OSDInfo{
+			UUID:      "osd-uuid",
+			BlockPath: "/dev/mapper/set1-data-0-abc-block-dmcrypt",
+			CVMode:    "raw",
+		}
+		osdProp := osdProperties{
+			crushHostname: node,
+			pvc:           corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc"},
+			selection:     cephv1.Selection{},
+			resources:     corev1.ResourceRequirements{},
+			storeConfig:   config.StoreConfig{},
+		}
+
+		d, err := c.makeDeployment(osdProp, osdInfo, dataPathMap)
+		assert.NoError(t, err)
+
+		// simulate a pre-label upgrade by removing the encrypted label
+		delete(d.Labels, encrypted)
+		delete(d.Spec.Template.Labels, encrypted)
+
+		updatedOSDInfo, err := c.getOSDInfo(d)
+		assert.NoError(t, err)
+		assert.True(t, updatedOSDInfo.Encrypted)
+	})
+
+	t.Run("encrypted label is set from OSDInfo when osdProps does not indicate encryption", func(t *testing.T) {
+		osdInfo := &OSDInfo{
+			UUID:      "osd-uuid",
+			BlockPath: "/dev/mapper/set1-data-0-abc-block-dmcrypt",
+			CVMode:    "raw",
+			Encrypted: true,
+		}
+		osdProp := osdProperties{
+			crushHostname: node,
+			pvc:           corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc"},
+			selection:     cephv1.Selection{},
+			resources:     corev1.ResourceRequirements{},
+			storeConfig:   config.StoreConfig{},
+			encrypted:     false,
+		}
+
+		d, err := c.makeDeployment(osdProp, osdInfo, dataPathMap)
+		assert.NoError(t, err)
+		assert.Equal(t, "true", d.Labels[encrypted])
+		assert.Equal(t, "true", d.Spec.Template.Labels[encrypted])
 	})
 
 	t.Run("verify the non-existence of labels if the corresponding fields are not set on OSDInfo and OSDProperties", func(t *testing.T) {
@@ -1379,4 +1427,71 @@ func TestValidateOSDSettings(t *testing.T) {
 		}
 		assert.Error(t, c.validateOSDSettings())
 	})
+}
+
+func TestPerDeviceClassForOSD(t *testing.T) {
+	tests := []struct {
+		name    string
+		osd     OSDInfo
+		devices []cephv1.Device
+		want    string
+	}{
+		{
+			name:    "short name match",
+			osd:     OSDInfo{BlockPath: "/dev/vdb"},
+			devices: []cephv1.Device{{Name: "vdb", Config: map[string]string{"deviceClass": "fast"}}},
+			want:    "fast",
+		},
+		{
+			name:    "CR name with /dev/ prefix matches",
+			osd:     OSDInfo{BlockPath: "/dev/vdb"},
+			devices: []cephv1.Device{{Name: "/dev/vdb", Config: map[string]string{"deviceClass": "fast"}}},
+			want:    "fast",
+		},
+		{
+			name:    "FullPath match",
+			osd:     OSDInfo{BlockPath: "/dev/disk/by-id/wwn-0x123"},
+			devices: []cephv1.Device{{FullPath: "/dev/disk/by-id/wwn-0x123", Config: map[string]string{"deviceClass": "nvmeish"}}},
+			want:    "nvmeish",
+		},
+		{
+			name:    "empty BlockPath returns empty",
+			osd:     OSDInfo{BlockPath: ""},
+			devices: []cephv1.Device{{Name: "vdb", Config: map[string]string{"deviceClass": "fast"}}},
+			want:    "",
+		},
+		{
+			name:    "no match returns empty",
+			osd:     OSDInfo{BlockPath: "/dev/vdc"},
+			devices: []cephv1.Device{{Name: "vdb", Config: map[string]string{"deviceClass": "fast"}}},
+			want:    "",
+		},
+		{
+			name:    "spec without class returns empty",
+			osd:     OSDInfo{BlockPath: "/dev/vdb"},
+			devices: []cephv1.Device{{Name: "vdb"}},
+			want:    "",
+		},
+		{
+			name: "first match wins",
+			osd:  OSDInfo{BlockPath: "/dev/vdb"},
+			devices: []cephv1.Device{
+				{Name: "vdb", Config: map[string]string{"deviceClass": "first"}},
+				{Name: "vdb", Config: map[string]string{"deviceClass": "second"}},
+			},
+			want: "first",
+		},
+		{
+			// LVM limitation: BlockPath is an LV path, doesn't map to CR Name.
+			name:    "LVM BlockPath returns empty",
+			osd:     OSDInfo{BlockPath: "/dev/ceph-abc/osd-block-xyz"},
+			devices: []cephv1.Device{{Name: "sdb", Config: map[string]string{"deviceClass": "fast"}}},
+			want:    "",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, perDeviceClassForOSD(&tc.osd, tc.devices))
+		})
+	}
 }

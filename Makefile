@@ -176,35 +176,39 @@ test: ## Runs unit tests.
 test-integration: ## Runs integration tests.
 	@$(MAKE) go.test.integration
 
-.PHONY: vet
-vet: ## Runs lint checks on go sources.
+.PHONY: lint.vet
+lint.vet: ## Runs lint checks on go sources.
 	@$(MAKE) go.init
 	@$(MAKE) go.vet
 
-.PHONY: fmt
-fmt: $(YQ) ## Check formatting of go sources.
+.PHONY: lint.fmt
+lint.fmt: $(YQ) ## Check formatting of go sources.
 	@$(MAKE) go.fmt
 
-fmt-fix: $(YQ) ## Reformatting of go sources.
+fix.fmt: $(YQ) ## Reformatting of go sources.
 	@$(MAKE) go.fmt-fix
 
 golangci-lint: $(YQ)
 	@$(MAKE) go.golangci-lint
 
-.PHONY: markdownlint
-markdownlint: ## Check formatting of documentation sources
+.PHONY: lint.go
+lint.go: lint.fmt lint.vet golangci-lint ## run various go linters
+
+
+.PHONY: lint.markdown
+lint.markdown: ## Check formatting of documentation sources
 	@$(MARKDOWNLINT) "Documentation/**/**.md" "#Documentation/Helm-Charts/**" --config .markdownlint-cli2.cjs
 
-.PHONY: markdownlint.fix
-markdownlint.fix: ## Check and fix formatting of documentation sources
+.PHONY: fix.markdown
+fix.markdown: ## Check and fix formatting of documentation sources
 	@$(MARKDOWNLINT) "Documentation/**/**.md" "#Documentation/Helm-Charts/**" --fix --config .markdownlint-cli2.cjs
 
-.PHONY: yamllint
-yamllint:
+.PHONY: lint.yaml
+lint.yaml: ## lint yaml files
 	$(YAMLLINT) -c .yamllint deploy/examples/ --no-warnings
 
-.PHONY: helm.lint
-helm.lint: $(HELM) $(KUSTOMIZE) ## Check the helm charts
+.PHONY: lint.helm
+lint.helm: $(HELM) $(KUSTOMIZE) ## Check the helm charts
 	@ln -sf "$(notdir $(HELM))" "$(dir $(HELM))/helm"
 	PATH="$(dir $(HELM)):$$PATH" $(CT) lint --charts=./deploy/charts/rook-ceph,./deploy/charts/rook-ceph-cluster --validate-yaml=false --validate-maintainers=false --validate-chart-schema=false
 	$(HELM) -n rook-ceph template deploy/charts/rook-ceph > templated.yaml
@@ -213,19 +217,21 @@ helm.lint: $(HELM) $(KUSTOMIZE) ## Check the helm charts
 	$(KUSTOMIZE) build >/dev/null
 	rm templated.yaml kustomization.yaml
 
+.PHONY: lint.quick
+lint.quick: lint.yaml lint.shell lint.make lint.go lint.helm lint.markdown ## run some (faster) linters
 .PHONY: lint
-lint: yamllint pylint shellcheck checkmake vet markdownlint golangci-lint helm.lint  ## Run various linters
+lint: lint.quick lint.python ## Run various linters
 
-.PHONY: pylint
-pylint:
+.PHONY: lint.python
+lint.python: ## lint python scripts
 	pylint $(shell find $(ROOT_DIR) -name '*.py') -E
 
-.PHONY: checkmake
-checkmake:
+.PHONY: lint.make
+lint.make: ## lint the Makefile
 	@$(CHECKMAKE) Makefile
 
-.PHONY: shellcheck
-shellcheck: | $(SHELLCHECK)
+.PHONY: lint.shell
+lint.shell: | $(SHELLCHECK) ## lint shell scripts
 	$(SHELLCHECK) --severity=warning --format=gcc --shell=bash $(shell find $(ROOT_DIR) -type f -name '*.sh') build/reset build/sed-in-place
 
 .PHONY: gen.codegen
@@ -277,7 +283,6 @@ gen.rbac: gen-rbac
 gen-rbac: $(HELM) $(YQ) helm.dependency.build ## Generate RBAC from Helm charts
 	@# output only stdout to the file; stderr for debugging should keep going to stderr
 	HELM=$(HELM) ./build/rbac/gen-common.sh
-	HELM=$(HELM) ./build/rbac/gen-nfs-rbac.sh
 
 .PHONY: gen.docs
 gen.docs: docs ## generate docs

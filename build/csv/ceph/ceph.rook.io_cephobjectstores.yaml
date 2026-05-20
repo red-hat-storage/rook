@@ -110,6 +110,18 @@ spec:
                       dataChunks:
                         minimum: 0
                         type: integer
+                      stripeUnit:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        enum:
+                        - 4Ki
+                        - 16Ki
+                        - 64Ki
+                        - 256Ki
+                        - 1Mi
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
                     required:
                     - codingChunks
                     - dataChunks
@@ -1420,6 +1432,18 @@ spec:
                       dataChunks:
                         minimum: 0
                         type: integer
+                      stripeUnit:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        enum:
+                        - 4Ki
+                        - 16Ki
+                        - 64Ki
+                        - 256Ki
+                        - 1Mi
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
                     required:
                     - codingChunks
                     - dataChunks
@@ -1566,6 +1590,12 @@ spec:
               security:
                 nullable: true
                 properties:
+                  ciphers:
+                    items:
+                      type: string
+                    maxItems: 1000
+                    minItems: 0
+                    type: array
                   keyRotation:
                     nullable: true
                     properties:
@@ -1599,6 +1629,29 @@ spec:
                       tokenSecretName:
                         type: string
                     type: object
+                  sslOptions:
+                    properties:
+                      defaultWorkarounds:
+                        type: boolean
+                      noCompression:
+                        type: boolean
+                      singleDiffieHellmanUse:
+                        type: boolean
+                      sslv2:
+                        type: boolean
+                      sslv3:
+                        type: boolean
+                      tlsv1_0:
+                        type: boolean
+                      tlsv1_1:
+                        type: boolean
+                      tlsv1_2:
+                        type: boolean
+                    type: object
+                  tlsGroups:
+                    items:
+                      type: string
+                    type: array
                 type: object
               sharedPools:
                 nullable: true

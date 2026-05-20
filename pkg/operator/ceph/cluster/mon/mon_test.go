@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	csiopv1 "github.com/ceph/ceph-csi-operator/api/v1"
 	"github.com/coreos/pkg/capnslog"
 	"github.com/pkg/errors"
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
@@ -101,10 +102,14 @@ func newTestStartClusterWithQuorumResponse(t *testing.T, namespace string, monRe
 			}
 		},
 	}
+	s := scheme.Scheme
+	assert.NoError(t, csiopv1.AddToScheme(s))
+	cl := fake.NewClientBuilder().WithScheme(s).Build()
 	return &clusterd.Context{
 		Clientset: clientset,
 		Executor:  executor,
 		ConfigDir: configDir,
+		Client:    cl,
 	}, nil
 }
 
@@ -444,7 +449,10 @@ func TestSaveMonEndpoints(t *testing.T) {
 	clientset := test.New(t, 1)
 	configDir := t.TempDir()
 	ownerInfo := cephclient.NewMinimumOwnerInfoWithOwnerRef()
-	c := New(ctx, &clusterd.Context{Clientset: clientset, ConfigDir: configDir}, "ns", cephv1.ClusterSpec{}, ownerInfo)
+	s := scheme.Scheme
+	assert.NoError(t, csiopv1.AddToScheme(s))
+	cl := fake.NewClientBuilder().WithScheme(s).Build()
+	c := New(ctx, &clusterd.Context{Clientset: clientset, ConfigDir: configDir, Client: cl}, "ns", cephv1.ClusterSpec{}, ownerInfo)
 	setCommonMonProperties(c, 1, cephv1.MonSpec{Count: 3, AllowMultiplePerNode: true}, "myversion")
 
 	// create the initial config map
@@ -491,7 +499,10 @@ func TestMaxMonID(t *testing.T) {
 	clientset := test.New(t, 1)
 	configDir := t.TempDir()
 	ownerInfo := cephclient.NewMinimumOwnerInfoWithOwnerRef()
-	c := New(context.TODO(), &clusterd.Context{Clientset: clientset, ConfigDir: configDir}, "ns", cephv1.ClusterSpec{}, ownerInfo)
+	s := scheme.Scheme
+	assert.NoError(t, csiopv1.AddToScheme(s))
+	cl := fake.NewClientBuilder().WithScheme(s).Build()
+	c := New(context.TODO(), &clusterd.Context{Clientset: clientset, ConfigDir: configDir, Client: cl}, "ns", cephv1.ClusterSpec{}, ownerInfo)
 	c.ClusterInfo = clienttest.CreateTestClusterInfo(1)
 
 	// when the configmap is not found, the maxMonID is -1
@@ -1259,6 +1270,7 @@ func TestRotateMonCephxKeys(t *testing.T) {
 	s := scheme.Scheme
 	s.AddKnownTypes(cephv1.SchemeGroupVersion, &cephv1.CephCluster{})
 	s.AddKnownTypes(v1.SchemeGroupVersion, &v1.Secret{})
+	assert.NoError(t, csiopv1.AddToScheme(s))
 
 	object := []runtime.Object{
 		cluster,
@@ -1446,9 +1458,17 @@ func TestFloatingMonDeployment(t *testing.T) {
 	t.Run("resource limits applied", func(t *testing.T) {
 		c := newFloatingMonTestCluster(t, namespace)
 		c.spec.Resources = map[string]v1.ResourceRequirements{
-			"mon": {Limits: v1.ResourceList{
+			cephv1.ResourcesKeyMon: {Limits: v1.ResourceList{
 				v1.ResourceCPU:    resource.MustParse("500m"),
 				v1.ResourceMemory: resource.MustParse("2Gi"),
+			}},
+			cephv1.ResourcesKeyLogCollector: {Limits: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("10m"),
+				v1.ResourceMemory: resource.MustParse("32Mi"),
+			}},
+			cephv1.ResourcesKeyFloatingMonShutDownApp: {Limits: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("20m"),
+				v1.ResourceMemory: resource.MustParse("48Mi"),
 			}},
 		}
 		assert.NoError(t, c.startMon(m, nil))
@@ -1456,9 +1476,17 @@ func TestFloatingMonDeployment(t *testing.T) {
 		d, err := c.context.Clientset.AppsV1().Deployments(namespace).Get(c.ClusterInfo.Context, m.ResourceName, metav1.GetOptions{})
 		assert.NoError(t, err)
 		for _, ct := range d.Spec.Template.Spec.Containers {
-			if ct.Name == "mon" {
+			if ct.Name == cephv1.ResourcesKeyMon {
 				assert.Equal(t, "500m", ct.Resources.Limits.Cpu().String())
 				assert.Equal(t, "2Gi", ct.Resources.Limits.Memory().String())
+			}
+			if strings.Contains(ct.Name, "log") {
+				assert.Equal(t, "10m", ct.Resources.Limits.Cpu().String())
+				assert.Equal(t, "32Mi", ct.Resources.Limits.Memory().String())
+			}
+			if ct.Name == cephv1.ResourcesKeyFloatingMonShutDownApp {
+				assert.Equal(t, "20m", ct.Resources.Limits.Cpu().String())
+				assert.Equal(t, "48Mi", ct.Resources.Limits.Memory().String())
 			}
 		}
 	})
