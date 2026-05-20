@@ -172,20 +172,6 @@ func (r *ReconcileCSI) reconcile(request reconcile.Request) (reconcile.Result, e
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			logger.Debug("no ceph cluster found not deploying ceph csi driver")
-<<<<<<< HEAD
-			EnableRBD, EnableCephFS, EnableNFS = false, false, false
-			err = r.stopDrivers()
-			if err != nil {
-				return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to stop Drivers")
-			}
-
-			err = r.deleteCSIDriverObject()
-			if err != nil {
-				return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to delete Drivers object")
-			}
-
-=======
->>>>>>> upstream
 			return reconcile.Result{}, nil
 		}
 		return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to list ceph clusters")
@@ -193,20 +179,6 @@ func (r *ReconcileCSI) reconcile(request reconcile.Request) (reconcile.Result, e
 
 	if len(cephClusters.Items) == 0 {
 		logger.Debug("no ceph cluster found not deploying ceph csi driver")
-<<<<<<< HEAD
-		EnableRBD, EnableCephFS, EnableNFS = false, false, false
-		err = r.stopDrivers()
-		if err != nil {
-			return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to stop Drivers")
-		}
-
-		err = r.deleteCSIDriverObject()
-		if err != nil {
-			return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to delete Drivers object")
-		}
-
-=======
->>>>>>> upstream
 		return reconcile.Result{}, nil
 	}
 
@@ -240,64 +212,6 @@ func (r *ReconcileCSI) reconcile(request reconcile.Request) (reconcile.Result, e
 			return opcontroller.ImmediateRetryResult, errors.Wrapf(err, "failed to load cluster info for cluster %q", cluster.Name)
 		}
 		clusterInfo.OwnerInfo = k8sutil.NewOwnerInfo(&cephClusters.Items[i], r.scheme)
-<<<<<<< HEAD
-
-		// ensure any remaining holder-related configs are cleared
-		holderEnabled = false
-		err = reconcileSaveCSIDriverOptions(r.context.Clientset, cluster.Namespace, clusterInfo)
-		if err != nil {
-			return opcontroller.ImmediateRetryResult, errors.Wrapf(err, "failed to update CSI driver options for cluster %q", cluster.Name)
-		}
-
-		// disable Rook-managed CSI drivers if CSI operator is enabled
-		if EnableCSIOperator() {
-			logger.Info("disabling csi-driver since EnableCSIOperator is true")
-			err := r.stopDrivers()
-			if err != nil {
-				return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to stop csi Drivers")
-			}
-			err = r.deleteRookCSICMIfExists()
-			if err != nil {
-				return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to delete rook-ceph-csi-config configmap")
-			}
-			err = r.reconcileOperatorConfig(cluster, clusterInfo)
-			if err != nil {
-				return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to reconcile csi-op config CR")
-			}
-			return reconcileResult, nil
-		}
-	}
-
-	if disableCSI {
-		err := r.stopDrivers()
-		if err != nil {
-			return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to stop csi Drivers")
-		}
-		RBDDriverName = fmt.Sprintf("%s.rbd.csi.ceph.com", r.opConfig.OperatorNamespace)
-		CephFSDriverName = fmt.Sprintf("%s.cephfs.csi.ceph.com", r.opConfig.OperatorNamespace)
-		NFSDriverName = fmt.Sprintf("%s.nfs.csi.ceph.com", r.opConfig.OperatorNamespace)
-		driverNames := []string{RBDDriverName, CephFSDriverName, NFSDriverName}
-		for _, driverName := range driverNames {
-			err = r.transferCSIDriverOwner(r.opManagerContext, driverName)
-			if err != nil {
-				return opcontroller.ImmediateRetryResult, errors.Wrapf(err, "failed to create update %s driver for csi-operator driver CR", driverName)
-			}
-		}
-	}
-
-	if !disableCSI && !EnableCSIOperator() {
-		// delete CSI operator resources if CSI operator is disabled but CSI driver is enabled
-		err := r.deleteCSIOperatorResources()
-		if err != nil {
-			logger.Errorf("failed to delete CSI operator resources: %v", err)
-		}
-
-		err = r.validateAndConfigureDrivers(ownerInfo)
-		if err != nil {
-			return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to configure ceph csi")
-		}
-=======
->>>>>>> upstream
 	}
 
 	return reconcileResult, nil

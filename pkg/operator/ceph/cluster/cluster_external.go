@@ -154,18 +154,6 @@ func (c *ClusterController) configureExternalCephCluster(cluster *cluster) error
 		}
 	}
 
-<<<<<<< HEAD
-	if true {
-		log.NamespacedInfo(cluster.Namespace, logger, "create cephConnection and defaultClientProfile for external mode")
-		err = csi.CreateUpdateCephConnection(c.context.Client, cluster.ClusterInfo, *cluster.Spec)
-		if err != nil {
-			return errors.Wrap(err, "failed to create/update cephConnection")
-		}
-		err = csi.CreateDefaultClientProfile(c.context.Client, cluster.ClusterInfo)
-		if err != nil {
-			return errors.Wrap(err, "failed to create/update default client profile")
-		}
-=======
 	log.NamespacedInfo(cluster.Namespace, logger, "create cephConnection and defaultClientProfile for external mode")
 	err = csi.CreateUpdateCephConnection(c.context.Client, cluster.ClusterInfo, *cluster.Spec)
 	if err != nil {
@@ -174,7 +162,6 @@ func (c *ClusterController) configureExternalCephCluster(cluster *cluster) error
 	err = csi.CreateDefaultClientProfile(c.context.Client, cluster.ClusterInfo)
 	if err != nil {
 		return errors.Wrap(err, "failed to create/update default client profile")
->>>>>>> upstream
 	}
 
 	opcontroller.UpdateCondition(c.OpManagerCtx, c.context, cluster.namespacedName, k8sutil.ObservedGenerationNotAvailable, cephv1.ConditionConnected, v1.ConditionTrue, cephv1.ClusterConnectedReason, "Cluster connected successfully")

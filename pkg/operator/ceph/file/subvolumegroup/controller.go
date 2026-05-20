@@ -267,17 +267,9 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) reconcile(request reconcile.Requ
 	if cephCluster.Spec.External.Enable {
 		log.NamedDebug(request.NamespacedName, logger, "skip creating external subvolume in external mode, create it manually, the controller will assume it's there")
 		r.updateStatus(observedGeneration, namespacedName, cephv1.ConditionReady)
-<<<<<<< HEAD
-		if true {
-			err = csi.CreateUpdateClientProfileSubVolumeGroup(r.clusterInfo.Context, r.client, r.clusterInfo, cephFilesystemSubVolumeGroupName, buildClusterID(cephFilesystemSubVolumeGroup), cephFilesystemSubVolumeGroup.Spec.CSIMetadataRadosNamespace)
-			if err != nil {
-				return reconcile.Result{}, errors.Wrap(err, "failed to create ceph csi-op config CR for subvolume")
-			}
-=======
 		err = csi.CreateUpdateClientProfileSubVolumeGroup(r.clusterInfo.Context, r.client, r.clusterInfo, cephFilesystemSubVolumeGroupName, buildClusterID(cephFilesystemSubVolumeGroup), cephFilesystemSubVolumeGroup.Spec.CSIMetadataRadosNamespace)
 		if err != nil {
 			return reconcile.Result{}, errors.Wrap(err, "failed to create ceph csi-op config CR for subvolume")
->>>>>>> upstream
 		}
 		return reconcile.Result{}, nil
 	}

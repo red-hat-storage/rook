@@ -5,9 +5,6 @@ resources:
   - crds.yaml
   - common.yaml
   - operator-openshift.yaml
-<<<<<<< HEAD
   - csi/nfs/rbac.yaml
   - external-cluster-script-configmap.yaml
   - drbd-setup-script-configmap.yaml
-=======
->>>>>>> upstream

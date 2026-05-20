@@ -283,17 +283,9 @@ func (r *ReconcileCephBlockPoolRadosNamespace) reconcile(request reconcile.Reque
 	if cephCluster.Spec.External.Enable {
 		log.NamedDebug(namespacedName, logger, "skip creating external radosnamespace in external mode, create it manually, the controller will assume it's there")
 		r.updateStatus(r.client, namespacedName, cephv1.ConditionReady)
-<<<<<<< HEAD
-		if true {
-			err = csi.CreateUpdateClientProfileRadosNamespace(r.clusterInfo.Context, r.client, r.clusterInfo, radosNamespaceName, buildClusterID(radosNamespace))
-			if err != nil {
-				return reconcile.Result{}, radosNamespace, errors.Wrap(err, "failed to create ceph csi-op config CR for RadosNamespace")
-			}
-=======
 		err = csi.CreateUpdateClientProfileRadosNamespace(r.clusterInfo.Context, r.client, r.clusterInfo, radosNamespaceName, buildClusterID(radosNamespace))
 		if err != nil {
 			return reconcile.Result{}, radosNamespace, errors.Wrap(err, "failed to create ceph csi-op config CR for RadosNamespace")
->>>>>>> upstream
 		}
 		return reconcile.Result{}, radosNamespace, nil
 	}
