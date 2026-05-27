@@ -1566,6 +1566,12 @@ spec:
               security:
                 nullable: true
                 properties:
+                  cipherSuites:
+                    items:
+                      type: string
+                    maxItems: 1000
+                    minItems: 0
+                    type: array
                   ciphers:
                     items:
                       type: string
