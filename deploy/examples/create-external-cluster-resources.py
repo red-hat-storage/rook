@@ -475,6 +475,17 @@ class RadosJSON:
             + "To revert keys to the prior generation, set `--cephx-key-rotation revert`."
             + "Note: If user are reverting to prior generation, then the user should manually delete the prior used user keys from the cluster after reverting",
         )
+        output_group.add_argument(
+            "--cephx-key-type",
+            default="",
+            required=False,
+            help="When new Ceph client keys are created or when CephX key rotation is enabled (see --cephx-key-rotate), "
+            + "this will request Ceph create a specific type of key."
+            + "If not specified, Ceph will use its configured preferred key type."
+            + "Recommended: use the highest key type supported by the Linux kernel running on Rook cluster nodes."
+            + "Supported key types: 'aes', 'aes256k' (recommended if supported).",
+            # TODO: link to ceph docs when those are available.
+        )
 
         upgrade_group = argP.add_argument_group("upgrade")
         upgrade_group.add_argument(
@@ -1069,6 +1080,9 @@ class RadosJSON:
             "caps": [cap for cap_list in list(caps.items()) for cap in cap_list],
             "format": "json",
         }
+
+        if self._arg_parser.cephx_key_type != "":
+            cmd_json["key_type"] = self._arg_parser.cephx_key_type
 
         if self._arg_parser.dry_run:
             return (

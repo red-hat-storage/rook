@@ -328,7 +328,7 @@ jobs:
           tests/scripts/github-action-helper.sh check_keys_exists client.csi-rbd-node.1 client.csi-rbd-provisioner.1 client.csi-cephfs-node.1 client.csi-cephfs-provisioner.1 client.healthchecker.1
 
           # rotate the key
-          output2=$(kubectl -n rook-ceph exec $toolbox -- python3 /etc/ceph/create-external-cluster-resources.py --rbd-data-pool-name replicapool --cephfs-filesystem-name myfs --cephx-key-rotate rotate)
+          output2=$(kubectl -n rook-ceph exec $toolbox -- python3 /etc/ceph/create-external-cluster-resources.py --rbd-data-pool-name replicapool --cephfs-filesystem-name myfs --cephx-key-rotate rotate --ceph-key-type aes)
 
           # check if it create a csi rbd, cephfs and Healthchecker rotated keys
           tests/scripts/github-action-helper.sh check_keys_exists client.csi-rbd-node.2 client.csi-rbd-provisioner.2 client.csi-cephfs-node.2 client.csi-cephfs-provisioner.2 client.healthchecker.2
