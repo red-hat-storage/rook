@@ -27,6 +27,8 @@ if [[ -n "${ADDITIONAL_NAMESPACE}" ]]; then
   NAMESPACES+=("${ADDITIONAL_NAMESPACE}")
 fi
 
+NAMESPACES+=("kube-system")
+
 for NAMESPACE in "${NAMESPACES[@]}"; do
   # each namespace is a sub-directory for easier debugging
   NS_DIR="${LOG_DIR}"/namespace-"${NAMESPACE}"

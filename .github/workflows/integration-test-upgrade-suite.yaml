@@ -1,12 +1,6 @@
 name: Integration test CephUpgradeSuite
 on:
   pull_request:
-    branches:
-      - master
-      - release-*
-    paths-ignore:
-      - "Documentation/**"
-      - "design/**"
 
 defaults:
   run:
