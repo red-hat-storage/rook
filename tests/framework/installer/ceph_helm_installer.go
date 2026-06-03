@@ -199,7 +199,7 @@ func (h *CephInstaller) InstallCephCsiDriversViaHelm() error {
 	if err := h.k8shelper.CreateSnapshotController("create"); err != nil {
 		return errors.Wrap(err, "failed to install snapshot controller")
 	}
-	if err := h.k8shelper.WaitForSnapshotController(30); err != nil {
+	if err := h.k8shelper.WaitForSnapshotController(90); err != nil {
 		return errors.Wrap(err, "snapshot controller is not ready")
 	}
 	op := h.settings.OperatorNamespace
