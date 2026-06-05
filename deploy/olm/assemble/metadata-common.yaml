@@ -48,11 +48,11 @@ spec:
     - type: OwnNamespace
       supported: true
     - type: SingleNamespace
-      supported: true
+      supported: false
     - type: MultiNamespace
       supported: false
     - type: AllNamespaces
-      supported: false
+      supported: true
   relatedImages:
     - image: docker.io/rook/ceph:master
       name: rook-container
