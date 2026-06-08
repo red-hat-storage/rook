@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
@@ -65,6 +66,20 @@ var (
 	adminRotationMutex      = sync.Mutex{}
 	adminRotationInProgress = map[string]struct{}{}
 )
+
+// TODO(key): DOWNSTREAM ONLY! (not actually TODO but helps ensure we don't merge upstream)
+var keyTypeHealthErrs = []string{
+	"AUTH_INSECURE_ROTATING_SERVICE_KEY_TYPE",
+	"AUTH_INSECURE_SERVICE_KEY_TYPE",
+	"AUTH_INSECURE_SERVICE_TICKETS",
+}
+
+// TODO(key): DOWNSTREAM ONLY! (not actually TODO but helps ensure we don't merge upstream)
+var keyTypeHealthWarnings = []string{
+	"AUTH_INSECURE_CLIENT_KEY_TYPE",
+	"AUTH_INSECURE_KEYS_ALLOWED",
+	"AUTH_INSECURE_KEYS_CREATABLE",
+}
 
 // claimAdminRotationLock tries to claim a lock on admin key rotation for a cluster namespace
 // returns error if the lock could not be granted.
@@ -129,6 +144,43 @@ func setDefaultCephxKeyType(clusterdCtx *clusterd.Context, clusterInfo *cephclie
 		return errors.Wrapf(err, "failed to set preferred cephx key type (auth_preferred_cipher) to %q", keyType)
 	}
 
+	// TODO(key): DOWNSTREAM ONLY! (not actually TODO but helps ensure we don't merge upstream)
+	// Temporarily mute health errors associated with obsolete key types during reconciliations
+	// where Rook should be working to upgrade the key type. Because 'auth_service_cipher' is set
+	// to 'aes256k' only after OSD keys are upgraded, we can use the current value to determine
+	// whether key types are currently upgrading (==aes) or finished (==aes256k).
+	// Do not mute this when finished to avoid suppressing errors that persist after Rook believes
+	// itself to have upgraded keys successfully.
+	monDump, err := cephclient.GetMonDump(clusterdCtx, clusterInfo)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get mon dump after setting preferred cephx key type")
+	}
+	if monDump.AuthServiceCipher.Name == string(cephv1.CephxKeyTypeAes) {
+		muteTtl := "6h" // only mute the errors for a short time to ensure
+		for _, e := range keyTypeHealthErrs {
+			logger.Infof("temporarily (%s) muting ceph health err %q for cluster in namespace %q", muteTtl, e, clusterInfo.Namespace)
+			args = []string{"health", "mute", e, muteTtl}
+			cmd = cephclient.NewCephCommand(clusterdCtx, clusterInfo, args)
+			_, err = cmd.RunWithTimeout(exec.CephCommandsTimeout)
+			if err != nil {
+				return errors.Wrapf(err, "failed to temporarily mute ceph health err %q", e)
+			}
+		}
+	}
+
+	// TODO(key): DOWNSTREAM ONLY! (not actually TODO but helps ensure we don't merge upstream)
+	// TODO(key): when this code block is removed, replace it with 'ceph health unmute'.
+	// Always mute key type health warnings
+	for _, w := range keyTypeHealthWarnings {
+		logger.Infof("permanently muting ceph health warn %q for cluster in namespace %q", w, clusterInfo.Namespace)
+		args = []string{"health", "mute", w, "--sticky"}
+		cmd = cephclient.NewCephCommand(clusterdCtx, clusterInfo, args)
+		_, err = cmd.RunWithTimeout(exec.CephCommandsTimeout)
+		if err != nil {
+			return errors.Wrapf(err, "failed to permanently mute ceph health warn %q", w)
+		}
+	}
+
 	return nil
 }
 
@@ -175,6 +227,22 @@ func setRotatingServiceKeyType(clusterdCtx *clusterd.Context, clusterInfo *cephc
 		if err != nil {
 			logger.Warningf("failed to wipe rotating service keys for cluster in namespace %q: %+v", clusterInfo.Namespace, err)
 			return nil // best-effort
+		}
+
+		// TODO(key): DOWNSTREAM ONLY! It takes 2-3 seconds for Ceph daemons to rotate internal
+		// service keys. Add a dumb wait so that the errors are less likely to appear to users when
+		// they are unmuted below.
+		time.After(10 * time.Second)
+	}
+
+	// TODO(key): DOWNSTREAM ONLY! (not actually TODO but helps ensure we don't merge upstream)
+	for _, e := range keyTypeHealthErrs {
+		logger.Infof("unmuting health err %q for cluster in namespace %q", e, clusterInfo.Namespace)
+		args = []string{"health", "unmute", e}
+		cmd = cephclient.NewCephCommand(clusterdCtx, clusterInfo, args)
+		_, err = cmd.RunWithTimeout(exec.CephCommandsTimeout)
+		if err != nil {
+			return errors.Wrapf(err, "failed to unmute health err %q", e)
 		}
 	}
 
