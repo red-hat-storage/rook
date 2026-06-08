@@ -66,6 +66,20 @@ var (
 	adminRotationInProgress = map[string]struct{}{}
 )
 
+// DOWNSTREAM ONLY!
+var keyTypeHealthErrs = []string{
+	"AUTH_INSECURE_SERVICE_KEY_TYPE",
+	"AUTH_INSECURE_SERVICE_TICKETS",
+}
+
+// DOWNSTREAM ONLY!
+var keyTypeHealthWarnings = []string{
+	"AUTH_INSECURE_ROTATING_SERVICE_KEY_TYPE",
+	"AUTH_INSECURE_CLIENT_KEY_TYPE",
+	"AUTH_INSECURE_KEYS_ALLOWED",
+	"AUTH_INSECURE_KEYS_CREATABLE",
+}
+
 // claimAdminRotationLock tries to claim a lock on admin key rotation for a cluster namespace
 // returns error if the lock could not be granted.
 // Because (*Mutex).Lock() blocks while trying to get a lock, we could end up stalling Rook
@@ -129,6 +143,47 @@ func setDefaultCephxKeyType(clusterdCtx *clusterd.Context, clusterInfo *cephclie
 		return errors.Wrapf(err, "failed to set preferred cephx key type (auth_preferred_cipher) to %q", keyType)
 	}
 
+	// TODO(key): DOWNSTREAM ONLY! (not actually TODO but helps ensure we don't merge upstream)
+	// Temporarily mute health errors associated with obsolete key types during reconciliations
+	// where Rook should be working to upgrade the key type. Because 'auth_service_cipher' is set
+	// to 'aes256k' only after OSD keys are upgraded, we can use the current value to determine
+	// whether key types are currently upgrading (==aes) or finished (==aes256k).
+	// Do not mute this when finished to avoid suppressing errors that persist after Rook believes
+	// itself to have upgraded keys successfully.
+	monDump, err := cephclient.GetMonDump(clusterdCtx, clusterInfo)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get mon dump after setting preferred cephx key type")
+	}
+	if monDump.AuthServiceCipher.Name == string(cephv1.CephxKeyTypeAes) {
+		muteTtl := "6h" // only mute the errors for a short time to ensure
+		for _, e := range keyTypeHealthErrs {
+			logger.Infof("temporarily (%s) muting ceph health err %q for cluster in namespace %q", muteTtl, e, clusterInfo.Namespace)
+			args = []string{"health", "mute", e, muteTtl}
+			cmd = cephclient.NewCephCommand(clusterdCtx, clusterInfo, args)
+			_, err = cmd.RunWithTimeout(exec.CephCommandsTimeout)
+			if err != nil {
+				// If the build of ceph doesn't have these warnings, this command will fail.
+				// We anticipate this with RHCS 9.1z1, but 9.1z2 will re-enable these.
+				logger.Infof("could not temporarily mute ceph health err %q: %v", e, err)
+			}
+		}
+	}
+
+	// TODO(key): DOWNSTREAM ONLY! (not actually TODO but helps ensure we don't merge upstream)
+	// TODO(key): when this code block is removed, replace it with 'ceph health unmute'.
+	// Always mute key type health warnings
+	for _, w := range keyTypeHealthWarnings {
+		logger.Infof("permanently muting ceph health warn %q for cluster in namespace %q", w, clusterInfo.Namespace)
+		args = []string{"health", "mute", w, "--sticky"}
+		cmd = cephclient.NewCephCommand(clusterdCtx, clusterInfo, args)
+		_, err = cmd.RunWithTimeout(exec.CephCommandsTimeout)
+		if err != nil {
+			// If the build of ceph doesn't have these warnings, this command will fail.
+			// We anticipate this with RHCS 9.1z1, but 9.1z2 will re-enable these.
+			logger.Infof("could not permanently mute ceph health warn %q: %v", w, err)
+		}
+	}
+
 	return nil
 }
 
@@ -159,6 +214,17 @@ func setRotatingServiceKeyType(clusterdCtx *clusterd.Context, clusterInfo *cephc
 	// Older clients don't know how to reconnect after their service key is wiped and hang. Instead,
 	// users will need to wait 2-3 hours for daemons to naturally switch to AES256K keys. Health
 	// warning AUTH_INSECURE_ROTATING_SERVICE_KEY_TYPE will persist for the 2-3 hour period.
+
+	// DOWNSTREAM ONLY!
+	for _, e := range keyTypeHealthErrs {
+		logger.Infof("unmuting health err %q for cluster in namespace %q", e, clusterInfo.Namespace)
+		args = []string{"health", "unmute", e}
+		cmd = cephclient.NewCephCommand(clusterdCtx, clusterInfo, args)
+		_, err = cmd.RunWithTimeout(exec.CephCommandsTimeout)
+		if err != nil {
+			return errors.Wrapf(err, "failed to unmute health err %q", e)
+		}
+	}
 
 	return nil
 }
