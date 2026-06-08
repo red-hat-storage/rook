@@ -149,7 +149,7 @@ func Aes256kKeysSupported(ver version.CephVersion) bool {
 	case 19:
 		return ver.IsAtLeast(version.CephVersion{Major: 19, Minor: 2, Extra: 999}) // TODO(key): update when known
 	case 20:
-		return ver.IsAtLeast(version.CephVersion{Major: 20, Minor: 3, Extra: 0}) // TODO(key): update when known
+		return ver.IsAtLeast(version.CephVersion{Major: 20, Minor: 2, Extra: 1, Build: 282}) // TODO(key): update when known
 	default:
 		return ver.Major >= 21
 	}
