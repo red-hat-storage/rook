@@ -138,7 +138,7 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 			// and run all tests for case where ceph version does not support rotation
 			t.Run(tt.name, func(t *testing.T) {
 				ignoreKeyType := false // for these tests, don't ignore key type
-				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 2}, tt.imageCephVersion, tt.status, ignoreKeyType, clusterNs)
+				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 17, Minor: 999, Extra: 999}, tt.imageCephVersion, tt.status, ignoreKeyType, clusterNs)
 				assert.NoError(t, err)
 				assert.False(t, got)
 			})
