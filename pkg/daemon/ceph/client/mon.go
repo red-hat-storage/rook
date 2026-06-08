@@ -59,18 +59,21 @@ type AddrvecEntry struct {
 
 // MonDump represents the response from a mon dump
 type MonDump struct {
-	StretchMode      bool           `json:"stretch_mode"`
-	ElectionStrategy int            `json:"election_strategy"`
-	FSID             string         `json:"fsid"`
-	Mons             []MonDumpEntry `json:"mons"`
-	Quorum           []int          `json:"quorum"`
-	TiebreakerMon    string         `json:"tiebreaker_mon"`
+	StretchMode       bool           `json:"stretch_mode"`
+	ElectionStrategy  int            `json:"election_strategy"`
+	FSID              string         `json:"fsid"`
+	Mons              []MonDumpEntry `json:"mons"`
+	Quorum            []int          `json:"quorum"`
+	TiebreakerMon     string         `json:"tiebreaker_mon"`
+	AuthServiceCipher struct {
+		Name string `json:"name"`
+	} `json:"auth_service_cipher"`
 }
 
 type MonDumpEntry struct {
-	Name          string `json:"name"`
-	Rank          int    `json:"rank"`
-	CrushLocation string `json:"crush_location"`
+	Name string `json:"name"`
+	Rank int    `json:"rank"`
+	// CrushLocation string `json:"crush_location"`
 }
 
 // GetMonQuorumStatus calls quorum_status mon_command
