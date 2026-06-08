@@ -31,7 +31,7 @@ import (
 
 // CephAuthRotateSupportedVersion identifies the first ceph release in which the `ceph auth rotate`
 // command is present, thus allowing CephX key rotation.
-var CephAuthRotateSupportedVersion = version.CephVersion{Major: 19, Minor: 2, Extra: 3}
+var CephAuthRotateSupportedVersion = version.CephVersion{Major: 18} // downstream patches allow rotation using any Ceph version we build with
 
 // CephxKeyIdentifierAnnotation is the annotation that should be applied to pod specs to
 // ensure that pods restart after keys are rotated (and not restarted when keys are not rotated).
@@ -102,7 +102,8 @@ func ShouldRotateCephxKeys(cfg v1.CephxConfig, runningCephVersion, desiredCephVe
 		// if keyType requested but ceph doesn't support key-type, return a useful error
 		return false, fmt.Errorf(
 			"ceph version %#v does not support key type %q; change the requested keyType or upgrade Ceph",
-			&runningCephVersion, cfg.KeyType)
+			&runningCephVersion, cfg.KeyType,
+		)
 	}
 
 	if status.KeyCephVersion == v1.UninitializedCephxKeyCephVersion {
