@@ -41,7 +41,7 @@ func TestCreateClusterSecrets(t *testing.T) {
 	err := os.MkdirAll(configDir, 0o755)
 	assert.NoError(t, err)
 	defer os.RemoveAll(configDir)
-	cephVer := &version.CephVersion{Major: 19, Minor: 2, Extra: 3}
+	cephVer := &version.CephVersion{Major: 17, Minor: 999, Extra: 999}
 	adminSecret := "AQDkLIBd9vLGJxAAnXsIKPrwvUXAmY+D1g0X1Q==" //nolint:gosec // This is just a var name, not a real secret
 	executor := &exectest.MockExecutor{
 		MockExecuteCommandWithOutput: func(command string, args ...string) (string, error) {
