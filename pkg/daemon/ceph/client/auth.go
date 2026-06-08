@@ -140,10 +140,12 @@ func IsLegacyKeyType(keyType string) bool {
 // Aes256kKeysSupported returns true if the given Ceph version supports aes256k keys
 func Aes256kKeysSupported(ver version.CephVersion) bool {
 	switch ver.Major {
+	case 18:
+		return ver.IsAtLeast(version.CephVersion{Major: 18, Minor: 2, Extra: 1, Build: 410}) // RHCS 7.1z (best guess)
 	case 19:
-		return ver.IsAtLeast(version.CephVersion{Major: 19, Minor: 2, Extra: 6})
+		return ver.IsAtLeast(version.CephVersion{Major: 19, Minor: 2, Extra: 1, Build: 417}) // RHCS 8.1z
 	case 20:
-		return ver.IsAtLeast(version.CephVersion{Major: 20, Minor: 2, Extra: 3})
+		return ver.IsAtLeast(version.CephVersion{Major: 20, Minor: 2, Extra: 1, Build: 297}) // RHCS 9.1z
 	default:
 		return ver.Major >= 21
 	}
