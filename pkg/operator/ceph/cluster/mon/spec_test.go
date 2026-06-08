@@ -119,7 +119,7 @@ func testPodSpec(t *testing.T, monID string, pvc bool) {
 		}() // reset for other tests
 
 		// do not override if version doesn't support aes256k
-		c.ClusterInfo.CephVersion = version.CephVersion{Major: 19, Minor: 2, Extra: 3}
+		c.ClusterInfo.CephVersion = version.CephVersion{Major: 17, Minor: 999, Extra: 999}
 		c.spec.Security.CephX.Daemon.KeyType = cephv1.CephxKeyType("aes")
 		container = c.makeMonDaemonContainer(monConfig)
 		assert.False(t, authAllowedCiphersArgExists(container.Args))
