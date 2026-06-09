@@ -104,7 +104,6 @@ var AllowedActions = []action{
 	PutBucketTagging,
 	PutBucketVersioning,
 	PutBucketWebsite,
-	PutBucketVersioning,
 	PutLifecycleConfiguration,
 	PutObject,
 	PutObjectAcl,
@@ -195,21 +194,10 @@ func (s *S3Agent) GetBucketPolicy(bucket string) (*BucketPolicy, error) {
 	return policy, nil
 }
 
-// ModifyBucketPolicy new and old statement SIDs and overwrites on a match.
-// This allows users to Get, modify, and Replace existing statements as well as
-// add new ones.
+// ModifyBucketPolicy replaces the policy's statements with the given ones,
+// rather than merging them into the existing statements by SID.
 func (bp *BucketPolicy) ModifyBucketPolicy(ps ...PolicyStatement) *BucketPolicy {
-	for _, newP := range ps {
-		var match bool
-		for j, oldP := range bp.Statement {
-			if newP.Sid == oldP.Sid {
-				bp.Statement[j] = newP
-			}
-		}
-		if !match {
-			bp.Statement = append(bp.Statement, newP)
-		}
-	}
+	bp.Statement = append([]PolicyStatement{}, ps...)
 	return bp
 }
 
@@ -222,15 +210,6 @@ func (bp *BucketPolicy) DropPolicyStatements(sid ...string) *BucketPolicy {
 			}
 		}
 	}
-	return bp
-}
-
-func (bp *BucketPolicy) EjectPrincipals(users ...string) *BucketPolicy {
-	statements := bp.Statement
-	for _, s := range statements {
-		s.EjectPrincipals(users...)
-	}
-	bp.Statement = statements
 	return bp
 }
 
@@ -308,18 +287,6 @@ func (ps *PolicyStatement) Denies() *PolicyStatement {
 func (ps *PolicyStatement) Actions(actions ...action) *PolicyStatement {
 	ps.Action = actions
 	return ps
-}
-
-func (ps *PolicyStatement) EjectPrincipals(users ...string) {
-	principals := ps.Principal[awsPrinciple]
-	for _, u := range users {
-		for j, v := range principals {
-			if u == v {
-				principals = append(principals[:j], principals[:j+1]...)
-			}
-		}
-	}
-	ps.Principal[awsPrinciple] = principals
 }
 
 // //////////////
