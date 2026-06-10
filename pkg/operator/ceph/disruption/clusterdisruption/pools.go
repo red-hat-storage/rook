@@ -117,6 +117,13 @@ func (r *ReconcileClusterDisruption) reconcileCephObjectStore(cephObjectStoreLis
 		rgwCount := objectStore.Spec.Gateway.Instances
 		minAvailable := &intstr.IntOrString{IntVal: rgwCount - 1}
 		if minAvailable.IntVal < 1 {
+			stalePDB := &policyv1.PodDisruptionBudget{
+				ObjectMeta: metav1.ObjectMeta{Name: pdbName, Namespace: namespace},
+			}
+			logger.Infof("deleting stale PDB %q with %d instance(s)", pdbName, rgwCount)
+			if err := r.deletePDB(stalePDB); err != nil {
+				return errors.Wrapf(err, "failed to delete stale pdb %q", pdbName)
+			}
 			continue
 		}
 		blockOwnerDeletion := false
@@ -166,6 +173,13 @@ func (r *ReconcileClusterDisruption) reconcileCephFilesystem(cephFilesystemList 
 			minAvailable.IntVal++
 		}
 		if minAvailable.IntVal < 1 {
+			stalePDB := &policyv1.PodDisruptionBudget{
+				ObjectMeta: metav1.ObjectMeta{Name: pdbName, Namespace: namespace},
+			}
+			logger.Infof("deleting stale PDB %q", pdbName)
+			if err := r.deletePDB(stalePDB); err != nil {
+				return errors.Wrapf(err, "failed to delete stale pdb %q", pdbName)
+			}
 			continue
 		}
 		blockOwnerDeletion := false
