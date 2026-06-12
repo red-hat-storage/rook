@@ -620,6 +620,9 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        maxLength: 7
+                        type: string
                     type: object
                 type: object
               conditions:
