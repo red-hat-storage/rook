@@ -48,6 +48,7 @@ spec:
               hostNetwork:
                 type: boolean
               image:
+                maxLength: 1024
                 minLength: 1
                 type: string
               instances:
@@ -721,7 +722,6 @@ spec:
                 type: object
             required:
             - group
-            - image
             - instances
             - pool
             type: object
