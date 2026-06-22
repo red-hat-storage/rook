@@ -572,6 +572,8 @@ func TestCluster_configurePrometheusModule(t *testing.T) {
 }
 
 func TestMgrKeyRotation(t *testing.T) {
+	keyring.SetAllowCephxKeyRotationForCluster(clusterNamespace, true)
+
 	var deploymentsUpdated *[]*apps.Deployment
 	updateDeploymentAndWait, deploymentsUpdated = testopk8s.UpdateDeploymentAndWaitStub()
 	c := createNewCluster(t)
