@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/pkg/errors"
 	v1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
@@ -39,6 +40,41 @@ var CephAuthRotateSupportedVersion = version.CephVersion{Major: 19, Minor: 2, Ex
 //nolint:gosec // G101: this is not hardcoded credentials
 const CephxKeyIdentifierAnnotation = "cephx-key-identifier"
 
+var (
+	// Ensure multiple CephCluster reconciles don't run into threading issues with the map.
+	cephxKeyRotationAllowedMutex      = sync.Mutex{}
+	cephxKeyRotationAllowedForCluster = map[string]bool{}
+)
+
+// SetAllowCephxKeyRotationForCluster sets a global config indicating whether CephX key rotation is
+// allowed or disallowed for a particular CephCluster. This is needed to work around a Ceph bug
+// where OSDs cannot communicate between pre-AES256K-support OSDs and post-AES256K-support OSDs when
+// the Ceph version is being upgraded at the same time as CephX key rotation. This global config
+// allows the CephCluster reconcile to prevent all key rotations across all Rook components when
+// this common corner case is identified.
+//
+// Note: CurrentAndDesiredCephVersion() output passed as runningCephVersion/desiredCephVersion in
+// ShouldRotateCephxKeys() is not sufficient because it compares the image version to the
+// lowest-versioned Ceph mon. To work around this Ceph bug, the lowest-versioned Ceph OSD must be
+// used as the comparison, not mons.
+func SetAllowCephxKeyRotationForCluster(namespace string, allow bool) {
+	cephxKeyRotationAllowedMutex.Lock()
+	defer cephxKeyRotationAllowedMutex.Unlock()
+	cephxKeyRotationAllowedForCluster[namespace] = allow
+}
+
+// GetAllowCephxKeyRotationForCluster returns the value set by SetAllowCephxKeyRotationForCluster,
+// or false if there is no record of whether key rotation is supported for the cluster.
+func GetAllowCephxKeyRotationForCluster(namespace string) bool {
+	cephxKeyRotationAllowedMutex.Lock()
+	defer cephxKeyRotationAllowedMutex.Unlock()
+	allowed, ok := cephxKeyRotationAllowedForCluster[namespace]
+	if !ok {
+		return false // default don't allow when rotation allowance undefined
+	}
+	return allowed
+}
+
 // ShouldRotateCephxKeys determines whether CephX keys should be rotated based on the CephX key
 // rotation config, the version of Ceph present in the image being deployed (desiredCephVersion),
 // and the last-reconciled CephX key status.
@@ -46,9 +82,14 @@ const CephxKeyIdentifierAnnotation = "cephx-key-identifier"
 // Intended to use running/desired ceph version from CurrentAndDesiredCephVersion().
 // ignoreKeyType can be used by callers to ignore the key type in rotation calculation - intended
 // for daemon keys that (except for admin and mon) don't allow type overrides.
-func ShouldRotateCephxKeys(cfg v1.CephxConfig, runningCephVersion, desiredCephVersion version.CephVersion, status v1.CephxStatus, ignoreKeyType bool) (bool, error) {
+func ShouldRotateCephxKeys(cfg v1.CephxConfig, runningCephVersion, desiredCephVersion version.CephVersion, status v1.CephxStatus, ignoreKeyType bool, clusterNamespace string) (bool, error) {
 	// note: the default return at the end of the function is false. only return false during
 	// ShouldRotate checking if further true returns should be invalidated
+
+	if !GetAllowCephxKeyRotationForCluster(clusterNamespace) {
+		logger.Debugf("cephx key rotation is temporarily disabled for cluster in namespace %q", clusterNamespace)
+		return false, nil
+	}
 
 	if !(runningCephVersion.IsAtLeast(CephAuthRotateSupportedVersion) || cephclient.Aes256kKeysSupported(runningCephVersion)) {
 		logger.Debugf("should not rotate cephx keys using unsupported ceph version %#v", runningCephVersion)
