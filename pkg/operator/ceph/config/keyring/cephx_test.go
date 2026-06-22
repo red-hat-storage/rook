@@ -34,6 +34,9 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 	v20_2_2 := version.CephVersion{Major: 20, Minor: 2, Extra: 2, CommitID: "ababababababa"}
 	SupportsKeyTypeVer := version.CephVersion{Major: 21}
 
+	clusterNs := "rook-system"
+	SetAllowCephxKeyRotationForCluster(clusterNs, true) // default allow rotation
+
 	type test struct {
 		name             string
 		cfg              v1.CephxConfig
@@ -101,7 +104,7 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 			// run all tests for case where ceph version does support rotation
 			t.Run(tt.name, func(t *testing.T) {
 				ignoreKeyType := false // for these tests, don't ignore key type
-				got, err := ShouldRotateCephxKeys(tt.cfg, SupportsKeyTypeVer, tt.imageCephVersion, tt.status, ignoreKeyType)
+				got, err := ShouldRotateCephxKeys(tt.cfg, SupportsKeyTypeVer, tt.imageCephVersion, tt.status, ignoreKeyType, clusterNs)
 				if (err != nil) != tt.wantErr {
 					t.Errorf("ShouldRotateCephxKeys() error = %v, wantErr %v", err, tt.wantErr)
 					return
@@ -118,7 +121,7 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 			// run all tests for case where ceph version does support rotation
 			t.Run(tt.name, func(t *testing.T) {
 				ignoreKeyType := false // for these tests, don't ignore key type
-				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 18, Minor: 2, Extra: 999}, tt.imageCephVersion, tt.status, ignoreKeyType)
+				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 18, Minor: 2, Extra: 999}, tt.imageCephVersion, tt.status, ignoreKeyType, clusterNs)
 				if (err != nil) != tt.wantErr {
 					t.Errorf("ShouldRotateCephxKeys() error = %v, wantErr %v", err, tt.wantErr)
 					return
@@ -135,7 +138,32 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 			// and run all tests for case where ceph version does not support rotation
 			t.Run(tt.name, func(t *testing.T) {
 				ignoreKeyType := false // for these tests, don't ignore key type
-				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 2}, tt.imageCephVersion, tt.status, ignoreKeyType)
+				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 2}, tt.imageCephVersion, tt.status, ignoreKeyType, clusterNs)
+				assert.NoError(t, err)
+				assert.False(t, got)
+			})
+		}
+	})
+
+	t.Run("rotation disallowed globally", func(t *testing.T) {
+		SetAllowCephxKeyRotationForCluster(clusterNs, false)
+		defer SetAllowCephxKeyRotationForCluster(clusterNs, true) // reset after test
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ignoreKeyType := false // for these tests, don't ignore key type
+				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 2}, tt.imageCephVersion, tt.status, ignoreKeyType, clusterNs)
+				assert.NoError(t, err)
+				assert.False(t, got)
+			})
+		}
+	})
+
+	t.Run("rotation allowed globally is unspecified", func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				ignoreKeyType := false // for these tests, don't ignore key type
+				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 2}, tt.imageCephVersion, tt.status, ignoreKeyType, "undefined-ns")
 				assert.NoError(t, err)
 				assert.False(t, got)
 			})
@@ -146,7 +174,7 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 		for _, tt := range keyTypeTests {
 			t.Run(tt.name, func(t *testing.T) {
 				ignoreKeyType := true // test that ignoring key type for keyType tests
-				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 2}, tt.imageCephVersion, tt.status, ignoreKeyType)
+				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 2}, tt.imageCephVersion, tt.status, ignoreKeyType, clusterNs)
 				assert.NoError(t, err)
 				assert.False(t, got) // should not rotate when ignoring keyType
 			})
@@ -160,7 +188,7 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 			KeyType:           v1.CephxKeyTypeAes,
 		}
 		status := v1.CephxStatus{KeyGeneration: 1}
-		got, err := ShouldRotateCephxKeys(cfg, v20_2_0, v20_2_0, status, false)
+		got, err := ShouldRotateCephxKeys(cfg, v20_2_0, v20_2_0, status, false, clusterNs)
 		assert.True(t, got)
 		assert.NoError(t, err)
 	})
