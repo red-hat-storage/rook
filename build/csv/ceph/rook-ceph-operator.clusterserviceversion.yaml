@@ -1007,6 +1007,14 @@ spec:
               verbs:
                 - get
                 - create
+            - apiGroups:
+                - networking.k8s.io
+              resources:
+                - networkpolicies
+              verbs:
+                - create
+                - update
+                - delete
           serviceAccountName: rook-ceph-system
     strategy: deployment
   installModes:

@@ -20,6 +20,7 @@ DRBD_SETUP_SCRIPT_CONFIGMAP="../../build/csv/ceph/$PLATFORM/manifests/rook-ceph-
 DRBD_SETUP_SCRIPT_FILE="../../deploy/examples/drbd-setup.sh"
 ASSEMBLE_FILE_COMMON="../../deploy/olm/assemble/metadata-common.yaml"
 ASSEMBLE_FILE_OCP="../../deploy/olm/assemble/metadata-ocp.yaml"
+NETWORK_POLICIES_FILE="../../deploy/examples/networkpolicy.yaml"
 
 LATEST_ROOK_CSI_CEPH_IMAGE="quay.io/cephcsi/cephcsi:v3.10.2"
 LATEST_ROOK_CSI_REGISTRAR_IMAGE="registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.0"
@@ -146,6 +147,18 @@ function generate_csv() {
     sed -i'.bak' -e "s|$LATEST_ROOK_CSIADDONS_IMAGE|$ROOK_CSIADDONS_IMAGE|g" "$CSV_FILE_NAME"
 
     rm "$CSV_FILE_NAME.bak"
+
+    # Generate NetworkPolicy manifests for the OLM bundle from the upstream source.
+    # OLM sets metadata.namespace automatically (same as common.yaml).
+    # Only the namespaceSelector label values inside the spec need replacing.
+    if [ -f "$NETWORK_POLICIES_FILE" ]; then
+        echo "=== generating NetworkPolicy manifests for bundle"
+        sed -e 's|kubernetes.io/metadata.name: kube-system|kubernetes.io/metadata.name: openshift-dns|g' \
+            -e 's|kubernetes.io/metadata.name: rook-ceph|kubernetes.io/metadata.name: openshift-storage|g' \
+            -e 's|kubernetes.io/metadata.name: monitoring|kubernetes.io/metadata.name: openshift-monitoring|g' \
+            -e 's|namespace: rook-ceph # namespace:cluster|namespace: openshift-storage # namespace:cluster|g' \
+            "$NETWORK_POLICIES_FILE" > "../../build/csv/ceph/$PLATFORM/manifests/networkpolicy.yaml"
+    fi
 
     mv "../../build/csv/ceph/$PLATFORM/manifests/"* "../../build/csv/ceph/"
     rm -rf "../../build/csv/ceph/$PLATFORM"
