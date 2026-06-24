@@ -813,23 +813,6 @@ sync_drbd() {
     done
 }
 
-# create the filesystem over the DRBD device
-create_filesystem_over_drbd() {
-    local PRIMARY_NODE="$NODE_0"
-    local fstype
-    if ! fstype=$(oc debug -q "node/$PRIMARY_NODE" -- chroot /host blkid -s TYPE -o value "${DRBD_DEVICE}" 2>/dev/null | tr -d ' \n'); then
-        fstype=""
-    fi
-    if [[ "$fstype" == "xfs" ]]; then
-        msg "${DRBD_DEVICE} already has XFS; skipping mkfs (re-run safe)."
-        return 0
-    fi
-
-    msg "Formatting ${DRBD_DEVICE} with XFS (mkfs.xfs -f; overwrites any existing signature)..."
-    oc debug -q "node/$PRIMARY_NODE" -- chroot /host sudo mkfs.xfs -f "${DRBD_DEVICE}"
-    msg "XFS created on ${DRBD_DEVICE}."
-}
-
 # Demote the transient primary used for initial sync back to Secondary.
 make_both_node_secondary() {
     if [[ "${DRBD_PROMOTED_MASTER0_THIS_RUN:-0}" -ne 1 ]]; then
@@ -1068,7 +1051,6 @@ main() {
     wait_for_modules # wait for the DRBD kernel modules to load on both nodes
     configure_drbd # configure the DRBD resource on both nodes
     sync_drbd # sync the DRBD resource on both nodes
-    create_filesystem_over_drbd # create the filesystem over the DRBD device
     make_both_node_secondary # make both nodes secondary
     setup_drbd_autostart # setup the DRBD auto-start DaemonSet to keep the DRBD resource up on both nodes
     create_success_configmap # create the success ConfigMap to save the setup summary for further consumption
