@@ -19,7 +19,9 @@ include ../image.mk
 CEPH_VERSION ?= v20.2.1-20260402
 
 REGISTRY_NAME = quay.io
-BASEIMAGE = $(REGISTRY_NAME)/ceph/ceph:$(CEPH_VERSION)
+# TODO(key): fix before merge
+# BASEIMAGE = $(REGISTRY_NAME)/ceph/ceph:$(CEPH_VERSION)
+BASEIMAGE = quay.ceph.io/ceph-ci/ceph:wip-pdonnell-testing-20260616.224105-centos-stream9
 CEPH_IMAGE = $(BUILD_REGISTRY)/ceph-$(GOARCH)
 OPERATOR_SDK_VERSION = v1.25.0
 GOHOST := GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) go
