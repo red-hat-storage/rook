@@ -4,6 +4,7 @@ namespace: rook-ceph
 resources:
   - crds.yaml
   - common.yaml
+  - networkpolicy.yaml
   - operator-openshift.yaml
   - external-cluster-script-configmap.yaml
   - drbd-setup-script-configmap.yaml

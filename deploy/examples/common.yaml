@@ -828,6 +828,14 @@ rules:
     verbs:
       - get
       - create
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - networkpolicies
+    verbs:
+      - create
+      - update
+      - delete
 ---
 # Allow the operator to create resources in this cluster's namespace
 kind: RoleBinding
