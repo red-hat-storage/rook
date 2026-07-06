@@ -17,11 +17,9 @@
 # DRBD Setup Script for Two-Node OpenShift Cluster, Safe to re-run( idempotent ).
 # The script can skip successful steps & run only the required steps.
 #
-# CLI overrides env for: --drbd-conf-path, --drbd-dir-path, --drbd-resource, --drbd-device, --drbd-port
-#
 # Prerequisites:
-#   - Nodes can pull ${DRBD_IMAGE}; ${DRBD_PORT}/tcp open between nodes.
-#   - Image registry: the in-cluster OpenShift registry with emptyDir storage
+#   - Nodes can pull ${DRBD_IMAGE};
+#   - ${DRBD_PORT}/tcp open between nodes.
 #
 set -euo pipefail
 
@@ -60,8 +58,13 @@ DRBD_PORT="${DRBD_PORT:-7794}"                                   # DRBD replicat
 AUTOSTART_DAEMONSET_NAME="${AUTOSTART_DAEMONSET_NAME:-drbd-autostart}" # DRBD auto-start DaemonSet name
 AUTOSTART_DAEMONSET_NS="${AUTOSTART_DAEMONSET_NS:-openshift-kmm}"      # DRBD auto-start DaemonSet namespace
 
-OUTPUT_CM_NS="${OUTPUT_CM_NS:-openshift-storage}"                # Namespace for setup summary ConfigMap
 OUTPUT_CM_NAME="${OUTPUT_CM_NAME:-drbd-configure}"               # Name for the setup summary ConfigMap
+
+# OpenShift namespace for DRBD summary ConfigMap, CephCluster, and floating mon (default OpenShift ODF).
+ODF_NAMESPACE="${ODF_NAMESPACE:-openshift-storage}"
+
+# install | upgrade (set in parse_args; default install)
+MODE=""
 
 # Approximate wait ceilings in this script: KMM operator ~5m (60×5s); DRBD modules ~10m (60×10s);
 # initial sync ~30m (60×30s); autostart DaemonSet ~5m (60×5s).
@@ -85,46 +88,51 @@ NODE_1_IP=""
 
 usage() {
     cat <<USAGE
-Usage:
-  $0 -d <path>
-  $0 -d0 <path0> -d1 <path1>
-  $0 -l
+Usage examples:
+  $0 -l | $0 -d <path> | $0 -d0 <path> -d1 <path> | $0 upgrade | $0 help
+
+Default Mode (install) —
+
+Required (one of):
+  -l                  List block devices on each node (NAME, PATH, SIZE, ROTA, TYPE, FSTYPE).
+  -d PATH             Backing block device, same path & size on both nodes (e.g. /dev/sdb).
+  -d0 PATH -d1 PATH   Per-node backing paths (node order = sorted cluster node names).
+
+Optional:
+  --drbd-conf-path PATH   Host path to drbd.conf (default ${DRBD_CONF_PATH})
+  --drbd-dir-path PATH    Host dir for resource snippets (default ${DRBD_DIR_PATH})
+  --drbd-resource NAME    Resource name in config (default ${DRBD_RESOURCE})
+  --drbd-device PATH      Upper DRBD device (default ${DRBD_DEVICE})
+  --drbd-port N           TCP replication port (default ${DRBD_PORT})
 
 Backing paths are raw block device paths (e.g. /dev/sdb). Use the PATH column from -l.
 Disks must be SSD-class (ROTA 0) and same size on both nodes.
 
-  -d PATH
-      One path used on both nodes. Choose this when each machine has the replica disk at the
-      same device name (both nodes use e.g. /dev/sdb for the DRBD lower layer).
+What install does: setup KMM operator, setup image registry operator,
+build and load DRBD kmods, configure & sync DRBD, create the filesystem over the DRBD device,
+setup the DRBD auto-start DaemonSet & create the success ConfigMap.
 
-Use -d0/-d1 when the two nodes use different paths; do not combine -d with -d0/-d1.
+Upgrade Mode —
 
-  -d0 PATH   Path on node 0 only (first node name after sorting all cluster nodes).
-  -d1 PATH   Path on node 1 only (second node).
+(no disk flags — DISK_BY_ID_NODE_0/1 are read from ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME})
 
-Discovery:
-  -l    List block devices on each node (NAME, PATH, SIZE, ROTA, TYPE, FSTYPE).
-
-DRBD options:
-  --drbd-conf-path PATH  Host path to drbd.conf (default ${DRBD_CONF_PATH})
-  --drbd-dir-path PATH   Host dir for resource snippets (default ${DRBD_DIR_PATH})
-  --drbd-resource NAME   Logical DRBD resource name in config (default ${DRBD_RESOURCE})
-  --drbd-device PATH     DRBD upper device node path, same on both nodes (default ${DRBD_DEVICE})
-  --drbd-port N          TCP port for DRBD replication (default ${DRBD_PORT})
+What upgrade does: scale floating Ceph mon, remove autostart DaemonSet, drbdadm down,
+delete and re-apply KMM Module + Dockerfile, wait for new kmods, drbdadm up, sync if needed,
+recreate autostart DaemonSet, scale mon back.
 
 General:
-  -h    Show this help and exit
-
-Environment:
-  Defaults are documented on each assignment near the top of this script.
-  OUTPUT_CM_NS / OUTPUT_CM_NAME — namespace and name of the summary ConfigMap (floating mon).
+  -h, --help   Show this text.
 
 USAGE
 }
 
-parse_args() {
+_parse_install_options() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            -h|--help)
+                usage
+                exit 0
+                ;;
             -d0)
                 if [[ -z "${2:-}" ]]; then
                     die "-d0 requires a path (e.g. /dev/sdb)"
@@ -185,17 +193,55 @@ parse_args() {
                 DRBD_PORT="$2"
                 shift 2
                 ;;
-            -h)
-                usage
-                exit 0
-                ;;
             *)
                 die "Unknown option: $1 (use -h)"
                 ;;
         esac
     done
+}
+
+parse_args() {
+    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+        usage
+        exit 0
+    fi
+
+    if [[ $# -eq 0 ]]; then
+        MODE="install"
+    elif [[ "$1" == "help" ]]; then
+        usage
+        exit 0
+    elif [[ "$1" == "upgrade" ]]; then
+        MODE="upgrade"
+        shift
+        if [[ $# -eq 0 ]]; then
+            :
+        elif [[ "$1" == "-h" || "$1" == "--help" ]]; then
+            usage
+            exit 0
+        else
+            die "upgrade accepts no arguments (got '$1'). See: $0 upgrade -h"
+        fi
+    elif [[ "$1" == "install" ]]; then
+        MODE="install"
+        shift
+        _parse_install_options "$@"
+    else
+        MODE="install"
+        _parse_install_options "$@"
+    fi
 
     if [[ "$LIST_DEVICES_ONLY" -eq 1 ]]; then
+        if [[ "$MODE" == "upgrade" ]]; then
+            die "upgrade does not support -l (use: $0 -l for device discovery)"
+        fi
+        return 0
+    fi
+
+    if [[ "$MODE" == "upgrade" ]]; then
+        if [[ -n "$BACKING_PATH" || -n "$BACKING_PATH_NODE0" || -n "$BACKING_PATH_NODE1" ]]; then
+            die "upgrade does not use -d/-d0/-d1; use ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME} (from default setup). Run: $0 upgrade"
+        fi
         return 0
     fi
 
@@ -286,12 +332,38 @@ done | sort -u | head -n 1
 ' 2>/dev/null | tail -n 1
 }
 
+# Validate upgrade ConfigMap and load DRBD lower-layer by-id mapping
+validate_upgrade_configmap_and_load_disk_ids() {
+    msg "Validating ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME} and loading DISK_BY_ID mapping..."
+    if ! oc get configmap "${OUTPUT_CM_NAME}" -n "${ODF_NAMESPACE}" &>/dev/null; then
+        die "ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME} not found. Run install mode first: $0 install -d <path>"
+    fi
+
+    DISK_RESOLVED_NODE0=$(oc get configmap "${OUTPUT_CM_NAME}" -n "${ODF_NAMESPACE}" \
+        -o jsonpath='{.data.DISK_BY_ID_NODE_0}' | tr -d '\r\n') \
+        || die "failed reading DISK_BY_ID_NODE_0 from ConfigMap ${OUTPUT_CM_NAME}. Try after re-running the install: $0 install -d <path>"
+    DISK_RESOLVED_NODE1=$(oc get configmap "${OUTPUT_CM_NAME}" -n "${ODF_NAMESPACE}" \
+        -o jsonpath='{.data.DISK_BY_ID_NODE_1}' | tr -d '\r\n') \
+        || die "failed reading DISK_BY_ID_NODE_1 from ConfigMap ${OUTPUT_CM_NAME}. Try after re-running the install: $0 install -d <path>"
+    if [[ -z "$DISK_RESOLVED_NODE0" || -z "$DISK_RESOLVED_NODE1" ]]; then
+        die "ConfigMap ${OUTPUT_CM_NAME}: missing DISK_BY_ID_NODE_0 or DISK_BY_ID_NODE_1. Try after re-running the install: $0 install -d <path>"
+    fi
+}
+
 print_config() {
     echo ""
     msg "Configuration"
     local _lw=18
+    if [[ "$MODE" == "upgrade" ]]; then
+        printf '  %-*s %s\n' "$_lw" "Mode:" "upgrade (KMM kmod refresh; preserve DRBD metadata)"
+    else
+        printf '  %-*s %s\n' "$_lw" "Mode:" "install (KMM + DRBD resource + success ConfigMap)"
+    fi
     printf '  %-*s %s\n' "$_lw" "Nodes:" "$NODE_0 ($NODE_0_IP), $NODE_1 ($NODE_1_IP)"
-    if [[ -n "$BACKING_PATH" ]]; then
+    if [[ "$MODE" == "upgrade" ]]; then
+        printf '  %-*s %s: %s\n' "$_lw" "DRBD disks by id:" "$NODE_0" "$DISK_RESOLVED_NODE0"
+        printf '  %-*s %s: %s\n' "$_lw" "(from ConfigMap)" "$NODE_1" "$DISK_RESOLVED_NODE1"
+    elif [[ -n "$BACKING_PATH" ]]; then
         printf '  %-*s %s (same path on both nodes)\n' "$_lw" "Backing device:" "$BACKING_PATH"
     else
         printf '  %-*s %s\n' "$_lw" "Backing devices:" "per-node paths"
@@ -303,6 +375,8 @@ print_config() {
     printf '  %-*s %s\n' "$_lw" "DRBD Resource:" "$DRBD_RESOURCE"
     printf '  %-*s %s\n' "$_lw" "DRBD Device:" "$DRBD_DEVICE"
     printf '  %-*s %s\n' "$_lw" "DRBD Port:" "$DRBD_PORT"
+    printf '  %-*s %s\n' "$_lw" "DRBD_IMAGE:" "$DRBD_IMAGE"
+    printf '  %-*s %s\n' "$_lw" "DRBD_VERSION:" "$DRBD_VERSION"
     echo ""
 }
 
@@ -995,8 +1069,8 @@ EOF
 
 # create the success ConfigMap to save the setup summary for further consumption.
 create_success_configmap() {
-    msg "Saving setup summary to ConfigMap ${OUTPUT_CM_NS}/${OUTPUT_CM_NAME}"
-    if ! oc create namespace "${OUTPUT_CM_NS}" --dry-run=client -o yaml | oc apply -f - >/dev/null 2>&1; then
+    msg "Saving setup summary to ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME}"
+    if ! oc create namespace "${ODF_NAMESPACE}" --dry-run=client -o yaml | oc apply -f - >/dev/null 2>&1; then
         :
     fi
 
@@ -1014,7 +1088,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ${OUTPUT_CM_NAME}
-  namespace: ${OUTPUT_CM_NS}
+  namespace: ${ODF_NAMESPACE}
   labels:
     app.kubernetes.io/name: drbd-setup
     app.kubernetes.io/component: storage
@@ -1040,27 +1114,22 @@ EOF
 
 print_success() {
     echo ""
-    echo "  --> DRBD setup completed successfully <--"
+    if [[ "$MODE" == "upgrade" ]]; then
+        echo "  --> DRBD upgrade completed successfully <--"
+    else
+        echo "  --> DRBD install completed successfully <--"
+    fi
     echo ""
-    echo "Post-install DRBD status on ${NODE_0} (repeat with ${NODE_1}):"
+    echo "Check DRBD status on ${NODE_0} (repeat with ${NODE_1}):"
     echo "  oc debug -q node/${NODE_0} -- chroot /host podman run --rm --privileged \\"
     echo "    -v /dev:/dev -v ${DRBD_CONF_PATH}:${DRBD_CONF_PATH} -v ${DRBD_DIR_PATH}:${DRBD_DIR_PATH} \\"
     echo "    --hostname ${NODE_0} --net host ${DRBD_IMAGE} drbdadm -c ${DRBD_CONF_PATH} status ${DRBD_RESOURCE}"
     echo ""
 }
 
-main() {
-    parse_args "$@"
-    check_prerequisites # check if the prerequisites are met
-    detect_nodes # detect the nodes in the cluster
-
-    if [[ "$LIST_DEVICES_ONLY" -eq 1 ]]; then
-        list_devices # list the block devices on the nodes
-        exit 0
-    fi
-
+run_install() {
+    validate_and_resolve_disks # validate paths and resolve to /dev/disk/by-id
     print_config # print the configuration
-    validate_and_resolve_disks # validate the disks and resolve the disk by-id symlink for DRBD config on that node
     setup_kmm_operator # setup the KMM operator
     setup_image_registry_operator # setup the image registry operator
     kmm_image_build_waits # wait for the ServiceAccount builder and the builder dockercfg Secret to be populated
@@ -1073,6 +1142,33 @@ main() {
     setup_drbd_autostart # setup the DRBD auto-start DaemonSet to keep the DRBD resource up on both nodes
     create_success_configmap # create the success ConfigMap to save the setup summary for further consumption
     print_success # print the success message
+}
+
+run_upgrade() {
+    validate_upgrade_configmap_and_load_disk_ids # validate output ConfigMap presence and load DRBD disk by-id mapping
+    print_config # print the configuration
+    setup_kmm_operator # setup the KMM operator
+    setup_image_registry_operator # setup the image registry operator
+    kmm_image_build_waits # wait for the ServiceAccount builder and the builder dockercfg Secret to be populated
+    msg "Upgrade execution is not implemented yet (follow-up PRs)."
+    exit 0
+}
+
+main() {
+    parse_args "$@"
+    check_prerequisites # check if the prerequisites are met
+    detect_nodes # detect the nodes in the cluster
+
+    if [[ "$LIST_DEVICES_ONLY" -eq 1 ]]; then
+        list_devices # list the block devices on the nodes
+        exit 0
+    fi
+
+    if [[ "$MODE" == "upgrade" ]]; then
+        run_upgrade
+    else
+        run_install
+    fi
 }
 
 main "$@"
