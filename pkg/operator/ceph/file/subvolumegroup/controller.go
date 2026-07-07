@@ -313,9 +313,12 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) reconcile(request reconcile.Requ
 
 	r.updateStatus(observedGeneration, request.NamespacedName, cephv1.ConditionReady)
 
-	err = csi.CreateUpdateClientProfileSubVolumeGroup(r.clusterInfo.Context, r.client, r.clusterInfo, cephFilesystemSubVolumeGroupName, buildClusterID(cephFilesystemSubVolumeGroup), cephFilesystemSubVolumeGroup.Spec.CSIMetadataRadosNamespace)
-	if err != nil {
-		return reconcile.Result{}, errors.Wrap(err, "failed to create ceph csi-op config CR for subvolumeGroup")
+	// In downstream for normal cluster, rook don't need to create client profile subvolume group CR.
+	if false {
+		err = csi.CreateUpdateClientProfileSubVolumeGroup(r.clusterInfo.Context, r.client, r.clusterInfo, cephFilesystemSubVolumeGroupName, buildClusterID(cephFilesystemSubVolumeGroup), cephFilesystemSubVolumeGroup.Spec.CSIMetadataRadosNamespace)
+		if err != nil {
+			return reconcile.Result{}, errors.Wrap(err, "failed to create ceph csi-op config CR for subvolumeGroup")
+		}
 	}
 
 	// Return and do not requeue

@@ -340,9 +340,12 @@ func (r *ReconcileCephBlockPoolRadosNamespace) reconcile(request reconcile.Reque
 
 	r.updateStatus(r.client, namespacedName, cephv1.ConditionReady)
 
-	err = csi.CreateUpdateClientProfileRadosNamespace(r.clusterInfo.Context, r.client, r.clusterInfo, radosNamespaceName, buildClusterID(radosNamespace))
-	if err != nil {
-		return reconcile.Result{}, radosNamespace, errors.Wrap(err, "failed to create ceph csi-op config CR for RadosNamespace")
+	// In downstream for normal cluster, rook don't need to create client profile rados namespace CR.
+	if false {
+		err = csi.CreateUpdateClientProfileRadosNamespace(r.clusterInfo.Context, r.client, r.clusterInfo, radosNamespaceName, buildClusterID(radosNamespace))
+		if err != nil {
+			return reconcile.Result{}, radosNamespace, errors.Wrap(err, "failed to create ceph csi-op config CR for RadosNamespace")
+		}
 	}
 
 	// Return and do not requeue
