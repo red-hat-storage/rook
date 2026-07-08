@@ -340,6 +340,23 @@ spec:
                           type: object
                       type: object
                     type: object
+                  muteHealthWarning:
+                    additionalProperties:
+                      properties:
+                        policy:
+                          enum:
+                          - mute
+                          - unmute
+                          type: string
+                      required:
+                      - policy
+                      type: object
+                    maxProperties: 10
+                    minProperties: 0
+                    type: object
+                    x-kubernetes-validations:
+                    - message: keys must be valid Ceph health check codes
+                      rule: self.all(k, k.matches('^[A-Z]+(_[A-Z]+)+$'))
                   startupProbe:
                     additionalProperties:
                       properties:
