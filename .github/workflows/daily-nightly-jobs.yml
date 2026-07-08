@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -37,7 +37,7 @@ jobs:
       - name: setup cluster resources
         uses: ./.github/workflows/integration-test-setup-cluster-resources
         with:
-          kubernetes-version: "v1.35.5"
+          kubernetes-version: "v1.36.1"
 
       - name: validate-yaml
         run: tests/scripts/github-action-helper.sh validate_yaml
@@ -75,7 +75,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -87,11 +87,12 @@ jobs:
       - name: setup cluster resources
         uses: ./.github/workflows/integration-test-setup-cluster-resources
         with:
-          kubernetes-version: "v1.35.5"
+          kubernetes-version: "v1.36.1"
 
       - name: TestCephSmokeSuite
         run: |
-          export DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          export DEVICE_FILTER
           SKIP_CLEANUP_POLICY=false CEPH_SUITE_VERSION="squid-devel" go test -v -timeout 1800s -run TestCephSmokeSuite github.com/rook/rook/tests/integration
 
       - name: collect common logs
@@ -114,7 +115,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -126,11 +127,12 @@ jobs:
       - name: setup cluster resources
         uses: ./.github/workflows/integration-test-setup-cluster-resources
         with:
-          kubernetes-version: "v1.35.5"
+          kubernetes-version: "v1.36.1"
 
       - name: TestCephSmokeSuite
         run: |
-          export DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          export DEVICE_FILTER
           SKIP_CLEANUP_POLICY=false CEPH_SUITE_VERSION="tentacle-devel" go test -v -timeout 1800s -run TestCephSmokeSuite github.com/rook/rook/tests/integration
 
       - name: collect common logs
@@ -153,7 +155,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -165,11 +167,12 @@ jobs:
       - name: setup cluster resources
         uses: ./.github/workflows/integration-test-setup-cluster-resources
         with:
-          kubernetes-version: "v1.35.5"
+          kubernetes-version: "v1.36.1"
 
       - name: TestCephSmokeSuite
         run: |
-          export DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          export DEVICE_FILTER
           SKIP_CLEANUP_POLICY=false CEPH_SUITE_VERSION=main go test -v -timeout 1800s -run TestCephSmokeSuite github.com/rook/rook/tests/integration
 
       - name: collect common logs
@@ -192,7 +195,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -204,11 +207,12 @@ jobs:
       - name: setup cluster resources
         uses: ./.github/workflows/integration-test-setup-cluster-resources
         with:
-          kubernetes-version: "v1.35.5"
+          kubernetes-version: "v1.36.1"
 
       - name: TestCephObjectSuite (without TLS)
         run: |
-          export DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          export DEVICE_FILTER
           SKIP_CLEANUP_POLICY=false CEPH_SUITE_VERSION=main go test -v -timeout 1800s -failfast -run CephObjectSuite/TestWithoutTLS github.com/rook/rook/tests/integration
 
       - name: collect common logs
@@ -231,7 +235,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -243,11 +247,12 @@ jobs:
       - name: setup cluster resources
         uses: ./.github/workflows/integration-test-setup-cluster-resources
         with:
-          kubernetes-version: "v1.35.5"
+          kubernetes-version: "v1.36.1"
 
       - name: TestCephObjectSuiteTLS
         run: |
-          export DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          export DEVICE_FILTER
           SKIP_CLEANUP_POLICY=false CEPH_SUITE_VERSION=main go test -v -timeout 1800s -failfast -run CephObjectSuite/TestWithTLS github.com/rook/rook/tests/integration
 
       - name: collect common logs
@@ -270,7 +275,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -282,11 +287,12 @@ jobs:
       - name: setup cluster resources
         uses: ./.github/workflows/integration-test-setup-cluster-resources
         with:
-          kubernetes-version: "v1.35.5"
+          kubernetes-version: "v1.36.1"
 
       - name: TestCephUpgradeSuite
         run: |
-          export DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          export DEVICE_FILTER
           go test -v -timeout 1800s -failfast -run TestCephUpgradeSuite/TestUpgradeCephToSquidDevel github.com/rook/rook/tests/integration
 
       - name: collect common logs
@@ -309,7 +315,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -321,11 +327,12 @@ jobs:
       - name: setup cluster resources
         uses: ./.github/workflows/integration-test-setup-cluster-resources
         with:
-          kubernetes-version: "v1.35.5"
+          kubernetes-version: "v1.36.1"
 
       - name: TestCephUpgradeSuite
         run: |
-          export DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          DEVICE_FILTER=$(tests/scripts/github-action-helper.sh find_extra_block_dev)
+          export DEVICE_FILTER
           go test -v -timeout 1800s -failfast -run TestCephUpgradeSuite/TestUpgradeCephToTentacleDevel github.com/rook/rook/tests/integration
 
       - name: collect common logs

@@ -157,16 +157,6 @@ func (m *CephManifestsPreviousVersion) GetOBC(claimName, storageClassName, objec
 	return m.latest.GetOBC(claimName, storageClassName, objectBucketName, maxObject, varBucketName)
 }
 
-// GetOBCNotification returns the manifest to create object bucket claim
-func (m *CephManifestsPreviousVersion) GetOBCNotification(claimName, storageClassName, objectBucketName, notificationName string, varBucketName bool) string {
-	return m.latest.GetOBCNotification(claimName, storageClassName, objectBucketName, notificationName, varBucketName)
-}
-
-// GetBucketNotification returns the manifest to create ceph bucket notification
-func (m *CephManifestsPreviousVersion) GetBucketNotification(notificationName, topicName string) string {
-	return m.latest.GetBucketNotification(notificationName, topicName)
-}
-
 // GetBucketTopic returns the manifest to create ceph bucket topic
 func (m *CephManifestsPreviousVersion) GetBucketTopic(topicName, storeName, httpEndpointService string) string {
 	return m.latest.GetBucketTopic(topicName, storeName, httpEndpointService)
@@ -187,16 +177,4 @@ func (m *CephManifestsPreviousVersion) GetRBDMirror(name string, count int) stri
 
 func (m *CephManifestsPreviousVersion) GetFilesystemSubvolumeGroup(fsName, groupName string) string {
 	return m.latest.GetFilesystemSubvolumeGroup(fsName, groupName)
-}
-
-func (m *CephManifestsPreviousVersion) GetCOSIDriver() string {
-	return m.latest.GetCOSIDriver()
-}
-
-func (m *CephManifestsPreviousVersion) GetBucketClass(name, objectStoreUserSecretName, deletionPolicy string) string {
-	return m.latest.GetBucketClass(name, objectStoreUserSecretName, deletionPolicy)
-}
-
-func (m *CephManifestsPreviousVersion) GetBucketClaim(name, bucketClassName string) string {
-	return m.latest.GetBucketClaim(name, bucketClassName)
 }

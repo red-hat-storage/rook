@@ -43,12 +43,12 @@ jobs:
       # creating custom env var
       - name: set env
         run: |
-          echo "BRANCH_NAME=${GITHUB_REF##*/}" >> $GITHUB_ENV
-          echo "GITHUB_SHA=${GITHUB_SHA}" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${GITHUB_REF##*/}" >> "$GITHUB_ENV"
+          echo "GITHUB_SHA=${GITHUB_SHA}" >> "$GITHUB_ENV"
 
       - name: build and release
         env:
           BRANCH_NAME: ${{ env.BRANCH_NAME }}
-          GITHUB_SHA: $ {{ env.GITHUB_SHA }}
+          GITHUB_SHA: ${{ env.GITHUB_SHA }}
         run: |
           tests/scripts/build-release-downstream.sh
