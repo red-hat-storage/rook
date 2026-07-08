@@ -38,38 +38,90 @@ fi
 # FUNCTIONS #
 #############
 
+# Create one or more real block devices via a local iSCSI (LIO) target so that
+# tests have access to genuine SCSI disks (/dev/sd*). The argument is the number
+# of disks to create (default 1). All disks share a single target/TPG and are
+# exposed as separate LUNs, so a single initiator login attaches them all.
 function create_extra_disk() {
+  local count="${1:-1}"
   sudo apt install -y targetcli-fb open-iscsi
-  truncate -s 75G ~/iscsi-disk.img
-  sudo targetcli /backstores/fileio create disk1 ~/iscsi-disk.img 75G
-  local target_iqn=iqn.2026-02.target.local:disk1
-  sudo targetcli /iscsi create ${target_iqn}
-  sudo targetcli /iscsi/${target_iqn}/tpg1/luns create /backstores/fileio/disk1
   local init_iqn=iqn.2026-02.initiator.local
+  local target_iqn=iqn.2026-02.target.local:disk1
   echo "InitiatorName=${init_iqn}" | sudo tee /etc/iscsi/initiatorname.iscsi >/dev/null
-  sudo targetcli /iscsi/${target_iqn}/tpg1/acls create ${init_iqn}
-  sudo targetcli /iscsi/${target_iqn}/tpg1/acls/${init_iqn} create tpg_lun_or_backstore=lun0 mapped_lun=0
+  # The target and its initiator ACL are shared by all disks; create them once.
+  # "|| true" keeps re-invocation (to append more disks) idempotent.
+  sudo targetcli /iscsi create ${target_iqn} 2>/dev/null || true
+  sudo targetcli /iscsi/${target_iqn}/tpg1/acls create ${init_iqn} 2>/dev/null || true
+  # Count disks that already exist so additional disks append rather than
+  # clobber lun0 (LIO auto-assigns LUN numbers sequentially in creation order).
+  local existing=0 f
+  for f in ~/iscsi-disk*.img; do
+    if [ -e "$f" ]; then
+      existing=$((existing + 1))
+    fi
+  done
+  local j i lun
+  for j in $(seq 1 "$count"); do
+    i=$((existing + j))
+    lun=$((i - 1))
+    truncate -s 75G ~/iscsi-disk${i}.img
+    sudo targetcli /backstores/fileio create disk${i} ~/iscsi-disk${i}.img 75G
+    # "luns create" auto-maps the new LUN into the existing ACL as
+    # lun${lun} -> mapped_lun${lun}, so the explicit mapping below is a fallback
+    # for targetcli versions that do not auto-map; "|| true" tolerates the
+    # "already exists" error once it has been auto-mapped.
+    sudo targetcli /iscsi/${target_iqn}/tpg1/luns create /backstores/fileio/disk${i}
+    sudo targetcli /iscsi/${target_iqn}/tpg1/acls/${init_iqn} create tpg_lun_or_backstore=lun${lun} mapped_lun=${lun} 2>/dev/null || true
+  done
   sudo iscsiadm -m discovery -t sendtargets -p 127.0.0.1
-  sudo iscsiadm -m node --login
+  sudo iscsiadm -m node --login 2>/dev/null || true
+  sudo iscsiadm -m node -R 2>/dev/null || true # rescan to pick up newly-added LUNs
+  sudo udevadm settle 2>/dev/null || true      # wait for the new /dev/sd* to appear
 }
 
+# Print the basename of the first non-boot/loop/nbd whole disk, provisioning an
+# iSCSI disk if none exist. Thin wrapper over find_extra_block_devs(); kept as a
+# convenience for its many callers that expect a single basename.
 function find_extra_block_dev() {
+  local devs
+  mapfile -t devs < <(find_extra_block_devs 1)
+  echo "${devs[0]}" # the first disk
+}
+
+# find_extra_block_devs [min_count]
+# Print ALL non-boot/loop/nbd whole-disk basenames, one per line, in stable
+# lsblk order, provisioning additional iSCSI disks if fewer than min_count exist.
+# This is the single source of truth for disk discovery; find_extra_block_dev()
+# returns the first and find_second_block_dev() the second. Debug goes to stderr
+# so stdout stays clean.
+function find_extra_block_devs() {
+  local min_count="${1:-1}"
   # shellcheck disable=SC2005 # redirect doesn't work with sudo, so use echo
-  echo "$(sudo lsblk)" >/dev/stderr # print lsblk output to stderr for debugging in case of future errors
+  echo "$(sudo lsblk)" >/dev/stderr # print lsblk output to stderr for debugging
   # relevant lsblk --pairs example: (MOUNTPOINT identifies boot partition)(PKNAME is Parent dev ID)
   # NAME="sda15" SIZE="106M" TYPE="part" MOUNTPOINT="/boot/efi" PKNAME="sda"
   # NAME="sdb"   SIZE="75G"  TYPE="disk" MOUNTPOINT=""          PKNAME=""
   # NAME="sdb1"  SIZE="75G"  TYPE="part" MOUNTPOINT="/mnt"      PKNAME="sdb"
   boot_dev="$(sudo lsblk --noheading --list --output MOUNTPOINT,PKNAME | grep boot | awk '{print $2}')"
-  echo "  == find_extra_block_dev(): boot_dev='$boot_dev'" >/dev/stderr # debug in case of future errors
+  local devs count
   # --nodeps ignores partitions
-  extra_dev="$(sudo lsblk --noheading --list --nodeps --output KNAME | egrep -v "($boot_dev|loop|nbd)" | head -1)"
-  if [ -z "$extra_dev" ]; then
-    create_extra_disk >/dev/stderr
-    extra_dev="$(sudo lsblk --noheading --list --nodeps --output KNAME | egrep -v "($boot_dev|loop|nbd)" | head -1)"
+  devs="$(sudo lsblk --noheading --list --nodeps --output KNAME | egrep -v "($boot_dev|loop|nbd)" || true)"
+  count="$(echo "$devs" | grep -c . || true)"
+  if [ "$count" -lt "$min_count" ]; then
+    create_extra_disk "$((min_count - count))" >/dev/stderr
+    devs="$(sudo lsblk --noheading --list --nodeps --output KNAME | egrep -v "($boot_dev|loop|nbd)")"
   fi
-  echo "  == find_extra_block_dev(): extra_dev='$extra_dev'" >/dev/stderr # debug in case of future errors
-  echo "$extra_dev"                                                       # output of function
+  echo "  == find_extra_block_devs(): wanted>=${min_count} devs='$(echo "$devs" | tr '\n' ' ')'" >/dev/stderr
+  echo "$devs" # output of function
+}
+
+# Print the basename of a second whole disk, distinct from the primary disk
+# returned by find_extra_block_dev(). Ensures at least two disks exist first
+# (provisioning an iSCSI disk if needed). Debug goes to stderr; stdout is clean.
+function find_second_block_dev() {
+  local devs
+  mapfile -t devs < <(find_extra_block_devs 2)
+  echo "${devs[1]}" # the second disk; find_extra_block_dev() returns the first
 }
 
 function block_dev() {
@@ -106,23 +158,6 @@ function install_nvme_initiator_prerequisites() {
 function print_k8s_cluster_status() {
   kubectl cluster-info
   kubectl get pods -n kube-system
-}
-
-function prepare_loop_devices() {
-  if [ $# -ne 1 ]; then
-    echo "usage: $0 loop_deivce_count"
-    exit 1
-  fi
-  OSD_COUNT=$1
-  if [ $OSD_COUNT -le 0 ]; then
-    echo "Invalid OSD_COUNT $OSD_COUNT. OSD_COUNT must be larger than 0."
-    exit 1
-  fi
-  for i in $(seq 1 $OSD_COUNT); do
-    sudo dd if=/dev/zero of=~/data${i}.img bs=1M seek=6144 count=0
-    sudo losetup /dev/loop${i} ~/data${i}.img
-  done
-  sudo lsblk
 }
 
 function use_local_disk() {
@@ -236,7 +271,10 @@ function build_rook() {
   fi
   GOPATH=$(go env GOPATH) make clean
   for _ in $(seq 1 3); do
-    if ! o=$(make -j"$(nproc)" "$build_type"); then
+    # capture stderr too: go/make write network errors (the strings
+    # matched below) to stderr, so without 2>&1 $o never contains them
+    # and a transient failure skips the retry and is treated as fatal.
+    if ! o=$(make -j"$(nproc)" "$build_type" 2>&1); then
       case "$o" in
       *"$NETWORK_ERROR"*)
         echo "network failure occurred, retrying..."
@@ -270,11 +308,82 @@ function build_rook() {
   docker images
   if [[ "$build_type" == "build" ]]; then
     docker tag "$(docker images | awk '/build-/ {print $1}')" docker.io/rook/ceph:local-build
+    load_image_into_cluster docker.io/rook/ceph:local-build
   fi
 }
 
 function build_rook_all() {
   build_rook build.all
+}
+
+function ensure_kind_is_available() {
+  # The kind-based CI helpers drive the cluster through the kind CLI; fail clearly if it is absent.
+  command -v kind >/dev/null 2>&1 || {
+    echo "the 'kind' command is required but was not found" >&2
+    exit 1
+  }
+}
+
+function load_image_into_cluster() {
+  # Under kind, a locally built image lives only in the host docker daemon and must be
+  # explicitly imported into each cluster node's containerd before any pod can run it.
+  #
+  # Import through the node's own ctr rather than `kind load docker-image`: kind's loader parses
+  # the node's containerd config, and the kind version bundled with helm/kind-action cannot read
+  # the config version shipped by current kindest/node images ("unknown containerd config
+  # version: 4"). Piping `docker save` into the node's ctr sidesteps that version mismatch.
+  ensure_kind_is_available
+  local image="${1?image is required}"
+  local cluster="${KIND_CLUSTER_NAME:-kind}"
+  if ! kind get clusters 2>/dev/null | grep -qx "$cluster"; then
+    echo "load_image_into_cluster: no kind cluster '$cluster'" >&2
+    exit 1
+  fi
+  local node
+  for node in $(kind get nodes --name "$cluster"); do
+    docker save "$image" | docker exec -i "$node" ctr --namespace=k8s.io images import -
+  done
+}
+
+function add_host_routes_to_cluster() {
+  # kind runs the cluster inside a docker network, so route the Service and pod CIDRs to the kind
+  # node so host-side tests (the `go test` process runs on the runner; e.g. an S3 PutObject to the
+  # RGW ClusterIP) can reach in-cluster services.
+  ensure_kind_is_available
+  local cluster="${KIND_CLUSTER_NAME:-kind}"
+  local node ip
+  node=$(kind get nodes --name "$cluster" | grep control-plane | head -1)
+  ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$node")
+  [ -n "$ip" ] || { echo "ERROR: no kind node IP for routing" >&2; return 1; }
+  # kind defaults: service subnet 10.96.0.0/16, pod subnet 10.244.0.0/16
+  sudo ip route replace 10.96.0.0/16 via "$ip"
+  sudo ip route replace 10.244.0.0/16 via "$ip"
+  ip route show | grep -E '10\.(96|244)\.' || true   # diagnostic print only
+}
+
+function prepare_kind_node() {
+  # Prepare each kind node for the host-level operations rook performs against the node's host
+  # (remount /sys rw for krbd; install lvm2/cryptsetup for LVM/encryption OSDs). Best-effort: a
+  # failure must not break the raw-device OSD jobs that need none of it.
+  ensure_kind_is_available
+  local cluster="${KIND_CLUSTER_NAME:-kind}"
+  local node
+  for node in $(kind get nodes --name "$cluster"); do
+    # kind mounts the node's /sys read-only, so CSI's `rbd map --device-type krbd` fails with
+    # "rbd: sysfs write failed ... Read-only file system" writing /sys/bus/rbd/add. The node is
+    # privileged, so remount /sys read-write to let kernel RBD mapping work.
+    docker exec "$node" mount -o remount,rw /sys ||
+      echo "WARNING: could not remount /sys rw in kind node $node" >&2
+    # Rook provisions LVM- and encryption-backed OSDs by running lvm/cryptsetup in the node's
+    # mount namespace; kindest/node images don't ship those tools, so install them.
+    for _ in 1 2 3; do
+      if docker exec "$node" sh -c "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y lvm2 cryptsetup"; then
+        break
+      fi
+      echo "WARNING: could not install lvm2/cryptsetup into kind node $node; retrying" >&2
+      sleep 5
+    done
+  done
 }
 
 function validate_yaml() {
@@ -319,9 +428,6 @@ function deploy_manifest_with_local_build() {
   fi
   if [[ "$USE_LOCAL_BUILD" != "false" ]]; then
     sed -i "s|image: docker.io/rook/ceph:.*|image: docker.io/rook/ceph:local-build|g" $1
-  fi
-  if [[ "$ALLOW_LOOP_DEVICES" = "true" ]]; then
-    sed -i "s|ROOK_CEPH_ALLOW_LOOP_DEVICES: \"false\"|ROOK_CEPH_ALLOW_LOOP_DEVICES: \"true\"|g" $1
   fi
   sed -i "s|ROOK_LOG_LEVEL:.*|ROOK_LOG_LEVEL: DEBUG|g" "$1"
   kubectl create -f $1
@@ -374,9 +480,12 @@ function deploy_cluster() {
     sed -i "s|#deviceFilter:|deviceFilter: $(block_dev_basename)\n    config:\n      encryptedDevice: \"true\"|g" cluster-test.yaml
   elif [ "$1" = "lvm" ]; then
     sed -i "s|#deviceFilter:|devices:\n      - name: \"/dev/test-rook-vg/test-rook-lv\"|g" cluster-test.yaml
-  elif [ "$1" = "loop" ]; then
-    # add both /dev/sdX1 and loop device to test them at the same time
-    sed -i "s|#deviceFilter:|devices:\n      - name: \"$(block_dev_basename)\"\n      - name: \"/dev/loop1\"|g" cluster-test.yaml
+  elif [ "$1" = "two_raw_disks" ]; then
+    # use two real disks as raw OSDs; ROOK_DATA_DEV and ROOK_EXTRA_DEV are
+    # basenames (e.g. sdb, sdc) exported by the job. An explicit devices list
+    # plus useAllDevices=false pins the OSD count regardless of any stray disk.
+    sed -i "s|#deviceFilter:|devices:\n      - name: \"${ROOK_DATA_DEV}\"\n      - name: \"${ROOK_EXTRA_DEV}\"|g" cluster-test.yaml
+    yq w -i -d0 cluster-test.yaml spec.storage.useAllDevices false
   else
     echo "invalid argument: $*" >&2
     exit 1
@@ -414,25 +523,6 @@ function deploy_all_additional_resources_on_cluster() {
   kubectl create -f filesystem-mirror.yaml
   kubectl create -f nfs-test.yaml
   kubectl create -f subvolumegroup.yaml
-}
-
-function deploy_csi_hostnetwork_disabled_cluster() {
-  create_cluster_prerequisites
-  cd "${REPO_DIR}/deploy/examples"
-  sed -i 's/.*CSI_ENABLE_HOST_NETWORK:.*/  CSI_ENABLE_HOST_NETWORK: \"false\"/g' operator.yaml
-  deploy_manifest_with_local_build operator.yaml
-  deploy_manifest_with_local_build csi/nfs/driver.yaml
-  if [ $# == 0 ]; then
-    sed -i "s|#deviceFilter:|deviceFilter: $(block_dev_basename)|g" cluster-test.yaml
-  elif [ "$1" = "two_osds_in_device" ]; then
-    sed -i "s|#deviceFilter:|deviceFilter: $(block_dev_basename)\n    config:\n      osdsPerDevice: \"2\"|g" cluster-test.yaml
-  elif [ "$1" = "osd_with_metadata_device" ]; then
-    sed -i "s|#deviceFilter:|deviceFilter: $(block_dev_basename)\n    config:\n      metadataDevice: /dev/test-rook-vg/test-rook-lv|g" cluster-test.yaml
-  fi
-  kubectl create -f nfs-test.yaml
-  kubectl create -f cluster-test.yaml
-  kubectl create -f filesystem-test.yaml
-  deploy_toolbox
 }
 
 function wait_for_prepare_pod() {
@@ -480,13 +570,18 @@ function wait_for_prepare_pod() {
 }
 
 function wait_for_cleanup_pod() {
+  # rook names the disk-cleanup job per node: cluster-cleanup-job-<node>. Resolve the actual k8s
+  # node name rather than assuming it equals the runner hostname ($(uname -n)): under kind the
+  # node is "kind-control-plane", not the runner host.
+  local node
+  node="$(kubectl get nodes -o name | head -1 | cut -d/ -f2)"
   timeout 180 bash <<EOF
-until kubectl --namespace rook-ceph logs job/cluster-cleanup-job-$(uname -n); do
+until kubectl --namespace rook-ceph logs job/cluster-cleanup-job-${node}; do
   echo "waiting for cleanup up pod to be present"
   sleep 1
 done
 EOF
-  kubectl --namespace rook-ceph logs --follow job/cluster-cleanup-job-"$(uname -n)"
+  kubectl --namespace rook-ceph logs --follow job/cluster-cleanup-job-"${node}"
 }
 
 function wait_for_ceph_to_be_ready() {
@@ -703,7 +798,8 @@ function wait_for_sync_status() {
   while [[ $SECONDS -lt $deadline ]]; do
     status=$(kubectl -n "$ns" exec deploy/rook-ceph-tools -- \
       radosgw-admin sync status --rgw-realm=realm-a --rgw-zonegroup=zonegroup-a --rgw-zone="$zone") || status=""
-    if grep -q "$want" <<<"$status"; then
+    # require a non-empty status so a failed exec can't match a stale/empty buffer
+    if [[ -n "$status" ]] && grep -q "$want" <<<"$status"; then
       echo "zone ${zone} reports \"${want}\""
       return 0
     fi
@@ -715,30 +811,67 @@ function wait_for_sync_status() {
   return 1
 }
 
+# nudge_multisite_secondary forces the secondary zone to converge on the latest period when it
+# has wedged. The master pushes each new period to the secondary's RGW, but that push is
+# rejected (HTTP 403) until the realm system user is resolvable locally on the secondary; when
+# it starts out unresolvable the master keeps re-pushing identically and the secondary never
+# recovers, so its metadata sync never leaves the "failed to read sync status" state. Pulling
+# the period directly (outbound auth, which works) and restarting the RGW so it re-runs metadata
+# sync init against the now-ready master breaks the wedge. This mirrors ceph's own multisite QA,
+# which restarts zone gateways after the period is committed.
+function nudge_multisite_secondary() {
+  echo "nudging the secondary zone to converge: pulling the latest period and restarting its RGW"
+  kubectl -n rook-ceph-secondary exec deploy/rook-ceph-tools -- \
+    radosgw-admin period pull --rgw-realm=realm-a || true
+  kubectl -n rook-ceph-secondary rollout restart deploy/rook-ceph-rgw-zone-b-multisite-store-a
+  kubectl -n rook-ceph-secondary rollout status deploy/rook-ceph-rgw-zone-b-multisite-store-a --timeout=120s
+}
+
 function wait_for_multisite_sync_established() {
   # Wait until both zones report multisite sync fully established before exercising
   # replication, mirroring the checkpoints ceph's own multisite QA performs before asserting
   # anything. This also rides out the RGW frontend pauses caused by the configuration period
   # changes that follow the second zone joining the zonegroup.
-  wait_for_sync_status rook-ceph-secondary zone-b "metadata is caught up with master" 600
-  wait_for_sync_status rook-ceph-secondary zone-b "data is caught up with source" 600
-  wait_for_sync_status rook-ceph zone-a "data is caught up with source" 600
+  #
+  # The secondary's metadata sync can wedge on a fresh setup (see nudge_multisite_secondary); if
+  # it has not initialized within a couple of minutes, nudge it to converge rather than waiting
+  # out a doomed timeout, then retry. Healthy setups pass the first attempt in seconds, so the
+  # nudge only ever runs when the sync is genuinely stuck.
+  local attempt
+  for attempt in 1 2 3; do
+    if wait_for_sync_status rook-ceph-secondary zone-b "metadata is caught up with master" 120; then
+      break
+    fi
+    if [[ $attempt -ge 3 ]]; then
+      echo "zone-b metadata sync never established after ${attempt} attempts"
+      return 1
+    fi
+    nudge_multisite_secondary
+  done
+  # Data sync legitimately reports caught up at 0/0 shards before any objects are written, so the
+  # meaningful precondition is that metadata sync (above) has actually initialized.
+  wait_for_sync_status rook-ceph-secondary zone-b "data is caught up with source" 300
+  wait_for_sync_status rook-ceph zone-a "data is caught up with source" 300
 }
 
 function dump_multisite_diagnostics() {
   set +e
-  local ns
+  local ns zone
   for ns in rook-ceph rook-ceph-secondary; do
+    # sync status without an explicit zone falls back to the unrelated "default" zone, so name
+    # the realm/zonegroup/zone for each cluster.
+    if [[ "$ns" == "rook-ceph" ]]; then zone="zone-a"; else zone="zone-b"; fi
     echo "===== ${ns}: pods"
     kubectl -n "$ns" get pods -o wide
     echo "===== ${ns}: rgw pod details"
     kubectl -n "$ns" describe pods -l app=rook-ceph-rgw
     echo "===== ${ns}: rgw pod logs"
     kubectl -n "$ns" logs -l app=rook-ceph-rgw --all-containers --tail=100
-    echo "===== ${ns}: sync status"
-    kubectl -n "$ns" exec deploy/rook-ceph-tools -- radosgw-admin sync status
+    echo "===== ${ns}: sync status (${zone})"
+    kubectl -n "$ns" exec deploy/rook-ceph-tools -- \
+      radosgw-admin sync status --rgw-realm=realm-a --rgw-zonegroup=zonegroup-a --rgw-zone="$zone"
     echo "===== ${ns}: period"
-    kubectl -n "$ns" exec deploy/rook-ceph-tools -- radosgw-admin period get
+    kubectl -n "$ns" exec deploy/rook-ceph-tools -- radosgw-admin period get --rgw-realm=realm-a
   done
   set -e
   return 0
@@ -773,7 +906,10 @@ function write_object_read_from_replica_cluster() {
     radosgw-admin bucket sync checkpoint --rgw-realm=realm-a --rgw-zonegroup=zonegroup-a --rgw-zone="$read_zone" \
     --bucket="$test_bucket_name" --source-zone="$write_zone" --retry-delay-ms=5000 --timeout-sec=300
 
-  retry_for 60 s3cmd --host="${read_cluster_ip}" get "s3://${test_bucket_name}/${test_object_name}" "${test_object_name}.get" --force
+  # The checkpoint confirms the bucket's data sync markers are caught up at the RADOS level, but
+  # the reading RGW can still briefly serve 404 for the freshly synced object until it refreshes,
+  # so give the read a generous budget rather than asserting it is immediately available.
+  retry_for 180 s3cmd --host="${read_cluster_ip}" get "s3://${test_bucket_name}/${test_object_name}" "${test_object_name}.get" --force
 
   diff "$test_object_name" "${test_object_name}.get"
 }
@@ -808,6 +944,7 @@ function create_helm_tag() {
   helm_tag="$(cat _output/version)"
   build_image="$(docker images | awk '/build-/ {print $1}')"
   docker tag "${build_image}" "rook/ceph:${helm_tag}"
+  load_image_into_cluster "rook/ceph:${helm_tag}"
 }
 
 function test_multus_connections() {
@@ -825,27 +962,6 @@ function create_operator_toolbox() {
   cd "${REPO_DIR}/deploy/examples"
   sed -i "s|image: docker.io/rook/ceph:.*|image: docker.io/rook/ceph:local-build|g" toolbox-operator-image.yaml
   kubectl create -f toolbox-operator-image.yaml
-}
-
-function wait_for_ceph_csi_configmap_to_be_updated {
-  timeout 60 bash <<EOF
-until [[ $(kubectl -n rook-ceph get configmap rook-ceph-csi-config -o jsonpath="{.data.csi-cluster-config-json}" | jq .[0].rbd.netNamespaceFilePath) != "null" ]]; do
-  echo "waiting for ceph csi configmap to be updated with rbd.netNamespaceFilePath"
-  sleep 5
-done
-EOF
-  timeout 60 bash <<EOF
-until [[ $(kubectl -n rook-ceph get configmap rook-ceph-csi-config -o jsonpath="{.data.csi-cluster-config-json}" | jq .[0].cephFS.netNamespaceFilePath) != "null" ]]; do
-  echo "waiting for ceph csi configmap to be updated with cephFS.netNamespaceFilePath"
-  sleep 5
-done
-EOF
-  timeout 60 bash <<EOF
-until [[ $(kubectl -n rook-ceph get configmap rook-ceph-csi-config -o jsonpath="{.data.csi-cluster-config-json}" | jq .[0].nfs.netNamespaceFilePath) != "null" ]]; do
-  echo "waiting for ceph csi configmap to be updated with nfs.netNamespaceFilePath"
-  sleep 5
-done
-EOF
 }
 
 function test_csi_rbd_workload {

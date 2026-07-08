@@ -45,6 +45,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
+	cosiclient "sigs.k8s.io/container-object-storage-interface/client/clientset/versioned"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
@@ -55,6 +56,7 @@ type K8sHelper struct {
 	Clientset        *kubernetes.Clientset
 	RookClientset    *rookclient.Clientset
 	BucketClientset  *bktclient.Clientset
+	COSIClientset    *cosiclient.Clientset
 	RunningInCluster bool
 	T                func() *testing.T
 }
@@ -78,7 +80,7 @@ func getCmd() string {
 	return cmd
 }
 
-// CreateK8sHelper creates a instance of k8sHelper
+// CreateK8sHelper creates an instance of k8sHelper
 func CreateK8sHelper(t func() *testing.T) (*K8sHelper, error) {
 	executor := &exec.CommandExecutor{}
 	config, err := config.GetConfig()
@@ -97,13 +99,17 @@ func CreateK8sHelper(t func() *testing.T) (*K8sHelper, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get lib-bucket-provisioner clientset. %+v", err)
 	}
+	cosiClientset, err := cosiclient.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get COSI clientset. %+v", err)
+	}
 
 	remoteExecutor := &exec.RemotePodCommandExecutor{
 		ClientSet:  clientset,
 		RestClient: config,
 	}
 
-	h := &K8sHelper{executor: executor, Clientset: clientset, RookClientset: rookClientset, BucketClientset: bucketClientset, T: t, remoteExecutor: remoteExecutor}
+	h := &K8sHelper{executor: executor, Clientset: clientset, RookClientset: rookClientset, BucketClientset: bucketClientset, COSIClientset: cosiClientset, T: t, remoteExecutor: remoteExecutor}
 	if strings.Contains(config.Host, "//10.") {
 		h.RunningInCluster = true
 	}
@@ -186,6 +192,25 @@ func (k8sh *K8sHelper) KubectlWithStdin(stdin string, args ...string) (string, e
 }
 
 func getManifestFromURL(url string) (string, error) {
+	var lastErr error
+	// retry the download since fetches from raw.githubusercontent.com fail
+	// transiently in CI
+	for i := 0; i < 5; i++ {
+		if i > 0 {
+			time.Sleep(5 * time.Second)
+		}
+		manifest, err := downloadManifest(url)
+		if err != nil {
+			logger.Warningf("failed to get manifest, will retry. %v", err)
+			lastErr = err
+			continue
+		}
+		return manifest, nil
+	}
+	return "", lastErr
+}
+
+func downloadManifest(url string) (string, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", err
@@ -195,6 +220,9 @@ func getManifestFromURL(url string) (string, error) {
 		return "", errors.Wrapf(err, "failed to get manifest from url %s", url)
 	}
 	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return "", errors.Errorf("failed to get manifest from url %s. status: %s", url, res.Status)
+	}
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to read manifest from url %s", url)
@@ -237,6 +265,26 @@ func (k8sh *K8sHelper) ResourceOperation(action string, manifest string) error {
 	return fmt.Errorf("could Not create resource in args : %v -- %v", args, err)
 }
 
+// applyRetryTimeout bounds ApplyWithRetry. A webhook backend (cert-manager,
+// trust-manager, ...) is typically reachable within seconds of its deployment
+// reporting ready; two minutes sits comfortably above that without hanging a
+// genuinely broken setup for long.
+const applyRetryTimeout = 2 * time.Minute
+
+// ApplyWithRetry retries "kubectl apply" of manifest until it succeeds or
+// applyRetryTimeout elapses. It exists for resources guarded by an admission
+// webhook whose backing service may not be reachable the instant its
+// deployment reports ready (e.g. cert-manager / trust-manager): "helm --wait"
+// returns once the webhook deployment is ready, but the first apply can still
+// fail with "failed calling webhook ... connection refused". description names
+// the resource in the retry log lines. See Eventually for polling semantics.
+func (k8sh *K8sHelper) ApplyWithRetry(ctx context.Context, manifest, description string) error {
+	return Eventually(ctx, k8sh.T(), applyRetryTimeout, "apply "+description,
+		func(context.Context) error {
+			return k8sh.ResourceOperation("apply", manifest)
+		})
+}
+
 // DeletePod performs a kubectl delete pod on the given pod
 func (k8sh *K8sHelper) DeletePod(namespace, name string) error {
 	args := append([]string{"--grace-period=0", "pod"}, name)
@@ -271,7 +319,7 @@ func (k8sh *K8sHelper) WaitForCustomResourceDeletion(namespace, name string, che
 	return fmt.Errorf("timed out waiting for deletion of custom resource %q", name)
 }
 
-// DeleteResource performs a kubectl delete on give args.
+// DeleteResourceAndWait performs a kubectl delete on give args.
 // If wait is false, a flag will be passed to indicate the delete should return immediately
 func (k8sh *K8sHelper) DeleteResourceAndWait(wait bool, args ...string) error {
 	if !wait {
@@ -513,7 +561,7 @@ func (k8sh *K8sHelper) GetEventsFromNamespace(namespace, testName, platformName 
 	if events == "" {
 		return
 	}
-	file.WriteString(events) //nolint // ok to ignore this test logging
+	file.WriteString(events) //nolint:errcheck // ok to ignore this test logging
 }
 
 func (k8sh *K8sHelper) appendPodDescribe(file *os.File, namespace, name string) {
@@ -521,9 +569,9 @@ func (k8sh *K8sHelper) appendPodDescribe(file *os.File, namespace, name string) 
 	if description == "" {
 		return
 	}
-	writeHeader(file, fmt.Sprintf("Pod: %s\n", name)) //nolint // ok to ignore this test logging
-	file.WriteString(description)                     //nolint // ok to ignore this test logging
-	file.WriteString("\n")                            //nolint // ok to ignore this test logging
+	writeHeader(file, fmt.Sprintf("Pod: %s\n", name)) //nolint:errcheck // ok to ignore this test logging
+	file.WriteString(description)                     //nolint:errcheck // ok to ignore this test logging
+	file.WriteString("\n")                            //nolint:errcheck // ok to ignore this test logging
 }
 
 func (k8sh *K8sHelper) PrintPodDescribe(namespace string, args ...string) {
@@ -945,7 +993,7 @@ func (k8sh *K8sHelper) IsDefaultStorageClassPresent() (bool, error) {
 	return false, nil
 }
 
-// CheckPvcCount returns True if expected number pvs for a app are found
+// CheckPvcCountAndStatus returns True if expected number of pvs for an app are found
 func (k8sh *K8sHelper) CheckPvcCountAndStatus(podName string, namespace string, expectedPvcCount int, expectedStatus string) bool {
 	logger.Infof("wait until %d pvc for app=%s are present", expectedPvcCount, podName)
 	listOpts := metav1.ListOptions{LabelSelector: "app=" + podName}
@@ -1454,9 +1502,9 @@ func (k8sh *K8sHelper) getPodLogs(pod v1.Pod, platformName, namespace, testName 
 }
 
 func writeHeader(file *os.File, message string) error {
-	file.WriteString("\n-----------------------------------------\n") //nolint // ok to ignore this test logging
-	file.WriteString(message)                                         //nolint // ok to ignore this test logging
-	file.WriteString("\n-----------------------------------------\n") //nolint // ok to ignore this test logging
+	file.WriteString("\n-----------------------------------------\n") //nolint:errcheck // ok to ignore this test logging
+	file.WriteString(message)                                         //nolint:errcheck // ok to ignore this test logging
+	file.WriteString("\n-----------------------------------------\n") //nolint:errcheck // ok to ignore this test logging
 
 	return nil
 }
@@ -1466,7 +1514,7 @@ func (k8sh *K8sHelper) appendContainerLogs(file *os.File, pod v1.Pod, containerN
 	if initContainer {
 		message = "INIT " + message
 	}
-	writeHeader(file, message) //nolint // ok to ignore this test logging
+	writeHeader(file, message) //nolint:errcheck // ok to ignore this test logging
 	ctx := context.TODO()
 	logOpts := &v1.PodLogOptions{Previous: previousLog}
 	if containerName != "" {
@@ -1549,6 +1597,23 @@ func (k8sh *K8sHelper) WaitForDeploymentCountWithRetries(label, namespace string
 // be fully ready with a default timeout.
 func (k8sh *K8sHelper) WaitForLabeledDeploymentsToBeReady(label, namespace string) error {
 	return k8sh.WaitForLabeledDeploymentsToBeReadyWithRetries(label, namespace, RetryLoop)
+}
+
+// WaitForDeploymentReadyReplicas waits for the named deployment to have at least minReady ready
+// replicas. Retry the number of times given.
+func (k8sh *K8sHelper) WaitForDeploymentReadyReplicas(name, namespace string, minReady int32, retries int) error {
+	ctx := context.TODO()
+	for i := 0; i < retries; i++ {
+		d, err := k8sh.Clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err == nil && d.Status.ReadyReplicas >= minReady {
+			logger.Infof("deployment %q in namespace %q has %d ready replicas", name, namespace, d.Status.ReadyReplicas)
+			return nil
+		}
+		logger.Infof("waiting for deployment %q in namespace %q to have %d ready replicas. ready=%d/%d, err=%v",
+			name, namespace, minReady, d.Status.ReadyReplicas, d.Status.Replicas, err)
+		time.Sleep(RetryInterval * time.Second)
+	}
+	return fmt.Errorf("giving up waiting for deployment %q in namespace %q to have %d ready replicas", name, namespace, minReady)
 }
 
 // WaitForLabeledDeploymentsToBeReadyWithRetries waits for all deployments matching the given label

@@ -48,7 +48,7 @@ those releases.
 With this upgrade guide, there are a few notes to consider:
 
 * **WARNING**: Upgrading a Rook cluster is not without risk. There may be unexpected issues or
-    obstacles that damage the integrity and health the storage cluster, including data loss.
+    obstacles that damage the integrity and health of the storage cluster, including data loss.
 * The Rook cluster's storage may be unavailable for short periods during the upgrade process for
     both Rook operator updates and for Ceph version updates.
 * Read this document in full before undertaking the cluster upgrade.
@@ -291,10 +291,9 @@ This cluster is finished:
 
 At this point, the Rook operator should be running version `rook/ceph:v1.20.0`.
 
-Verify the ceph-csi-operator and CSI drivers:
+Verify the CSI drivers:
 
 ```console
-kubectl -n $ROOK_OPERATOR_NAMESPACE get deploy -l app.kubernetes.io/name=ceph-csi-operator
 kubectl -n $ROOK_OPERATOR_NAMESPACE get operatorconfig,driver
 ```
 

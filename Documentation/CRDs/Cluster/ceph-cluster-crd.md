@@ -51,7 +51,7 @@ If this value is empty, each pod will get an ephemeral directory to store their 
     * `externalMgrEndpoints`: external cluster manager endpoints
     * `externalMgrPrometheusPort`: external prometheus manager module port. See [external cluster configuration](./external-cluster/external-cluster.md) for more details.
     * `port`: The internal prometheus manager module port where the prometheus mgr module listens. The port may need to be configured when host networking is enabled.
-    * `interval`: The interval for the prometheus module to to scrape targets.
+    * `interval`: The interval for the prometheus module to scrape targets.
     * `exporter`: Ceph exporter metrics config.
         * `perfCountersPrioLimit`: Specifies which performance counters are exported. Corresponds to `--prio-limit` Ceph exporter flag. `0` - all counters are exported, default is `5`.
         * `statsPeriodSeconds`: Time to wait before sending requests again to exporter server (seconds). Corresponds to `--stats-period` Ceph exporter flag. Default is `5`.
@@ -667,6 +667,25 @@ healthCheck:
 ```
 
 Changing the liveness probe is an advanced operation and should rarely be necessary. If you want to change these settings then modify the desired settings.
+
+
+Ceph health warnings can be muted:
+
+* `muteHealthWarning`: configure muting of Ceph health warnings. Keys are Ceph health check codes. Each entry has a `policy` of `mute` for a permanent mute, or `unmute` to remove an existing mute.
+
+For example:
+
+```yaml
+healthCheck:
+  muteHealthWarning:
+    MON_NETSPLIT:
+      policy: mute
+    OSD_NEARFULL:
+      policy: unmute
+```
+
+!!! note
+    Removing an entry from `muteHealthWarning`, or removing the field entirely, will not unmute the warning in Ceph. To unmute, set `policy: unmute` for that warning key.
 
 ## Status
 

@@ -191,10 +191,10 @@ spec:
                       description: Details contains potential status errors
                       type: string
                     lastChanged:
-                      description: LastChanged is the last time time the status last changed
+                      description: LastChanged is the last time the status last changed
                       type: string
                     lastChecked:
-                      description: LastChecked is the last time time the status was checked
+                      description: LastChecked is the last time the status was checked
                       type: string
                     summary:
                       description: Summary is the mirroring status summary
@@ -302,10 +302,10 @@ spec:
                       description: Details contains potential status errors
                       type: string
                     lastChanged:
-                      description: LastChanged is the last time time the status last changed
+                      description: LastChanged is the last time the status last changed
                       type: string
                     lastChecked:
-                      description: LastChecked is the last time time the status was checked
+                      description: LastChecked is the last time the status was checked
                       type: string
                     snapshotSchedules:
                       description: SnapshotSchedules is the list of snapshots scheduled
@@ -729,10 +729,10 @@ spec:
                       description: Details contains potential status errors
                       type: string
                     lastChanged:
-                      description: LastChanged is the last time time the status last changed
+                      description: LastChanged is the last time the status last changed
                       type: string
                     lastChecked:
-                      description: LastChecked is the last time time the status was checked
+                      description: LastChecked is the last time the status was checked
                       type: string
                     summary:
                       description: Summary is the mirroring status summary
@@ -847,10 +847,10 @@ spec:
                       description: Details contains potential status errors
                       type: string
                     lastChanged:
-                      description: LastChanged is the last time time the status last changed
+                      description: LastChanged is the last time the status last changed
                       type: string
                     lastChecked:
-                      description: LastChecked is the last time time the status was checked
+                      description: LastChecked is the last time the status was checked
                       type: string
                     snapshotSchedules:
                       description: SnapshotSchedules is the list of snapshots scheduled
@@ -948,7 +948,7 @@ spec:
                   description: List of events that should trigger the notification
                   items:
                     description: |-
-                      BucketNotificationSpec represent the event type of the bucket notification
+                      BucketNotificationEvent represent the event type of the bucket notification
                       See: https://docs.ceph.com/en/latest/radosgw/s3-notification-compatibility/#event-types
                     enum:
                       - s3:ObjectCreated:*
@@ -1975,6 +1975,26 @@ spec:
                         type: object
                       description: LivenessProbe allows changing the livenessProbe configuration for a given daemon
                       type: object
+                    muteHealthWarning:
+                      additionalProperties:
+                        description: MuteHealthWarningSpec configures muting of a Ceph health warning.
+                        properties:
+                          policy:
+                            description: Policy controls whether to mute or unmute a Ceph health warning.
+                            enum:
+                              - mute
+                              - unmute
+                            type: string
+                        required:
+                          - policy
+                        type: object
+                      description: MuteHealthWarning configures muting of Ceph health warnings.
+                      maxProperties: 10
+                      minProperties: 0
+                      type: object
+                      x-kubernetes-validations:
+                        - message: keys must be valid Ceph health check codes
+                          rule: self.all(k, k.matches('^[A-Z]+(_[A-Z]+)+$'))
                     startupProbe:
                       additionalProperties:
                         description: ProbeSpec is a wrapper around Probe so it can be enabled or disabled for a Ceph daemon
@@ -5965,7 +5985,7 @@ spec:
                     WaitTimeoutForHealthyOSDInMinutes defines the time the operator would wait before an OSD can be stopped for upgrade or restart.
                     If the timeout exceeds and OSD is not ok to stop, then the operator would skip upgrade for the current OSD and proceed with the next one
                     if `continueUpgradeAfterChecksEvenIfNotHealthy` is `false`. If `continueUpgradeAfterChecksEvenIfNotHealthy` is `true`, then operator would
-                    continue with the upgrade of an OSD even if its not ok to stop after the timeout. This timeout won't be applied if `skipUpgradeChecks` is `true`.
+                    continue with the upgrade of an OSD even if it's not ok to stop after the timeout. This timeout won't be applied if `skipUpgradeChecks` is `true`.
                     The default wait timeout is 10 minutes.
                   format: int64
                   type: integer
@@ -6199,7 +6219,7 @@ spec:
                           type: integer
                       type: object
                     osd:
-                      description: OSD shows the CephX key status of of OSDs
+                      description: OSD shows the CephX key status of OSDs
                       properties:
                         keyCephVersion:
                           description: |-
@@ -9191,7 +9211,7 @@ spec:
                     daemonsStatus:
                       description: PoolMirroringStatus is the mirroring status of a filesystem
                       items:
-                        description: FilesystemMirrorInfoSpec is the filesystem mirror status of a given filesystem
+                        description: FilesystemMirroringInfo is the filesystem mirror status of a given filesystem
                         properties:
                           daemon_id:
                             description: DaemonID is the cephfs-mirror name
@@ -9252,10 +9272,10 @@ spec:
                       description: Details contains potential status errors
                       type: string
                     lastChanged:
-                      description: LastChanged is the last time time the status last changed
+                      description: LastChanged is the last time the status last changed
                       type: string
                     lastChecked:
-                      description: LastChecked is the last time time the status was checked
+                      description: LastChecked is the last time the status was checked
                       type: string
                   type: object
                 observedGeneration:
@@ -9272,10 +9292,10 @@ spec:
                       description: Details contains potential status errors
                       type: string
                     lastChanged:
-                      description: LastChanged is the last time time the status last changed
+                      description: LastChanged is the last time the status last changed
                       type: string
                     lastChecked:
-                      description: LastChecked is the last time time the status was checked
+                      description: LastChecked is the last time the status was checked
                       type: string
                     snapshotSchedules:
                       description: SnapshotSchedules is the list of snapshots scheduled

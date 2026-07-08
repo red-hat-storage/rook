@@ -39,7 +39,7 @@ func CreateObjectOperation(k8sh *utils.K8sHelper, manifests installer.CephManife
 	return &ObjectOperation{k8sh, manifests}
 }
 
-// ObjectCreate Function to create a object store in rook
+// ObjectCreate Function to create an object store in rook
 func (o *ObjectOperation) Create(namespace, storeName string, replicaCount int32, tlsEnable bool, swiftAndKeystone bool) error {
 	logger.Info("creating the object store via CRD")
 
@@ -67,14 +67,4 @@ func (o *ObjectOperation) Delete(namespace, storeName string) error {
 		return fmt.Errorf("rgw did not stop via crd")
 	}
 	return nil
-}
-
-// Need to improve the below function for better error handling
-func (o *ObjectOperation) GetEndPointUrl(namespace string, storeName string) (string, error) {
-	args := []string{"get", "svc", "-n", namespace, "-l", fmt.Sprintf("rgw=%s", storeName), "-o", "jsonpath={.items[*].spec.clusterIP}"}
-	EndPointUrl, err := o.k8sh.Kubectl(args...)
-	if err != nil {
-		return "", fmt.Errorf("unable to find rgw end point-- %s", err)
-	}
-	return fmt.Sprintf("%s:%d", EndPointUrl, rgwPort), nil
 }
