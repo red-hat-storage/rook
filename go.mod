@@ -1,4 +1,4 @@
-module github.com/rook/rook
+module github.com/red-hat-storage/rook
 
 go 1.26.0
 
@@ -9,6 +9,7 @@ replace (
 	// TODO: remove this replace once https://github.com/libopenstorage/secrets/pull/83 is merged
 	github.com/libopenstorage/secrets => github.com/rook/secrets v0.0.0-20240315053144-3195f6906937
 	github.com/portworx/sched-ops => github.com/portworx/sched-ops v0.20.4-openstorage-rc3
+	github.com/rook/rook => ./
 	github.com/rook/rook/pkg/apis => ./pkg/apis
 )
 
@@ -38,6 +39,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.92.0
 	github.com/prometheus-operator/prometheus-operator/pkg/client v0.92.0
+	github.com/rook/rook v0.0.0-00010101000000-000000000000
 	github.com/rook/rook/pkg/apis v0.0.0-20241216163035-3170ac6a0c58
 	github.com/sethvargo/go-password v0.3.1
 	github.com/spf13/cobra v1.10.2

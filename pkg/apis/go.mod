@@ -1,4 +1,4 @@
-module github.com/rook/rook/pkg/apis
+module github.com/red-hat-storage/rook/pkg/apis
 
 go 1.26.0
 
@@ -19,6 +19,7 @@ require (
 	github.com/libopenstorage/secrets v0.0.0-20240416031220-a17cf7f72c6c
 	github.com/openshift/api v0.0.0-20241216151652-de9de05a8e43
 	github.com/pkg/errors v0.9.1
+	github.com/rook/rook/pkg/apis v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.11.1
 	k8s.io/api v0.36.2
 	k8s.io/apimachinery v0.36.2
