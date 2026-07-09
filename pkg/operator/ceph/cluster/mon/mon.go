@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -335,7 +336,7 @@ func (c *Cluster) startMons(targetCount int) error {
 	return nil
 }
 
-// isFloatingMon returns true if the given mon name is the floating mon defined
+// IsFloatingMon returns true if the given mon name is the floating mon defined
 // in the CephCluster spec.
 func IsFloatingMon(c *Cluster, name string) bool {
 	return c.spec.Mon.FloatingMon.Name != "" && name == c.spec.Mon.FloatingMon.Name
@@ -822,7 +823,7 @@ func scheduleMonitor(c *Cluster, mon *monConfig) (*apps.Deployment, error) {
 	return d, nil
 }
 
-// GetMonPlacement returns the placement for the MON service
+// getMonPlacement returns the placement for the MON service
 func (c *Cluster) getMonPlacement(zone string) cephv1.Placement {
 	// If the mon is the arbiter in a stretch cluster and its placement is specified, return it
 	// without merging with the "all" placement so it can be handled separately from all other daemons
@@ -1862,13 +1863,7 @@ func monFoundInQuorum(name string, monQuorumStatusResp cephclient.MonStatusRespo
 
 	// using the current initial monitor's mon map entry, check to see if it's in the quorum list
 	// (a list of monitor rank values)
-	for _, q := range monQuorumStatusResp.Quorum {
-		if monMapEntry.Rank == q {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(monQuorumStatusResp.Quorum, monMapEntry.Rank)
 }
 
 func requiredDuringScheduling(spec *cephv1.ClusterSpec) bool {

@@ -318,7 +318,7 @@ func downFilesystem(context *clusterd.Context, clusterInfo *cephclient.ClusterIn
 	return nil
 }
 
-// generateDataPoolName generates DataPool name by prefixing the filesystem name to the constant DataPoolSuffix
+// generateDataPoolNames generates DataPool name by prefixing the filesystem name to the constant DataPoolSuffix
 // or get predefined name from spec
 func generateDataPoolNames(f *Filesystem, spec cephv1.FilesystemSpec) []string {
 	var dataPoolNames []string
@@ -345,7 +345,7 @@ func GenerateMetaDataPoolName(fsName string) string {
 	return generateMetaDataPoolName(fsName, nil)
 }
 
-// GenerateMetaDataPoolName generates MetaDataPool name as specified in FilesystemSpec
+// generateMetaDataPoolName generates MetaDataPool name as specified in FilesystemSpec
 func generateMetaDataPoolName(fsName string, spec *cephv1.FilesystemSpec) string {
 	poolName := ""
 
