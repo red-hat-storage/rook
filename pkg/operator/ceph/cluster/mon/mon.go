@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"slices"
 	"strconv"
@@ -1241,7 +1242,9 @@ func (c *Cluster) saveMonConfig() error {
 		return errors.Wrap(err, "failed to write connection config for new mons")
 	}
 
-	if len(c.ClusterInfo.AllMonitors()) > 0 {
+	if len(c.ClusterInfo.AllMonitors()) > 0 && !strings.Contains(os.Getenv(k8sutil.PodNamespaceEnvVar), "openshift") {
+		// This is a hack to prevent the creation of cephConnection and default client profile in OpenShift
+		// because these resources are created by other components in OpenShift.
 		err := csi.CreateUpdateCephConnection(c.context.Client, c.ClusterInfo, c.spec)
 		if err != nil {
 			return errors.Wrap(err, "failed to create/update cephConnection")
