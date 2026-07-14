@@ -31,7 +31,7 @@ jobs:
         with:
           go-version: "1.26"
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.2
           # actions/setup-go already handles caching
@@ -46,7 +46,7 @@ jobs:
           go-version: "1.26"
           check-latest: true
       - name: govulncheck
-        uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1.0.4
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
         env:
           # Required for go-ceph rgw/admin account APIs which are gated behind
           # the ceph_preview build tag. Can be removed when go-ceph promotes
