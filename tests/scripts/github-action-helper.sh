@@ -1148,7 +1148,7 @@ function delete_cluster() {
   kubectl --namespace rook-ceph logs deploy/rook-ceph-operator
   wait_for_cleanup_pod
   kubectl --namespace rook-ceph delete --ignore-not-found=true -f deploy/examples/operator.yaml
-  kubectl --namespace rook-ceph delete clientprofile rook-ceph
+  kubectl --namespace rook-ceph delete clientprofile rook-ceph || true
   kubectl --namespace rook-ceph logs deploy/ceph-csi-controller-manager
   kubectl --namespace rook-ceph delete --ignore-not-found=true -f deploy/examples/csi-operator.yaml
   remove_cluster_prerequisites

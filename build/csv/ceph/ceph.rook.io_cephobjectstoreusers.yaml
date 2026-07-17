@@ -53,6 +53,13 @@ spec:
               capabilities:
                 nullable: true
                 properties:
+                  accounts:
+                    enum:
+                    - '*'
+                    - read
+                    - write
+                    - read, write
+                    type: string
                   amz-cache:
                     enum:
                     - '*'
@@ -145,6 +152,13 @@ spec:
                     - read, write
                     type: string
                   user-policy:
+                    enum:
+                    - '*'
+                    - read
+                    - write
+                    - read, write
+                    type: string
+                  userInfoWithoutKeys:
                     enum:
                     - '*'
                     - read
