@@ -20,8 +20,8 @@
 # CLI overrides env for: --drbd-conf-path, --drbd-dir-path, --drbd-resource, --drbd-device, --drbd-port
 #
 # Prerequisites:
-#   - Nodes can pull ${DRBD_IMAGE}; ${DRBD_PORT}/tcp open between nodes.
-#   - Image registry: the in-cluster OpenShift registry with emptyDir storage
+#   - Nodes can pull ${DRBD_IMAGE} (cluster pull-secret must include that registry);
+#   - ${DRBD_PORT}/tcp open between nodes.
 #
 set -euo pipefail
 
@@ -661,11 +661,13 @@ wait_for_modules() {
 }
 
 # Run drbdadm on a node via podman using the DRBD image; mounts host drbd.conf and drbd.d.
+# pass kubelet's auth file so authenticated registries can be pulled.
 drbdctl() {
     local node="$1"
     shift
     if ! oc debug -q "node/$node" -- chroot /host \
         podman run --rm --privileged \
+        --authfile /var/lib/kubelet/config.json \
         -v /dev:/dev \
         -v "${DRBD_CONF_PATH}:${DRBD_CONF_PATH}" \
         -v "${DRBD_DIR_PATH}:${DRBD_DIR_PATH}" \
@@ -1044,6 +1046,7 @@ print_success() {
     echo ""
     echo "Post-install DRBD status on ${NODE_0} (repeat with ${NODE_1}):"
     echo "  oc debug -q node/${NODE_0} -- chroot /host podman run --rm --privileged \\"
+    echo "    --authfile /var/lib/kubelet/config.json \\"
     echo "    -v /dev:/dev -v ${DRBD_CONF_PATH}:${DRBD_CONF_PATH} -v ${DRBD_DIR_PATH}:${DRBD_DIR_PATH} \\"
     echo "    --hostname ${NODE_0} --net host ${DRBD_IMAGE} drbdadm -c ${DRBD_CONF_PATH} status ${DRBD_RESOURCE}"
     echo ""
