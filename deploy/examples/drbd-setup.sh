@@ -649,7 +649,7 @@ create_drbd_module() {
     RUN tar -xvzf drbd-${DRBD_VERSION}.tar.gz
 
     WORKDIR /tmp/drbd_build/drbd-${DRBD_VERSION}
-    RUN make KVER=${KERNEL_FULL_VERSION} -j$(nproc)
+    RUN make KVER=${KERNEL_FULL_VERSION} SPAAS=no -j$(nproc)
     RUN mkdir -p /install/lib/modules/${KERNEL_FULL_VERSION}/extra
     RUN cp drbd/build-current/drbd.ko drbd/build-current/drbd_transport_tcp.ko /install/lib/modules/${KERNEL_FULL_VERSION}/extra/
     RUN depmod -b /install ${KERNEL_FULL_VERSION}
