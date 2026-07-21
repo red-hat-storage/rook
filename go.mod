@@ -3,9 +3,6 @@ module github.com/rook/rook
 go 1.26.0
 
 replace (
-	github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.4.1
-	github.com/kubernetes-incubator/external-storage => github.com/libopenstorage/external-storage v0.20.4-openstorage-rc3
-
 	// TODO: remove this replace once https://github.com/libopenstorage/secrets/pull/83 is merged
 	github.com/libopenstorage/secrets => github.com/rook/secrets v0.0.0-20240315053144-3195f6906937
 	github.com/portworx/sched-ops => github.com/portworx/sched-ops v0.20.4-openstorage-rc3
@@ -57,7 +54,7 @@ require (
 	k8s.io/utils v0.0.0-20260507154919-ff6756f316d2
 	sigs.k8s.io/container-object-storage-interface/client v0.2.2
 	sigs.k8s.io/controller-runtime v0.24.1
-	sigs.k8s.io/mcs-api v0.5.0
+	sigs.k8s.io/mcs-api v0.5.2
 	sigs.k8s.io/yaml v1.6.0
 )
 
@@ -187,31 +184,10 @@ require (
 
 exclude (
 	// exclude goproxy versions with security bugs
-	github.com/elazarl/goproxy v0.0.0-20170405201442-c4fc26588b6e
 	github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153
-	github.com/elazarl/goproxy v0.0.0-20181111060418-2ce16c963a8a
 	github.com/kubernetes-incubator/external-storage v0.20.4-openstorage-rc2
 	// Exclude pre-go-mod kubernetes tags, because they are older
 	// than v0.x releases but are picked when updating dependencies.
-	k8s.io/client-go v1.4.0
-	k8s.io/client-go v1.5.0
-	k8s.io/client-go v1.5.1
-	k8s.io/client-go v1.5.2
-	k8s.io/client-go v2.0.0-alpha.1+incompatible
-	k8s.io/client-go v2.0.0+incompatible
-	k8s.io/client-go v3.0.0-beta.0+incompatible
-	k8s.io/client-go v3.0.0+incompatible
-	k8s.io/client-go v4.0.0-beta.0+incompatible
-	k8s.io/client-go v4.0.0+incompatible
-	k8s.io/client-go v5.0.0+incompatible
-	k8s.io/client-go v5.0.1+incompatible
-	k8s.io/client-go v6.0.0+incompatible
-	k8s.io/client-go v7.0.0+incompatible
-	k8s.io/client-go v8.0.0+incompatible
-	k8s.io/client-go v9.0.0-invalid+incompatible
-	k8s.io/client-go v9.0.0+incompatible
-	k8s.io/client-go v10.0.0+incompatible
-	k8s.io/client-go v11.0.0+incompatible
 	k8s.io/client-go v11.0.1-0.20190409021438-1a26190bd76a+incompatible
 	k8s.io/client-go v12.0.0+incompatible
 )
