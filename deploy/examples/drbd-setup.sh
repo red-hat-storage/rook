@@ -49,7 +49,7 @@ _wait_succeeded() {
 # TODO: bump default image tag when a new one is published.
 DRBD_IMAGE="${DRBD_IMAGE:-quay.io/rhceph-dev/odf4-odf-drbd-rhel9:v4.22}" # ODF DRBD image (drbdadm + sources)
 # TODO: bump when tarball inside the image changes.
-DRBD_VERSION="${DRBD_VERSION:-9.2.17}"                                   # Must match DRBD source version in DRBD_IMAGE
+DRBD_VERSION="${DRBD_VERSION:-9.3.3}"                                   # Must match DRBD source version in DRBD_IMAGE
 
 DRBD_CONF_PATH="${DRBD_CONF_PATH:-/etc/drbd.conf}"               # Main file: include of ${DRBD_DIR_PATH}/*.res only
 DRBD_DIR_PATH="${DRBD_DIR_PATH:-/etc/drbd.d}"                    # Per-resource .res files (actual DRBD definition)
@@ -575,7 +575,7 @@ create_drbd_module() {
     RUN tar -xvzf drbd-${DRBD_VERSION}.tar.gz
 
     WORKDIR /tmp/drbd_build/drbd-${DRBD_VERSION}
-    RUN make KVER=${KERNEL_FULL_VERSION} -j$(nproc)
+    RUN make KVER=${KERNEL_FULL_VERSION} SPAAS=no -j$(nproc)
     RUN mkdir -p /install/lib/modules/${KERNEL_FULL_VERSION}/extra
     RUN cp drbd/build-current/drbd.ko drbd/build-current/drbd_transport_tcp.ko /install/lib/modules/${KERNEL_FULL_VERSION}/extra/
     RUN depmod -b /install ${KERNEL_FULL_VERSION}
