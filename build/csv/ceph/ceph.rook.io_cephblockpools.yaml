@@ -141,6 +141,7 @@ spec:
                 - .rgw.root
                 - .nfs
                 - .mgr
+                - .nvmeof
                 type: string
               parameters:
                 additionalProperties:
