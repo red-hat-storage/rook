@@ -54,7 +54,7 @@ spec:
                   cephx:
                     properties:
                       keyGeneration:
-                        format: int32
+                        format: int64
                         maximum: 4294967295
                         minimum: 0
                         type: integer
@@ -66,6 +66,13 @@ spec:
                         - ""
                         - Disabled
                         - KeyGeneration
+                        type: string
+                      keyType:
+                        enum:
+                        - aes
+                        - aes256k
+                        maxLength: 7
+                        minLength: 3
                         type: string
                     type: object
                 type: object
@@ -81,6 +88,10 @@ spec:
                   keyGeneration:
                     format: int32
                     type: integer
+                  keyType:
+                    maxLength: 7
+                    minLength: 3
+                    type: string
                 type: object
               info:
                 additionalProperties:
