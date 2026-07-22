@@ -659,9 +659,6 @@ spec:
                       type: object
                     type: array
                 type: object
-              pool:
-                minLength: 1
-                type: string
               ports:
                 properties:
                   discoveryPort:
@@ -723,7 +720,6 @@ spec:
             required:
             - group
             - instances
-            - pool
             type: object
           status:
             properties:
