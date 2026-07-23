@@ -84,6 +84,8 @@ NODE_1=""
 NODE_0_IP=""
 NODE_1_IP=""
 
+PREVIOUS_DRBD_VERSION="" # prior DRBD_VERSION from drbd-configure ConfigMap
+
 #--- Functions ---#
 
 usage() {
@@ -332,13 +334,14 @@ done | sort -u | head -n 1
 ' 2>/dev/null | tail -n 1
 }
 
-# Validate upgrade ConfigMap and load DRBD lower-layer by-id mapping
-validate_upgrade_configmap_and_load_disk_ids() {
-    msg "Validating ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME} and loading DISK_BY_ID mapping..."
+# Validate and load DRBD configure ConfigMap
+validate_and_load_drbd_configure_cm() {
+    msg "Validating ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME}..."
     if ! oc get configmap "${OUTPUT_CM_NAME}" -n "${ODF_NAMESPACE}" &>/dev/null; then
         die "ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME} not found. Run install mode first: $0 install -d <path>"
     fi
 
+    msg "Loading DRBD configure ConfigMap..."
     DISK_RESOLVED_NODE0=$(oc get configmap "${OUTPUT_CM_NAME}" -n "${ODF_NAMESPACE}" \
         -o jsonpath='{.data.DISK_BY_ID_NODE_0}' | tr -d '\r\n') \
         || die "failed reading DISK_BY_ID_NODE_0 from ConfigMap ${OUTPUT_CM_NAME}. Try after re-running the install: $0 install -d <path>"
@@ -348,11 +351,14 @@ validate_upgrade_configmap_and_load_disk_ids() {
     if [[ -z "$DISK_RESOLVED_NODE0" || -z "$DISK_RESOLVED_NODE1" ]]; then
         die "ConfigMap ${OUTPUT_CM_NAME}: missing DISK_BY_ID_NODE_0 or DISK_BY_ID_NODE_1. Try after re-running the install: $0 install -d <path>"
     fi
+
+    PREVIOUS_DRBD_VERSION=$(oc get configmap "${OUTPUT_CM_NAME}" -n "${ODF_NAMESPACE}" \
+        -o jsonpath='{.data.DRBD_VERSION}' 2>/dev/null | tr -d '\r\n' || true)
 }
 
 print_config() {
     echo ""
-    msg "Configuration"
+    msg "Target configuration"
     local _lw=18
     if [[ "$MODE" == "upgrade" ]]; then
         printf '  %-*s %s\n' "$_lw" "Mode:" "upgrade (KMM kmod refresh; preserve DRBD metadata)"
@@ -360,16 +366,8 @@ print_config() {
         printf '  %-*s %s\n' "$_lw" "Mode:" "install (KMM + DRBD resource + success ConfigMap)"
     fi
     printf '  %-*s %s\n' "$_lw" "Nodes:" "$NODE_0 ($NODE_0_IP), $NODE_1 ($NODE_1_IP)"
-    if [[ "$MODE" == "upgrade" ]]; then
-        printf '  %-*s %s: %s\n' "$_lw" "DRBD disks by id:" "$NODE_0" "$DISK_RESOLVED_NODE0"
-        printf '  %-*s %s: %s\n' "$_lw" "(from ConfigMap)" "$NODE_1" "$DISK_RESOLVED_NODE1"
-    elif [[ -n "$BACKING_PATH" ]]; then
-        printf '  %-*s %s (same path on both nodes)\n' "$_lw" "Backing device:" "$BACKING_PATH"
-    else
-        printf '  %-*s %s\n' "$_lw" "Backing devices:" "per-node paths"
-        printf '  %-*s %s: %s\n' "$_lw" "" "$NODE_0" "$BACKING_PATH_NODE0"
-        printf '  %-*s %s: %s\n' "$_lw" "" "$NODE_1" "$BACKING_PATH_NODE1"
-    fi
+    printf '  %-*s %s: %s\n' "$_lw" "DRBD disks by id:" "$NODE_0" "$DISK_RESOLVED_NODE0"
+    printf '  %-*s %s: %s\n' "$_lw" "" "$NODE_1" "$DISK_RESOLVED_NODE1"
     printf '  %-*s %s\n' "$_lw" "DRBD Config path:" "$DRBD_CONF_PATH"
     printf '  %-*s %s\n' "$_lw" "DRBD Dir path:" "$DRBD_DIR_PATH"
     printf '  %-*s %s\n' "$_lw" "DRBD Resource:" "$DRBD_RESOURCE"
@@ -622,15 +620,13 @@ kmm_image_build_waits() {
     fi
 }
 
-# create the KMM Module CR and dockerfile ConfigMap to build and load DRBD kernel modules on the nodes.
-create_drbd_module() {
-    if oc get module drbd-kmod -n openshift-kmm &>/dev/null; then
-        msg "KMM Module drbd-kmod already exists."
-        return 0
-    fi
+# Lowercase DRBD_VERSION with dots/pluses turned into dashes for a distinct in-registry kmod image tag per release.
+drbd_kmod_image_tag_version_fragment() {
+    printf '%s' "$DRBD_VERSION" | tr '[:upper:]' '[:lower:]' | tr '.+' '--'
+}
 
-    msg "Creating KMM Module drbd-kmod"
-
+# Build the KMM Dockerfile body (DRBD_VERSION / DRBD_IMAGE substituted).
+render_drbd_kmm_dockerfile() {
     local kmm_dockerfile
     kmm_dockerfile=$(cat <<'DOCKERFILE_TEMPLATE'
     ARG DTK_AUTO
@@ -660,6 +656,21 @@ DOCKERFILE_TEMPLATE
 )
     kmm_dockerfile="${kmm_dockerfile//__DRBD_VERSION__/${DRBD_VERSION}}"
     kmm_dockerfile="${kmm_dockerfile//__DRBD_IMAGE__/${DRBD_IMAGE}}"
+    printf '%s\n' "$kmm_dockerfile"
+}
+
+# Create the KMM Module CR and dockerfile ConfigMap to build and load DRBD kernel modules on the nodes.
+create_drbd_module() {
+    if oc get module drbd-kmod -n openshift-kmm &>/dev/null; then
+        msg "KMM Module drbd-kmod already exists."
+        return 0
+    fi
+
+    local kmm_dockerfile drbd_tag_frag
+    kmm_dockerfile=$(render_drbd_kmm_dockerfile)
+    drbd_tag_frag=$(drbd_kmod_image_tag_version_fragment)
+
+    msg "Creating KMM Module drbd-kmod"
 
     oc apply -f - >/dev/null <<EOF
 apiVersion: v1
@@ -672,7 +683,8 @@ data:
 $(printf '%s\n' "$kmm_dockerfile" | awk '{print "    " $0}')
 EOF
 
-    oc apply -f - >/dev/null <<'MODULE_SPEC'
+    # Include DRBD version in the image tag so old images for the same kernel version are not reused from cache during rebuild.
+    oc apply -f - >/dev/null <<EOF
 apiVersion: kmm.sigs.x-k8s.io/v1beta1
 kind: Module
 metadata:
@@ -686,13 +698,20 @@ spec:
         dirName: /opt
       kernelMappings:
         - regexp: '^.*\.x86_64$'
-          containerImage: 'image-registry.openshift-image-registry.svc:5000/openshift-kmm/drbd_compat_kmod:${KERNEL_FULL_VERSION}'
+          containerImage: "image-registry.openshift-image-registry.svc:5000/openshift-kmm/drbd_compat_kmod:\${KERNEL_FULL_VERSION}-drbd-${drbd_tag_frag}"
           build:
             dockerfileConfigMap:
               name: drbd-kmod-dockerfile
   selector: {}
-MODULE_SPEC
+EOF
     msg "KMM Module and ConfigMap applied."
+}
+
+# Remove KMM objects so the next apply triggers a rebuild (upgrade path).
+delete_drbd_kmm_module_resources() {
+    msg "Deleting KMM Module drbd-kmod and Dockerfile ConfigMap"
+    oc delete module drbd-kmod -n openshift-kmm --ignore-not-found >/dev/null
+    oc delete configmap drbd-kmod-dockerfile -n openshift-kmm --ignore-not-found >/dev/null
 }
 
 # check if the DRBD kernel modules are loaded on the node
@@ -734,6 +753,17 @@ wait_for_modules() {
     done
 }
 
+# Validate loaded /sys/module/drbd/version against DRBD_VERSION on both nodes.
+validate_drbd_module_version() {
+    local v0 v1
+    v0=$(oc debug -q "node/$NODE_0" -- chroot /host cat /sys/module/drbd/version 2>/dev/null | tr -d '[:space:]' || true)
+    v1=$(oc debug -q "node/$NODE_1" -- chroot /host cat /sys/module/drbd/version 2>/dev/null | tr -d '[:space:]' || true)
+    if [[ "$v0" != "$DRBD_VERSION" || "$v1" != "$DRBD_VERSION" ]]; then
+        die "loaded DRBD kmod version mismatch after module load: expected ${DRBD_VERSION}, got ${NODE_0}='${v0}' ${NODE_1}='${v1}'."
+    fi
+    msg "Loaded DRBD kmod version matches target version (${DRBD_VERSION}) on both nodes."
+}
+
 # Run drbdadm on a node via podman using the DRBD image; mounts host drbd.conf and drbd.d.
 # pass kubelet's auth file so authenticated registries can be pulled.
 drbdctl() {
@@ -756,16 +786,20 @@ drbdctl() {
 
 # True when the node has a role (Primary/Secondary) for the DRBD resource.
 drbd_node_has_role() {
-    local node="$1" status_out
-    if ! status_out=$(drbdctl "$node" status "${DRBD_RESOURCE}" 2>&1); then
-        return 1
-    fi
-    echo "$status_out" | grep -qiE 'role:[[:space:]]*(Primary|Secondary)'
+    local node="$1" role
+    role=$(drbdctl "$node" role "${DRBD_RESOURCE}" 2>/dev/null || true)
+    [[ "$role" == "Primary" || "$role" == "Secondary" || "$role" == Primary/* || "$role" == Secondary/* ]]
 }
 
 # True when both nodes show a role (Primary/Secondary) for the DRBD resource.
 drbd_resource_up_on_both_nodes() {
-    drbd_node_has_role "$NODE_0" && drbd_node_has_role "$NODE_1"
+    local node
+    for node in "$NODE_0" "$NODE_1"; do
+        if ! drbd_node_has_role "$node"; then
+            return 1
+        fi
+    done
+    return 0
 }
 
 # configure the DRBD resource on both nodes
@@ -805,28 +839,51 @@ resource ${DRBD_RESOURCE} {
 
     local node res_path
     res_path="${DRBD_DIR_PATH}/${DRBD_RESOURCE}.res"
+
+    # Write DRBD config files on both hosts before any drbdadm mutate
     for node in "$NODE_0" "$NODE_1"; do
         msg "Node ${node}: writing DRBD config files to the host..."
         if ! oc debug -q "node/$node" -- chroot /host bash -c "
-mkdir -p \"$(dirname "${DRBD_CONF_PATH}")\" '${DRBD_DIR_PATH}' /var/lib/drbd
-echo '${DRBD_RES_B64}' | base64 -d > '${res_path}'
-echo '${DRBD_MAIN_B64}' | base64 -d > '${DRBD_CONF_PATH}'
-"; then
+            mkdir -p \"$(dirname "${DRBD_CONF_PATH}")\" '${DRBD_DIR_PATH}' /var/lib/drbd
+            echo '${DRBD_RES_B64}' | base64 -d > '${res_path}'
+            echo '${DRBD_MAIN_B64}' | base64 -d > '${DRBD_CONF_PATH}'
+        "; then
             die "failed to write DRBD config on $node"
         fi
+    done
 
+    # Upgrade: metadata already exists
+    for node in "$NODE_0" "$NODE_1"; do
         if drbd_node_has_role "$node"; then
-            msg "Node ${node}: resource already has a role on this host; running drbdadm adjust..."
-            if ! drbdctl "$node" adjust "${DRBD_RESOURCE}"; then
-                die "drbdadm adjust failed on $node"
+            continue
+        fi
+        if [[ "$MODE" == "upgrade" ]]; then
+            msg "Node ${node}: drbdadm up"
+            if ! drbdctl "$node" up "${DRBD_RESOURCE}"; then
+                die "drbdadm up failed on $node"
             fi
         else
-            msg "Node ${node}: creating DRBD metadata then drbdadm up..."
+            msg "Node ${node}: drbdadm create-md"
             if ! drbdctl "$node" create-md "${DRBD_RESOURCE}" --force; then
                 die "drbdadm create-md failed on $node"
             fi
+            msg "Node ${node}: drbdadm up"
             if ! drbdctl "$node" up "${DRBD_RESOURCE}"; then
-                die "drbdadm up failed on $node"
+                msg "Node ${node}: drbdadm up failed; retrying after drbdadm down..."
+                drbdctl "$node" down "${DRBD_RESOURCE}" 2>/dev/null || true
+                if ! drbdctl "$node" up "${DRBD_RESOURCE}"; then
+                    die "drbdadm up failed on $node"
+                fi
+            fi
+        fi
+    done
+
+    # Running adjust on both nodes reapplies .res to the running resource
+    for node in "$NODE_0" "$NODE_1"; do
+        if drbd_node_has_role "$node"; then
+            msg "Node ${node}: drbdadm adjust"
+            if ! drbdctl "$node" adjust "${DRBD_RESOURCE}"; then
+                die "drbdadm adjust failed on $node"
             fi
         fi
     done
@@ -1069,6 +1126,97 @@ EOF
     done
 }
 
+# Label on the floating mon Deployment so the Rook operator does not reconcile it while scaled down for DRBD upgrade.
+FLOATING_MON_NO_RECONCILE_LABEL_KEY="${FLOATING_MON_NO_RECONCILE_LABEL_KEY:-ceph.rook.io/do-not-reconcile}"
+FLOATING_MON_NO_RECONCILE_LABEL_VALUE="${FLOATING_MON_NO_RECONCILE_LABEL_VALUE:-true}"
+
+# Return deployment name rook-ceph-mon-<floatingMon> or empty if not applicable.
+floating_mon_deployment_name() {
+    local name
+    name=$(oc get cephcluster -n "${ODF_NAMESPACE}" -o jsonpath='{.items[0].spec.mon.floatingMon.name}' 2>/dev/null || true)
+    if [[ -z "$name" ]]; then
+        echo ""
+        return 1
+    fi
+    echo "rook-ceph-mon-${name}"
+}
+
+# Scale the floating mon deployment to the given number of replicas.
+# Before scale to 0: set ceph.rook.io/do-not-reconcile=true on the Deployment so Rook does not fight the scale.
+# Before scale up (replicas > 0): remove that label, then scale.
+scale_floating_mon_deployment() {
+    local replicas="$1" dep ready_replicas
+    dep=$(floating_mon_deployment_name || true)
+    if [[ -z "$dep" ]]; then
+        msg "No CephCluster floating mon in ${ODF_NAMESPACE}; skipping mon deployment scale."
+        return 0
+    fi
+    if ! oc get deployment "$dep" -n "${ODF_NAMESPACE}" &>/dev/null; then
+        msg "Deployment ${ODF_NAMESPACE}/${dep} not found; skipping mon scale."
+        return 0
+    fi
+    if [[ "${replicas}" -eq 0 ]]; then
+        msg "Labeling deployment ${ODF_NAMESPACE}/${dep} ${FLOATING_MON_NO_RECONCILE_LABEL_KEY}=${FLOATING_MON_NO_RECONCILE_LABEL_VALUE} (do not reconcile)..."
+        oc label deployment "$dep" -n "${ODF_NAMESPACE}" \
+            "${FLOATING_MON_NO_RECONCILE_LABEL_KEY}=${FLOATING_MON_NO_RECONCILE_LABEL_VALUE}" --overwrite
+    else
+        msg "Removing label ${FLOATING_MON_NO_RECONCILE_LABEL_KEY} from deployment ${ODF_NAMESPACE}/${dep}..."
+        oc label deployment "$dep" -n "${ODF_NAMESPACE}" "${FLOATING_MON_NO_RECONCILE_LABEL_KEY}-" 2>/dev/null || true
+    fi
+    msg "Scaling deployment ${ODF_NAMESPACE}/${dep} to ${replicas} replicas..."
+    oc scale deployment "$dep" -n "${ODF_NAMESPACE}" --replicas="${replicas}"
+
+    _wait_begin
+    if [[ "${replicas}" -eq 0 ]]; then
+        local i
+        for i in $(seq 1 24); do
+            ready_replicas=$(oc get deployment "$dep" -n "${ODF_NAMESPACE}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
+            if [[ -z "${ready_replicas}" || "${ready_replicas}" == "0" ]]; then
+                _wait_succeeded "Deployment ${dep} reached 0 replicas"
+                return 0
+            fi
+            if [[ "$i" -eq 24 ]]; then
+                die "timeout waiting for deployment ${ODF_NAMESPACE}/${dep} to reach 0 replicas"
+            fi
+            sleep 5
+        done
+    else
+        if ! oc wait deployment/"$dep" -n "${ODF_NAMESPACE}" \
+            --for=jsonpath="{.status.readyReplicas}=${replicas}" --timeout=120s; then
+            die "timeout waiting for deployment ${ODF_NAMESPACE}/${dep} to reach ${replicas} ready replicas"
+        fi
+        _wait_succeeded "Deployment ${dep} reached ${replicas} ready replicas"
+    fi
+}
+
+# Delete the DRBD auto-start DaemonSet.
+delete_drbd_autostart_daemonset() {
+    if ! oc get daemonset "${AUTOSTART_DAEMONSET_NAME}" -n "${AUTOSTART_DAEMONSET_NS}" &>/dev/null; then
+        return 0
+    fi
+    msg "Deleting DaemonSet ${AUTOSTART_DAEMONSET_NS}/${AUTOSTART_DAEMONSET_NAME}..."
+    oc delete daemonset "${AUTOSTART_DAEMONSET_NAME}" -n "${AUTOSTART_DAEMONSET_NS}" --ignore-not-found >/dev/null
+}
+
+# Demote and down the DRBD resource on both nodes.
+drbd_demote_and_down_all() {
+    local node role
+    msg "Stopping DRBD resource on both nodes"
+    for node in "$NODE_0" "$NODE_1"; do
+        role=$(drbdctl "$node" role "${DRBD_RESOURCE}" 2>/dev/null | cut -d/ -f1 | tr -d '[:space:]' || true)
+        if [[ "$role" == "Primary" ]]; then
+            msg "Node ${node}: demoting Primary before drbdadm down..."
+            if ! drbdctl "$node" secondary "${DRBD_RESOURCE}"; then
+                die "drbdadm secondary failed on ${node}"
+            fi
+        fi
+        msg "Node ${node}: drbdadm down ${DRBD_RESOURCE}..."
+        if ! drbdctl "$node" down "${DRBD_RESOURCE}"; then
+            die "drbdadm down failed on ${node}"
+        fi
+    done
+}
+
 # create the success ConfigMap to save the setup summary for further consumption.
 create_success_configmap() {
     msg "Saving setup summary to ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME}"
@@ -1117,9 +1265,9 @@ EOF
 print_success() {
     echo ""
     if [[ "$MODE" == "upgrade" ]]; then
-        echo "  --> DRBD upgrade completed successfully <--"
+        echo "  --> DRBD version upgraded from ${PREVIOUS_DRBD_VERSION} to ${DRBD_VERSION} successfully <--"
     else
-        echo "  --> DRBD install completed successfully <--"
+        echo "  --> DRBD version ${DRBD_VERSION} installed successfully <--"
     fi
     echo ""
     echo "Check DRBD status on ${NODE_0} (repeat with ${NODE_1}):"
@@ -1138,6 +1286,7 @@ run_install() {
     kmm_image_build_waits # wait for the ServiceAccount builder and the builder dockercfg Secret to be populated
     create_drbd_module # create the KMM Module CR and dockerfile ConfigMap to build and load DRBD kernel modules on the nodes
     wait_for_modules # wait for the DRBD kernel modules to load on both nodes
+    validate_drbd_module_version # compare /sys/module/drbd/version to DRBD_VERSION
     configure_drbd # configure the DRBD resource on both nodes
     sync_drbd # sync the DRBD resource on both nodes
     create_filesystem_over_drbd # create the filesystem over the DRBD device
@@ -1148,13 +1297,26 @@ run_install() {
 }
 
 run_upgrade() {
-    validate_upgrade_configmap_and_load_disk_ids # validate output ConfigMap presence and load DRBD disk by-id mapping
+    validate_and_load_drbd_configure_cm # validate output ConfigMap presence
     print_config # print the configuration
     setup_kmm_operator # setup the KMM operator
     setup_image_registry_operator # setup the image registry operator
     kmm_image_build_waits # wait for the ServiceAccount builder and the builder dockercfg Secret to be populated
-    msg "Upgrade execution is not implemented yet (follow-up PRs)."
-    exit 0
+    delete_drbd_autostart_daemonset # delete the DRBD auto-start DaemonSet
+    scale_floating_mon_deployment 0 # scale the floating mon deployment down to 0 replicas
+    drbd_demote_and_down_all # demote and down the DRBD resource on both nodes
+    delete_drbd_kmm_module_resources # delete the KMM Module and Dockerfile ConfigMap
+    create_drbd_module # create the KMM Module CR and dockerfile ConfigMap to build and load DRBD kernel modules on the nodes
+    wait_for_modules # wait for the DRBD kernel modules to load on both nodes
+    validate_drbd_module_version # compare /sys/module/drbd/version to DRBD_VERSION
+    configure_drbd # configure the DRBD resource on both nodes
+    sync_drbd # sync the DRBD resource on both nodes
+    create_filesystem_over_drbd # create the filesystem over the DRBD device
+    make_both_node_secondary # make both nodes secondary
+    scale_floating_mon_deployment 1 # restore the floating mon deployment
+    setup_drbd_autostart # setup the DRBD auto-start DaemonSet to keep the DRBD resource up on both nodes
+    create_success_configmap # create the success ConfigMap to save the setup summary for further consumption
+    print_success # print the success message
 }
 
 main() {
