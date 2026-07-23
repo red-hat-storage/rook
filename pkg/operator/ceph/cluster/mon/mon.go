@@ -306,7 +306,7 @@ func (c *Cluster) startMons(targetCount int) error {
 	logger.Debugf("mon endpoints used are: %s", flattenMonEndpoints(c.ClusterInfo.Monitors))
 
 	// reconcile mon PDB
-	if err := c.reconcileMonPDB(); err != nil {
+	if _, err := c.reconcileMonPDB(); err != nil {
 		return errors.Wrap(err, "failed to reconcile mon PDB")
 	}
 
