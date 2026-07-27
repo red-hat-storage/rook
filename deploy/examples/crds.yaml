@@ -1401,6 +1401,9 @@ spec:
                           minLength: 3
                           type: string
                       type: object
+                      x-kubernetes-validations:
+                        - message: keyGeneration cannot be removed once set
+                          rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                   type: object
               required:
                 - caps
@@ -3838,6 +3841,9 @@ spec:
                               minLength: 3
                               type: string
                           type: object
+                          x-kubernetes-validations:
+                            - message: keyGeneration cannot be removed once set
+                              rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                         daemon:
                           description: |-
                             Daemon configures CephX key settings for local Ceph daemons managed by Rook and part of the
@@ -3882,6 +3888,9 @@ spec:
                               minLength: 3
                               type: string
                           type: object
+                          x-kubernetes-validations:
+                            - message: keyGeneration cannot be removed once set
+                              rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                         rbdMirrorPeer:
                           description: |-
                             RBDMirrorPeer configures CephX key settings of the `rbd-mirror-peer` user that is used for creating
@@ -3928,6 +3937,9 @@ spec:
                               minLength: 3
                               type: string
                           type: object
+                          x-kubernetes-validations:
+                            - message: keyGeneration cannot be removed once set
+                              rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                       type: object
                     keyRotation:
                       description: KeyRotation defines options for rotation of OSD disk encryption keys.
