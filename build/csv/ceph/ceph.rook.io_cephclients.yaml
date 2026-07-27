@@ -73,6 +73,9 @@ spec:
                         minLength: 3
                         type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: keyGeneration cannot be removed once set
+                      rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                 type: object
             required:
             - caps
