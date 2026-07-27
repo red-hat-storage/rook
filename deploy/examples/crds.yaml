@@ -861,6 +861,9 @@ spec:
                           minLength: 3
                           type: string
                       type: object
+                      x-kubernetes-validations:
+                        - message: keyGeneration cannot be removed once set
+                          rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                   type: object
               required:
                 - caps
@@ -3018,6 +3021,9 @@ spec:
                               minLength: 3
                               type: string
                           type: object
+                          x-kubernetes-validations:
+                            - message: keyGeneration cannot be removed once set
+                              rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                         daemon:
                           description: Daemon configures CephX key settings for local Ceph daemons managed by Rook and part of the Ceph cluster. Daemon CephX keys can be rotated without affecting client connections.
                           properties:
@@ -3046,6 +3052,9 @@ spec:
                               minLength: 3
                               type: string
                           type: object
+                          x-kubernetes-validations:
+                            - message: keyGeneration cannot be removed once set
+                              rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                         rbdMirrorPeer:
                           description: RBDMirrorPeer configures CephX key settings of the `rbd-mirror-peer` user that is used for creating bootstrap peer token used connect peer clusters. Rotating the `rbd-mirror-peer` user key will update the mirror peer token. Rotation will affect any existing peers connected to this cluster, so take care when exercising this option.
                           properties:
@@ -3074,6 +3083,9 @@ spec:
                               minLength: 3
                               type: string
                           type: object
+                          x-kubernetes-validations:
+                            - message: keyGeneration cannot be removed once set
+                              rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                       type: object
                     keyRotation:
                       description: KeyRotation defines options for rotation of OSD disk encryption keys.
