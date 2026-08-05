@@ -63,16 +63,23 @@ func SetAllowCephxKeyRotationForCluster(namespace string, allow bool) {
 	cephxKeyRotationAllowedForCluster[namespace] = allow
 }
 
-// GetAllowCephxKeyRotationForCluster returns the value set by SetAllowCephxKeyRotationForCluster,
-// or false if there is no record of whether key rotation is supported for the cluster.
-func GetAllowCephxKeyRotationForCluster(namespace string) bool {
+func unsetAllowCephxKeyRotationForCluster(namespace string) {
+	cephxKeyRotationAllowedMutex.Lock()
+	defer cephxKeyRotationAllowedMutex.Unlock()
+	delete(cephxKeyRotationAllowedForCluster, namespace)
+}
+
+// GetAllowCephxKeyRotationForCluster returns the value set by SetAllowCephxKeyRotationForCluster
+// as `rotationAllowed`. Also returns whether rotation-allowance is defined via `isDefined`,
+// equivalent to the `ok` term for Go maps.
+func GetAllowCephxKeyRotationForCluster(namespace string) (rotationAllowed bool, isDefined bool) {
 	cephxKeyRotationAllowedMutex.Lock()
 	defer cephxKeyRotationAllowedMutex.Unlock()
 	allowed, ok := cephxKeyRotationAllowedForCluster[namespace]
 	if !ok {
-		return false // default don't allow when rotation allowance undefined
+		return false, false
 	}
-	return allowed
+	return allowed, true
 }
 
 // ShouldRotateCephxKeys determines whether CephX keys should be rotated based on the CephX key
@@ -86,10 +93,19 @@ func ShouldRotateCephxKeys(cfg v1.CephxConfig, runningCephVersion, desiredCephVe
 	// note: the default return at the end of the function is false. only return false during
 	// ShouldRotate checking if further true returns should be invalidated
 
-	if !GetAllowCephxKeyRotationForCluster(clusterNamespace) {
+	allowRotation, ok := GetAllowCephxKeyRotationForCluster(clusterNamespace)
+	if ok && !allowRotation {
 		logger.Debugf("cephx key rotation is temporarily disabled for cluster in namespace %q", clusterNamespace)
 		return false, nil
 	}
+	// When allowRotationUndefined==true, return the below error any time this func would return true.
+	// Ensures that any reconciles relying on this will error and keep retrying until the
+	// CephCluster reconcile establishes a definitive allow/disallow decision. Otherwise, child
+	// reconciles (e.g. CephFilesystem) might not rotate cephx keys when they should in corner cases
+	// and could accidentally wait 10 hours until next controller-runtime resync event. It also
+	// ensures we don't return an error here unnecessarily, blocking callers without reason.
+	allowRotationUndefined := !ok
+	rotationUndefinedErr := fmt.Errorf("cephx key rotation is indicated but must wait for CephCluster in namespace %q to process", clusterNamespace)
 
 	if !(runningCephVersion.IsAtLeast(CephAuthRotateSupportedVersion) || cephclient.Aes256kKeysSupported(runningCephVersion)) {
 		logger.Debugf("should not rotate cephx keys using unsupported ceph version %#v", runningCephVersion)
@@ -116,6 +132,9 @@ func ShouldRotateCephxKeys(cfg v1.CephxConfig, runningCephVersion, desiredCephVe
 		return false, nil // if policy is disabled (default), do not rotate no matter what
 	case v1.KeyGenerationCephxKeyRotationPolicy:
 		if cfg.KeyGeneration > status.KeyGeneration {
+			if allowRotationUndefined {
+				return false, rotationUndefinedErr
+			}
 			return true, nil
 		}
 	case "WithCephVersionUpdate": // TODO: use types.go value when allowed by user input
@@ -126,6 +145,9 @@ func ShouldRotateCephxKeys(cfg v1.CephxConfig, runningCephVersion, desiredCephVe
 			return false, err
 		}
 		if shouldRotate {
+			if allowRotationUndefined {
+				return false, rotationUndefinedErr
+			}
 			return true, nil
 		}
 	default:
@@ -134,6 +156,9 @@ func ShouldRotateCephxKeys(cfg v1.CephxConfig, runningCephVersion, desiredCephVe
 
 	// does key type (if set) indicate rotation?
 	if !ignoreKeyType && cfg.KeyType != "" && cfg.KeyType != status.KeyType {
+		if allowRotationUndefined {
+			return false, rotationUndefinedErr
+		}
 		return true, nil
 	}
 
