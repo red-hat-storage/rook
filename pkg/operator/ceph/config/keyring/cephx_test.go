@@ -152,7 +152,7 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				ignoreKeyType := false // for these tests, don't ignore key type
-				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 2}, tt.imageCephVersion, tt.status, ignoreKeyType, clusterNs)
+				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 6}, tt.imageCephVersion, tt.status, ignoreKeyType, clusterNs)
 				assert.NoError(t, err)
 				assert.False(t, got)
 			})
@@ -160,11 +160,19 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 	})
 
 	t.Run("rotation allowed globally is unspecified", func(t *testing.T) {
+		unsetAllowCephxKeyRotationForCluster(clusterNs)
+		defer SetAllowCephxKeyRotationForCluster(clusterNs, true) // reset after test
+
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				ignoreKeyType := false // for these tests, don't ignore key type
-				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 2}, tt.imageCephVersion, tt.status, ignoreKeyType, "undefined-ns")
-				assert.NoError(t, err)
+				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 6}, tt.imageCephVersion, tt.status, ignoreKeyType, "undefined-ns")
+				if tt.want == true && tt.wantErr == false {
+					assert.ErrorContains(t, err, "cephx key rotation is indicated but must wait for CephCluster in namespace")
+				} else if tt.wantErr {
+					assert.Error(t, err)
+					assert.NotContains(t, err.Error(), "cephx key rotation is indicated but must wait for CephCluster in namespace")
+				}
 				assert.False(t, got)
 			})
 		}
@@ -174,7 +182,7 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 		for _, tt := range keyTypeTests {
 			t.Run(tt.name, func(t *testing.T) {
 				ignoreKeyType := true // test that ignoring key type for keyType tests
-				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 2}, tt.imageCephVersion, tt.status, ignoreKeyType, clusterNs)
+				got, err := ShouldRotateCephxKeys(tt.cfg, version.CephVersion{Major: 19, Minor: 2, Extra: 6}, tt.imageCephVersion, tt.status, ignoreKeyType, clusterNs)
 				assert.NoError(t, err)
 				assert.False(t, got) // should not rotate when ignoring keyType
 			})
