@@ -940,12 +940,22 @@ func (c *cluster) deleteBootstrapKeys() {
 // non-AES256K-supporting version to-AES256K-supporting version.
 // More workaround notes on SetAllowCephxKeyRotationForCluster().
 func (c *cluster) setIsSafeToRotateCephxKeys(imageCephVersion cephver.CephVersion) error {
-	allowedAtStart := keyring.GetAllowCephxKeyRotationForCluster(c.Namespace)
+	allowedAtStart, definedAtStart := keyring.GetAllowCephxKeyRotationForCluster(c.Namespace)
 
 	if !c.isUpgrade {
 		// workaround is only needed when upgrading
 		logger.Infof("for cluster in namespace %q, enabling cephx key rotation because the cluster is not upgrading", c.Namespace)
 		keyring.SetAllowCephxKeyRotationForCluster(c.Namespace, true)
+
+		if definedAtStart && !allowedAtStart {
+			// Rotation allowed is not being newly established here. We should restart to ensure
+			// child reconciles restart. This case shouldn't be encountered but might if the
+			// CephCluster reconcile restarts after OSD upgrade but before setting setting is-safe.
+			logger.Infof("non-upgrade: restarting rook operator after cephx key rotation is re-enabled for cluster in namespace %q", c.Namespace)
+			reloadManagerFunc()
+			return errors.Wrapf(errOsdUpgradeCephxRotationWorkaroundRestart, "non-upgrade") // context cancel will error anyway, so return err now
+		}
+
 		return nil
 	}
 
@@ -982,15 +992,20 @@ func (c *cluster) setIsSafeToRotateCephxKeys(imageCephVersion cephver.CephVersio
 		keyring.SetAllowCephxKeyRotationForCluster(c.Namespace, true)
 	}
 
-	allowedAtEnd := keyring.GetAllowCephxKeyRotationForCluster(c.Namespace)
+	if !definedAtStart {
+		// We newly established that rotation is allowed/disallowed. No need to restart.
+		return nil
+	}
+
+	allowedAtEnd, _ := keyring.GetAllowCephxKeyRotationForCluster(c.Namespace)
 
 	if !allowedAtStart && allowedAtEnd {
 		// Key rotation was previously disabled because the least-versioned OSD did not support it.
 		// Now that the least-versioned OSD supports it, reload the manager to force all reconcilers
 		// to reassess whether keys should/can be rotated.
-		logger.Infof("restarting rook operator after cephx key rotation is re-enabled for cluster in namespace %q", c.Namespace)
+		logger.Infof("upgrade: restarting rook operator after cephx key rotation is re-enabled for cluster in namespace %q", c.Namespace)
 		reloadManagerFunc()
-		return errOsdUpgradeCephxRotationWorkaroundRestart // context cancel will error anyway, so return err now
+		return errors.Wrapf(errOsdUpgradeCephxRotationWorkaroundRestart, "upgrade") // context cancel will error anyway, so return err now
 	}
 
 	return nil
