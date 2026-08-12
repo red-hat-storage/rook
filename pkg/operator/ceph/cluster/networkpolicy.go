@@ -87,6 +87,7 @@ func createOrUpdateNetworkPolicy(ctx gocontext.Context, context *clusterd.Contex
 			return errors.Wrapf(getErr, "failed to get existing network policy %q before update", np.Name)
 		}
 		np.ResourceVersion = existing.ResourceVersion
+		np.UID = existing.UID
 		_, err = context.Clientset.NetworkingV1().NetworkPolicies(np.Namespace).Update(ctx, np, metav1.UpdateOptions{})
 		if err != nil {
 			return errors.Wrapf(err, "failed to update network policy %q", np.Name)
@@ -152,7 +153,7 @@ func parseNetworkPolicies(data []byte) ([]networkingv1.NetworkPolicy, error) {
 	for {
 		var np networkingv1.NetworkPolicy
 		if err := decoder.Decode(&np); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, errors.Wrap(err, "failed to decode network policy from embedded YAML")
