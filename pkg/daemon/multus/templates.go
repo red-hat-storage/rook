@@ -116,15 +116,6 @@ func (vt *ValidationTest) generateWebServerTemplateConfig(placement PlacementCon
 	}
 }
 
-// addressForCurlHostPort wraps IPv6 literals in [] to support :<port> addition
-func addressForCurlHostPort(addr string) string {
-	// it's an IPv6 address and needs square brackets around it to support :<port> addition
-	if strings.Contains(addr, ":") {
-		return "[" + addr + "]"
-	}
-	return addr
-}
-
 func (vt *ValidationTest) generateHostCheckerTemplateConfig(
 	serverPublicAddr string,
 	nodeType string,
@@ -132,7 +123,7 @@ func (vt *ValidationTest) generateHostCheckerTemplateConfig(
 ) hostCheckerTemplateConfig {
 	return hostCheckerTemplateConfig{
 		NodeType:             nodeType,
-		PublicNetworkAddress: addressForCurlHostPort(serverPublicAddr),
+		PublicNetworkAddress: serverPublicAddr,
 		NginxImage:           vt.NginxImage,
 		Placement:            placement,
 	}
@@ -153,7 +144,10 @@ func (vt *ValidationTest) generateClientTemplateConfig(
 		netNamesAndAddresses["cluster"] = serverClusterAddr
 	}
 	for name, addr := range netNamesAndAddresses {
-		netNamesAndAddresses[name] = addressForCurlHostPort(addr)
+		if strings.Contains(addr, ":") {
+			// it's an IPv6 address and needs square brackets around it to support :<port> addition
+			netNamesAndAddresses[name] = "[" + addr + "]"
+		}
 	}
 	return clientTemplateConfig{
 		NodeType:                 nodeType,
