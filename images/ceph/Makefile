@@ -23,7 +23,7 @@ REGISTRY_NAME = quay.io
 # BASEIMAGE = $(REGISTRY_NAME)/ceph/ceph:$(CEPH_VERSION)
 BASEIMAGE = quay.io/brgardne/ceph:wip-pdonnell-testing-20260718.230903-centos-stream9
 CEPH_IMAGE = $(BUILD_REGISTRY)/ceph-$(GOARCH)
-OPERATOR_SDK_VERSION = v1.25.0
+OPERATOR_SDK_VERSION = v1.42.3
 GOHOST := GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) go
 MANIFESTS_DIR=../../deploy/examples
 
