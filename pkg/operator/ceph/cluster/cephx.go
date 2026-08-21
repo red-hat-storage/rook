@@ -143,6 +143,7 @@ func setDefaultCephxKeyType(clusterdCtx *clusterd.Context, clusterInfo *cephclie
 		return errors.Wrapf(err, "failed to set preferred cephx key type (auth_preferred_cipher) to %q", keyType)
 	}
 
+<<<<<<< HEAD
 	// TODO(key): DOWNSTREAM ONLY! (not actually TODO but helps ensure we don't merge upstream)
 	// Temporarily mute health errors associated with obsolete key types during reconciliations
 	// where Rook should be working to upgrade the key type. Because 'auth_service_cipher' is set
@@ -184,6 +185,8 @@ func setDefaultCephxKeyType(clusterdCtx *clusterd.Context, clusterInfo *cephclie
 		}
 	}
 
+=======
+>>>>>>> upstream
 	return nil
 }
 
@@ -212,6 +215,7 @@ func setRotatingServiceKeyType(clusterdCtx *clusterd.Context, clusterInfo *cephc
 
 	// This would be a good location for `ceph auth wipe-rotating-service-keys`, but don't do so.
 	// Older clients don't know how to reconnect after their service key is wiped and hang. Instead,
+<<<<<<< HEAD
 	// users will need to wait 2-3 hours for daemons to naturally switch to AES256K keys. Health
 	// warning AUTH_INSECURE_ROTATING_SERVICE_KEY_TYPE will persist for the 2-3 hour period.
 
@@ -225,6 +229,9 @@ func setRotatingServiceKeyType(clusterdCtx *clusterd.Context, clusterInfo *cephc
 			return errors.Wrapf(err, "failed to unmute health err %q", e)
 		}
 	}
+=======
+	// users will need to wait 2-3 hours for daemons to naturally switch to AES256K keys.
+>>>>>>> upstream
 
 	return nil
 }

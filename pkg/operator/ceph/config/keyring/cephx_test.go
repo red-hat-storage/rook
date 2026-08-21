@@ -31,7 +31,11 @@ import (
 func TestShouldRotateCephxKeys(t *testing.T) {
 	// commit IDs will ensure they are being ignored as part of comparison to keyCephVersion status
 	v20_2_0 := version.CephVersion{Major: 20, Minor: 2, Extra: 0, CommitID: "ababababababa"}
+<<<<<<< HEAD
 	v20_2_3 := version.CephVersion{Major: 20, Minor: 2, Extra: 3, CommitID: "ababababababa"}
+=======
+	v20_2_4 := version.CephVersion{Major: 20, Minor: 2, Extra: 4, CommitID: "ababababababa"}
+>>>>>>> upstream
 	SupportsKeyTypeVer := version.CephVersion{Major: 21}
 
 	clusterNs := "rook-system"
@@ -48,6 +52,7 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 
 	tests := []test{
 		{"policy unset", v1.CephxConfig{KeyRotationPolicy: "", KeyGeneration: 5}, version.CephVersion{}, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "20.2.0-0"}, false, false},
+<<<<<<< HEAD
 		{"policy disabled", v1.CephxConfig{KeyRotationPolicy: "Disabled", KeyGeneration: 5}, v20_2_3, v1.CephxStatus{KeyGeneration: 6, KeyCephVersion: "20.2.0-0"}, false, false},
 		{"policy disabled, keyType set", v1.CephxConfig{KeyRotationPolicy: "Disabled", KeyGeneration: 5, KeyType: "aes256k"}, v20_2_3, v1.CephxStatus{KeyGeneration: 6, KeyCephVersion: "20.2.0-0"}, false, false},
 		//
@@ -65,11 +70,31 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 		{"policy generation, 0=0, keyType set", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_3, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "20.2.0-0"}, true, false},
 		{"policy generation, 1>0, keyType set, uninit", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_3, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "Uninitialized"}, false, false},
 		{"policy generation, 2>0, keyType set, uninit", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_3, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "Uninitialized"}, false, false},
+=======
+		{"policy disabled", v1.CephxConfig{KeyRotationPolicy: "Disabled", KeyGeneration: 5}, v20_2_4, v1.CephxStatus{KeyGeneration: 6, KeyCephVersion: "20.2.0-0"}, false, false},
+		{"policy disabled, keyType set", v1.CephxConfig{KeyRotationPolicy: "Disabled", KeyGeneration: 5, KeyType: "aes256k"}, v20_2_4, v1.CephxStatus{KeyGeneration: 6, KeyCephVersion: "20.2.0-0"}, false, false},
+		//
+		{"policy generation, 3<4", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 3}, version.CephVersion{}, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.0-0"}, false, false},
+		{"policy generation, 5>4", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 5}, v20_2_0, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.4-0"}, true, false},
+		{"policy generation, 4=4", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 4}, v20_2_4, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.0-0"}, false, false},
+		{"policy generation, 5>0", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 5}, v20_2_0, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "20.2.4-0"}, true, false},
+		{"policy generation, 0=0", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 0}, v20_2_4, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "20.2.0-0"}, false, false},
+		{"policy generation, 1>0, uninit", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 0}, v20_2_4, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "Uninitialized"}, false, false},
+		{"policy generation, 2>0, uninit", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 0}, v20_2_4, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "Uninitialized"}, false, false},
+		{"policy generation, 3<4, keyType set", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 3, KeyType: "aes256k"}, version.CephVersion{}, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.0-0"}, true, false},
+		{"policy generation, 5>4, keyType set", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 5, KeyType: "aes256k"}, v20_2_0, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.4-0"}, true, false},
+		{"policy generation, 4=4, keyType set", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 4, KeyType: "aes256k"}, v20_2_4, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.0-0"}, true, false},
+		{"policy generation, 5>0, keyType set", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 5, KeyType: "aes256k"}, v20_2_0, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "20.2.4-0"}, true, false},
+		{"policy generation, 0=0, keyType set", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_4, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "20.2.0-0"}, true, false},
+		{"policy generation, 1>0, keyType set, uninit", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_4, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "Uninitialized"}, false, false},
+		{"policy generation, 2>0, keyType set, uninit", v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_4, v1.CephxStatus{KeyGeneration: 0, KeyCephVersion: "Uninitialized"}, false, false},
+>>>>>>> upstream
 		//
 		// in unlikely event ceph version in image is unknown, do nothing, even if existing key version is unknown
 		{"policy ceph update, unk vs unk", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, version.CephVersion{}, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: ""}, false, false},
 		{"policy ceph update, unk vs uninit", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, version.CephVersion{}, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "Uninitialized"}, false, false},
 		{"policy ceph update, 20.2.0 vs unk", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, v20_2_0, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: ""}, true, false},
+<<<<<<< HEAD
 		{"policy ceph update, 20.2.3 vs unk", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, v20_2_3, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: ""}, true, false},
 		{"policy ceph update, 20.2.0 vs uninit", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, v20_2_0, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "Uninitialized"}, false, false},
 		{"policy ceph update, unk vs 20.20.0", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, version.CephVersion{}, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.0-0"}, false, false},
@@ -87,6 +112,25 @@ func TestShouldRotateCephxKeys(t *testing.T) {
 		{"policy ceph update, 20.2.3 vs 20.2.3, keyType set", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_3, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.3-0"}, true, false},
 		//
 		{"invalid policy", v1.CephxConfig{KeyRotationPolicy: "InVaLiD", KeyGeneration: 0}, v20_2_3, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.0-0"}, false, true},
+=======
+		{"policy ceph update, 20.2.4 vs unk", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, v20_2_4, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: ""}, true, false},
+		{"policy ceph update, 20.2.0 vs uninit", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, v20_2_0, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "Uninitialized"}, false, false},
+		{"policy ceph update, unk vs 20.20.0", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, version.CephVersion{}, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.0-0"}, false, false},
+		{"policy ceph update, 20.2.4 vs 20.2.0", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, v20_2_4, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.0-0"}, true, false},
+		{"policy ceph update, 20.2.0 vs 20.2.4", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, v20_2_0, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.4-0"}, false, false},
+		{"policy ceph update, 20.2.4 vs 20.2.4", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0}, v20_2_4, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.4-0"}, false, false},
+		{"policy ceph update, unk vs unk, keyType set", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0, KeyType: "aes256k"}, version.CephVersion{}, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: ""}, true, false},
+		{"policy ceph update, unk vs uninit, keyType set", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0, KeyType: "aes256k"}, version.CephVersion{}, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "Uninitialized"}, false, false},
+		{"policy ceph update, 20.2.0 vs unk, keyType set", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_0, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: ""}, true, false},
+		{"policy ceph update, 20.2.4 vs unk, keyType set", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_4, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: ""}, true, false},
+		{"policy ceph update, 20.2.0 vs uninit, keyType set", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_0, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "Uninitialized"}, false, false},
+		{"policy ceph update, unk vs 20.20.0, keyType set", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0, KeyType: "aes256k"}, version.CephVersion{}, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.0-0"}, true, false},
+		{"policy ceph update, 20.2.4 vs 20.2.0, keyType set", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_4, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.0-0"}, true, false},
+		{"policy ceph update, 20.2.0 vs 20.2.4, keyType set", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_0, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.4-0"}, true, false},
+		{"policy ceph update, 20.2.4 vs 20.2.4, keyType set", v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate", KeyGeneration: 0, KeyType: "aes256k"}, v20_2_4, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.4-0"}, true, false},
+		//
+		{"invalid policy", v1.CephxConfig{KeyRotationPolicy: "InVaLiD", KeyGeneration: 0}, v20_2_4, v1.CephxStatus{KeyGeneration: 4, KeyCephVersion: "20.2.0-0"}, false, true},
+>>>>>>> upstream
 	}
 
 	keyTypeTests := []test{
@@ -213,7 +257,11 @@ func Test_parseCephVersionFromStatusVersion(t *testing.T) {
 		wantErr bool
 	}{
 		{"20.2.1-5", version.CephVersion{Major: 20, Minor: 2, Extra: 1, Build: 5}, false},
+<<<<<<< HEAD
 		{"v20.2.3-5", version.CephVersion{}, true},
+=======
+		{"v20.2.4-5", version.CephVersion{}, true},
+>>>>>>> upstream
 		{"20.2.1", version.CephVersion{}, true},
 		{"20.2", version.CephVersion{}, true},
 		{"20", version.CephVersion{}, true},
@@ -307,13 +355,21 @@ func TestUpdatedCephxStatus(t *testing.T) {
 		{"rotate, keygen 0 - status 1 -> 2", true, v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 0}, "", cephVer, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 2}},
 		{"rotate, keygen 1 - status 1 -> 2", true, v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 1}, "", cephVer, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 2}},
 		{"rotate, keygen 3 - status 1 -> 3", true, v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 3}, "", cephVer, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 3}},
+<<<<<<< HEAD
 		{"rotate, cephver - status 1 -> 2", true, v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate"}, "", cephVer, v1.CephxStatus{KeyCephVersion: "20.2.3-0", KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 2}},
+=======
+		{"rotate, cephver - status 1 -> 2", true, v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate"}, "", cephVer, v1.CephxStatus{KeyCephVersion: "20.2.4-0", KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 2}},
+>>>>>>> upstream
 		{"rotate, nopolicy, with keyType - status 1 -> 2", true, v1.CephxConfig{KeyRotationPolicy: ""}, "set", cephVer, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 2, KeyType: "set"}},
 		{"rotate, disabled, with keyType - status 1 -> 2", true, v1.CephxConfig{KeyRotationPolicy: "Disabled"}, "set", cephVer, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 2, KeyType: "set"}},
 		{"rotate, keygen 0, with keyType - status 1 -> 2", true, v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 0}, "set", cephVer, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 2, KeyType: "set"}},
 		{"rotate, keygen 1, with keyType - status 1 -> 2", true, v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 1}, "set", cephVer, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 2, KeyType: "set"}},
 		{"rotate, keygen 3, with keyType - status 1 -> 3", true, v1.CephxConfig{KeyRotationPolicy: "KeyGeneration", KeyGeneration: 3}, "set", cephVer, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 3, KeyType: "set"}},
+<<<<<<< HEAD
 		{"rotate, cephver, with keyType - status 1 -> 2", true, v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate"}, "set", cephVer, v1.CephxStatus{KeyCephVersion: "20.2.3-0", KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 2, KeyType: "set"}},
+=======
+		{"rotate, cephver, with keyType - status 1 -> 2", true, v1.CephxConfig{KeyRotationPolicy: "WithCephVersionUpdate"}, "set", cephVer, v1.CephxStatus{KeyCephVersion: "20.2.4-0", KeyGeneration: 1}, v1.CephxStatus{KeyCephVersion: verStr, KeyGeneration: 2, KeyType: "set"}},
+>>>>>>> upstream
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -339,7 +395,11 @@ func TestDetermineCephxKeyTypesForEntityType(t *testing.T) {
 
 	osdTypes, err := DetermineCephxKeyTypesForEntityType(context, clusterInfo, cephclient.AuthDumpKeysEntityTypeOsd, "")
 	assert.Nil(t, err)
+<<<<<<< HEAD
 	assert.Equal(t, []string{"aes256k", "aes"}, osdTypes)
+=======
+	assert.ElementsMatch(t, []string{"aes256k", "aes"}, osdTypes)
+>>>>>>> upstream
 
 	mgrTypes, err := DetermineCephxKeyTypesForEntityType(context, clusterInfo, cephclient.AuthDumpKeysEntityTypeMgr, "")
 	assert.Nil(t, err)

@@ -164,6 +164,9 @@ spec:
   mgr:
     count: ` + strconv.Itoa(mgrCount) + `
     allowMultiplePerNode: true
+    modules:
+      - name: rook
+        enabled: false
   dashboard:
     enabled: true
   network:
@@ -247,6 +250,17 @@ spec:
 `
 	}
 
+	if m.settings.RookVersion != Version1_19 {
+		// to support upgrading from old version, ensure this isn't added when using old rook
+		clusterSpec += `
+  security:
+    cephx:
+      csi:
+        # keep the old aes key type when the host kernel does not yet support aes256k
+        keyType: aes
+`
+	}
+
 	if m.settings.ConnectionsEncrypted {
 		clusterSpec += `
   csi:
@@ -255,6 +269,7 @@ spec:
   `
 	}
 
+<<<<<<< HEAD
 	if m.settings.RookVersion != Version1_19 {
 		// set CSI cephx key version to aes for compatibility
 		// to support upgrading from old version, ensure this isn't added when using old rook
@@ -267,6 +282,8 @@ spec:
 `
 	}
 
+=======
+>>>>>>> upstream
 	return clusterSpec + `
   priorityClassNames:
     mon: system-node-critical
