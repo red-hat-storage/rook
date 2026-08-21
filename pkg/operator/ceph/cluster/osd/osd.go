@@ -33,6 +33,7 @@ import (
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
 	osdconfig "github.com/rook/rook/pkg/operator/ceph/cluster/osd/config"
 	"github.com/rook/rook/pkg/operator/ceph/cluster/osd/topology"
+	"github.com/rook/rook/pkg/operator/ceph/config/keyring"
 	"github.com/rook/rook/pkg/operator/ceph/controller"
 	"github.com/rook/rook/pkg/operator/ceph/reporting"
 	cephver "github.com/rook/rook/pkg/operator/ceph/version"
@@ -283,12 +284,20 @@ func (c *Cluster) Start() error {
 	}
 	log.NamespacedInfo(c.clusterInfo.Namespace, logger, "wait timeout for healthy OSDs during upgrade or restart is %q", c.clusterInfo.OsdUpgradeTimeout)
 
+	// Entry point for OSD replacement. Must run before GetDaemonsToSkipReconcile below, so an OSD
+	// labeled in this reconcile lands in the skip-reconcile snapshot; otherwise the updater is not
+	// fenced off it and scales a mid-replacement OSD back to replicas=1. Must also run before
+	// getOSDUpdateInfo, so a Deployment it deletes is absent from the `deployments` snapshot.
+	if err := c.processOSDReplacements(); err != nil {
+		log.NamespacedWarning(c.clusterInfo.Namespace, logger, "failed to process OSD replacement requests. %v", err)
+	}
+
 	osdsToSkipReconcile, err := controller.GetDaemonsToSkipReconcile(c.clusterInfo.Context, c.context, c.clusterInfo.Namespace, OsdIdLabelKey, AppName)
 	if err != nil {
 		log.NamespacedWarning(c.clusterInfo.Namespace, logger, "failed to get osds to skip reconcile. %v", err)
 	}
 
-	migrationConfig, err := c.startOSDMigration()
+	migrationConfig, err := c.startOSDMigration(osdsToSkipReconcile)
 	if err != nil {
 		return errors.Wrapf(err, "failed to start OSD migration")
 	}
@@ -378,7 +387,7 @@ func (c *Cluster) deleteOsdBootstrapKeyring() {
 	}
 }
 
-func (c *Cluster) startOSDMigration() (*migrationConfig, error) {
+func (c *Cluster) startOSDMigration(osdsToSkipReconcile sets.Set[string]) (*migrationConfig, error) {
 	if !c.isMigrationRequested() {
 		log.NamespacedDebug(c.clusterInfo.Namespace, logger, "no OSD migration is requested")
 		return nil, nil
@@ -399,6 +408,14 @@ func (c *Cluster) startOSDMigration() (*migrationConfig, error) {
 	migrationConfig, err := c.newMigrationConfig()
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get new OSD migration config")
+	}
+
+	// Skip migrating the OSDs with ceph.rook.io/do-not-reconcile label.
+	for osdID := range migrationConfig.osds {
+		if osdsToSkipReconcile.Has(strconv.Itoa(osdID)) {
+			log.NamespacedInfo(c.clusterInfo.Namespace, logger, "skipping migration of OSD.%d labeled with %q", osdID, cephv1.SkipReconcileLabelKey)
+			delete(migrationConfig.osds, osdID)
+		}
 	}
 
 	migrationComplete, err := isLastOSDMigrationComplete(c)
@@ -1171,6 +1188,16 @@ func (c *Cluster) updateCephOsdStorageStatus() error {
 		cephCluster.Status.CephStorage = &cephClusterStorage
 
 		if cephx != nil {
+			// Attempt to determine the authoritative key type of the OSDs.
+			// If this fails, leave the key type as it would have been.
+			osdKeyType, err := keyring.DetermineCephxKeyTypesForEntityType(c.context, c.clusterInfo, cephclient.AuthDumpKeysEntityTypeOsd, "")
+			if err == nil && len(osdKeyType) == 1 {
+				log.NamespacedDebug(c.clusterInfo.Namespace, logger, "determined authoritative cephx key type for OSDs is %q", osdKeyType[0])
+				cephx.KeyType = cephv1.CephxKeyType(osdKeyType[0])
+			} else {
+				log.NamespacedInfo(c.clusterInfo.Namespace, logger, "failed to determine authoritative cephx key type for OSDs having key types [%v]: %v", osdKeyType, err)
+			}
+
 			cephCluster.Status.Cephx.OSD = *cephx
 		}
 

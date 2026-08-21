@@ -54,7 +54,7 @@ func (c *ClusterController) configureCephMonitoring(cluster *cluster, clusterInf
 					InternalCancel: internalCancel,
 				})
 
-				// We can't use mon.IsFloatingMon(cluster.mons, daemon) because the mon ID is not available.
+				// We can't use mon.isFloatingMon(cluster.mons, daemon) because the mon ID is not available.
 				if daemon == "mon" && cluster.Spec.Mon.FloatingMon.Name != "" {
 					log.NamespacedInfo(cluster.Namespace, logger, "skip mon health check since floating mon %q is configured", daemon)
 					continue
@@ -91,7 +91,7 @@ func (c *ClusterController) startMonitoringCheck(cluster *cluster, clusterInfo *
 
 	case "osd":
 		if !cluster.Spec.External.Enable {
-			osdChecker := osd.NewOSDHealthMonitor(c.context, clusterInfo, cluster.Spec.RemoveOSDsIfOutAndSafeToRemove, cluster.Spec.HealthCheck)
+			osdChecker := osd.NewOSDHealthMonitor(c.context, clusterInfo, cluster.Spec.RemoveOSDsIfOutAndSafeToRemove, cluster.Spec.HealthCheck, *cluster.Spec, c.rookImage)
 			log.NamespacedInfo(cluster.Namespace, logger, "enabling ceph %s monitoring goroutine", daemon)
 			go osdChecker.Start(&cluster.monitoringRoutines, daemon)
 		}

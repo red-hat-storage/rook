@@ -182,6 +182,20 @@ func (dump *OSDDump) StatusByID(id int64) (int64, int64, error) {
 	return 0, 0, errors.Errorf("not found osd.%d in OSDDump", id)
 }
 
+// Exists reports whether the given OSD id is present in the osdmap.
+func (dump *OSDDump) Exists(id int64) bool {
+	for _, d := range dump.OSDs {
+		idFromDump, err := d.OSD.Int64()
+		if err != nil {
+			continue
+		}
+		if idFromDump == id {
+			return true
+		}
+	}
+	return false
+}
+
 func GetOSDUsage(context *clusterd.Context, clusterInfo *ClusterInfo) (*OSDUsage, error) {
 	args := []string{"osd", "df"}
 	buf, err := NewCephCommand(context, clusterInfo, args).Run()
@@ -309,6 +323,53 @@ func HostTree(context *clusterd.Context, clusterInfo *ClusterInfo) (OsdTree, err
 	return output, nil
 }
 
+// GetDestroyedIDs returns the ids of osd nodes whose status is "destroyed".
+func (tree OsdTree) GetDestroyedIDs() []int {
+	destroyed := []int{}
+	for _, node := range tree.Nodes {
+		if node.Status == "destroyed" {
+			destroyed = append(destroyed, node.ID)
+		}
+	}
+	return destroyed
+}
+
+func OSDOut(context *clusterd.Context, clusterInfo *ClusterInfo, osdID int) error {
+	args := []string{"osd", "out", strconv.Itoa(osdID)}
+	cmd := NewCephCommand(context, clusterInfo, args)
+	if _, err := cmd.Run(); err != nil {
+		return errors.Wrapf(err, "failed to mark osd.%d out", osdID)
+	}
+	return nil
+}
+
+func OSDIn(context *clusterd.Context, clusterInfo *ClusterInfo, osdID int) error {
+	args := []string{"osd", "in", strconv.Itoa(osdID)}
+	cmd := NewCephCommand(context, clusterInfo, args)
+	if _, err := cmd.Run(); err != nil {
+		return errors.Wrapf(err, "failed to mark osd.%d in", osdID)
+	}
+	return nil
+}
+
+func OSDDown(context *clusterd.Context, clusterInfo *ClusterInfo, osdID int) error {
+	args := []string{"osd", "down", strconv.Itoa(osdID)}
+	cmd := NewCephCommand(context, clusterInfo, args)
+	if _, err := cmd.Run(); err != nil {
+		return errors.Wrapf(err, "failed to mark osd.%d down", osdID)
+	}
+	return nil
+}
+
+func OSDDestroy(context *clusterd.Context, clusterInfo *ClusterInfo, osdID int) error {
+	args := []string{"osd", "destroy", fmt.Sprintf("osd.%d", osdID), confirmFlag}
+	cmd := NewCephCommand(context, clusterInfo, args)
+	if _, err := cmd.Run(); err != nil {
+		return errors.Wrapf(err, "failed to destroy osd.%d", osdID)
+	}
+	return nil
+}
+
 // OsdListNum returns the list of OSDs
 func OsdListNum(context *clusterd.Context, clusterInfo *ClusterInfo) (OsdList, error) {
 	var output OsdList
@@ -407,6 +468,9 @@ func SetPrimaryAffinity(context *clusterd.Context, clusterInfo *ClusterInfo, osd
 type OSDMetadata struct {
 	Id       int    `json:"id"`
 	HostName string `json:"hostname"`
+	// Devices is the sorted, comma-separated set of physical block devices backing the OSD, resolved
+	// past any LVM/dm layer, e.g. "vdb" or "nvme0n1,vdb" when the DB is on a separate device.
+	Devices string `json:"devices"`
 }
 
 // GetOSDMetadata returns the output of `ceph osd metadata`

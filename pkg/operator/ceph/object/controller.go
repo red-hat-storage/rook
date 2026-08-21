@@ -460,8 +460,9 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 		}
 		r.clusterInfo.CephVersion = *runningCephVersion
 
+		// daemon key type always takes the default from setDefaultCephxKeyType()
 		shouldRotateCephxKeys, err = keyring.ShouldRotateCephxKeys(
-			cephCluster.Spec.Security.CephX.Daemon, *runningCephVersion, *desiredCephVersion, cephObjectStore.Status.Cephx.Daemon)
+			cephCluster.Spec.Security.CephX.Daemon, *runningCephVersion, *desiredCephVersion, cephObjectStore.Status.Cephx.Daemon, true, r.clusterInfo.Namespace)
 		if err != nil {
 			return reconcile.Result{}, *cephObjectStore, errors.Wrap(err, "failed to determine if cephx keys should be rotated")
 		}
@@ -509,7 +510,8 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 
 	// update ObservedGeneration in status at the end of reconcile
 	// Set Progressing status, we are done reconciling, the health check go routine will update the status
-	cephxStatus := keyring.UpdatedCephxStatus(shouldRotateCephxKeys, cephCluster.Spec.Security.CephX.Daemon, r.clusterInfo.CephVersion, cephObjectStore.Status.Cephx.Daemon)
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	cephxStatus := keyring.UpdatedCephxStatus(shouldRotateCephxKeys, cephCluster.Spec.Security.CephX.Daemon, r.clusterInfo.CephVersion, cephObjectStore.Status.Cephx.Daemon, keyType)
 	err = updateStatus(r.opManagerContext, observedGeneration, cephObjectStore.Spec.Gateway.Instances, r.client, request.NamespacedName, cephv1.ConditionReady, buildStatusInfo(cephObjectStore), &cephxStatus)
 	if err != nil {
 		return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "failed to set final status for cephObjectStore %q", request.NamespacedName)
@@ -671,7 +673,7 @@ func (r *ReconcileCephObjectStore) retrieveMultisiteZone(store *cephv1.CephObjec
 	_, err := RunAdminCommandNoMultisite(objContext, true, "zone", "get", realmArg, zoneGroupArg, zoneArg)
 	if err != nil {
 		// ENOENT mean "No such file or directory"
-		if code, err := exec.ExtractExitCode(err); err == nil && code == int(syscall.ENOENT) {
+		if code, ok := exec.ExitStatus(err); ok && code == int(syscall.ENOENT) {
 			return waitForRequeueIfObjectStoreNotReady, errors.Wrapf(err, "ceph zone %q not found", store.Spec.Zone.Name)
 		} else {
 			return waitForRequeueIfObjectStoreNotReady, errors.Wrapf(err, "radosgw-admin zone get failed with code %d", code)

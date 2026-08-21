@@ -65,6 +65,11 @@ var osdRemoveCmd = &cobra.Command{
 	Short: "Removes a set of OSDs from the cluster",
 }
 
+var osdCloseEncryptedDevicesCmd = &cobra.Command{
+	Use:   "close-encrypted-devices",
+	Short: "Closes the host dm-crypt mappings for an encrypted OSD being replaced",
+}
+
 var (
 	osdDataDeviceFilter          string
 	osdDataDevicePathFilter      string
@@ -121,11 +126,15 @@ func addOSDFlags(command *cobra.Command) {
 	osdRemoveCmd.Flags().StringVar(&preservePVC, "preserve-pvc", "false", "Whether PVCs for OSDs will be deleted")
 	osdRemoveCmd.Flags().StringVar(&forceOSDRemoval, "force-osd-removal", "false", "Whether to force remove the OSD")
 
+	// flags for closing the dm-crypt mappings of an encrypted OSD being replaced
+	osdCloseEncryptedDevicesCmd.Flags().IntVar(&osdID, "osd-id", -1, "the id of the encrypted OSD whose dm-crypt mappings should be closed")
+
 	// add the subcommands to the parent osd command
 	osdCmd.AddCommand(osdConfigCmd,
 		provisionCmd,
 		osdStartCmd,
-		osdRemoveCmd)
+		osdRemoveCmd,
+		osdCloseEncryptedDevicesCmd)
 }
 
 func addOSDConfigFlags(command *cobra.Command) {
@@ -157,6 +166,22 @@ func init() {
 	provisionCmd.RunE = prepareOSD
 	osdStartCmd.RunE = startOSD
 	osdRemoveCmd.RunE = removeOSDs
+	osdCloseEncryptedDevicesCmd.RunE = closeEncryptedDevices
+}
+
+// closeEncryptedDevices closes the host dm-crypt mappings of an encrypted OSD being replaced. It runs
+// in a privileged Job on the OSD's node and needs no Ceph auth or KMS key material, so it loads
+// neither the Ceph secret nor mon endpoints.
+func closeEncryptedDevices(cmd *cobra.Command, args []string) error {
+	if osdID == -1 {
+		return errors.New("osd id not specified")
+	}
+
+	context := createContext()
+	if err := osddaemon.CloseEncryptedDevicesForOSD(context, osdID); err != nil {
+		rook.TerminateFatal(err)
+	}
+	return nil
 }
 
 // Start the osd daemon if provisioned by ceph-volume
@@ -323,7 +348,7 @@ func removeOSDs(cmd *cobra.Command, args []string) error {
 
 	// We use strings instead of bool since the flag package has issues with parsing bools, or
 	// perhaps it's the translation between YAML and code... It's unclear but see:
-	// starting Rook v1.7.0-alpha.0.660.gb13faecc8 with arguments '/usr/local/bin/rook ceph osd remove --preserve-pvc false --force-osd-removal false --osd-ids 1'
+	// starting Rook v1.7.0-alpha.0.660.gb13faecc8 with arguments: /usr/local/bin/rook ceph osd remove --preserve-pvc false --force-osd-removal false --osd-ids 1
 	// flag values: --force-osd-removal=true, --help=false, --log-level=DEBUG, --operator-image=,
 	// --osd-ids=1, --preserve-pvc=true, --service-account=
 	//

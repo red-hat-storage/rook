@@ -48,7 +48,7 @@ const (
 	umbrellaTestImage = "quay.io/ceph/ceph:v21"
 	// test with the current development versions
 	squidDevelTestImage    = "quay.ceph.io/ceph-ci/ceph:squid"
-	tentacleDevelTestImage = "quay.ceph.io/ceph-ci/ceph:tentacle"
+	tentacleDevelTestImage = "quay.io/brgardne/ceph:wip-pdonnell-testing-20260718.230903-centos-stream9" // (actually main) TODO(key): fix before merge
 	umbrellaDevelTestImage = "quay.ceph.io/ceph-ci/ceph:umbrella"
 	// test with the latest Ceph main image
 	mainTestImage      = "quay.ceph.io/ceph-ci/ceph:main"
@@ -72,7 +72,7 @@ var (
 	SquidVersion                 = cephv1.CephVersionSpec{Image: squidTestImage}
 	SquidDevelVersion            = cephv1.CephVersionSpec{Image: squidDevelTestImage}
 	TentacleVersion              = cephv1.CephVersionSpec{Image: tentacleTestImage}
-	UmbrellaVersion              = cephv1.CephVersionSpec{Image: umbrellaTestImage}
+	UmbrellaVersion              = cephv1.CephVersionSpec{Image: umbrellaTestImage, AllowUnsupported: true}
 	TentacleDevelVersion         = cephv1.CephVersionSpec{Image: tentacleDevelTestImage, AllowUnsupported: true}
 	UmbrellaDevelVersion         = cephv1.CephVersionSpec{Image: umbrellaDevelTestImage, AllowUnsupported: true}
 	MainVersion                  = cephv1.CephVersionSpec{Image: mainTestImage, AllowUnsupported: true}
@@ -111,7 +111,7 @@ func ReturnCephVersion() cephv1.CephVersionSpec {
 		return UmbrellaVersion
 	default:
 		// Default to the latest stable version
-		return TentacleVersion
+		return TentacleDevelVersion
 	}
 }
 

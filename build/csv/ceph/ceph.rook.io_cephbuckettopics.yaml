@@ -44,6 +44,7 @@ spec:
                         enum:
                         - none
                         - broker
+                        - routable
                         - routeable
                         type: string
                       disableVerifySSL:

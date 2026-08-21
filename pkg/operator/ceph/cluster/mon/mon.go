@@ -337,9 +337,9 @@ func (c *Cluster) startMons(targetCount int) error {
 	return nil
 }
 
-// IsFloatingMon returns true if the given mon name is the floating mon defined
+// isFloatingMon returns true if the given mon name is the floating mon defined
 // in the CephCluster spec.
-func IsFloatingMon(c *Cluster, name string) bool {
+func isFloatingMon(c *Cluster, name string) bool {
 	return c.spec.Mon.FloatingMon.Name != "" && name == c.spec.Mon.FloatingMon.Name
 }
 
@@ -567,7 +567,7 @@ func (c *Cluster) initClusterInfo(cephVersion cephver.CephVersion, clusterName s
 
 	context := c.ClusterInfo.Context
 	// get the cluster info from secret
-	c.ClusterInfo, c.maxMonID, c.mapping, err = controller.CreateOrLoadClusterInfo(c.context, context, c.Namespace, c.ownerInfo, &c.spec)
+	c.ClusterInfo, c.maxMonID, c.mapping, err = controller.CreateOrLoadClusterInfo(c.context, context, c.Namespace, c.ownerInfo, &cephVersion, &c.spec)
 	if err != nil {
 		return errors.Wrap(err, "failed to get cluster info")
 	}
@@ -964,7 +964,7 @@ func (c *Cluster) assignMons(mons []*monConfig, monsToSkipReconcile sets.Set[str
 	// scheduling for the monitor.
 	for _, mon := range mons {
 		// No need to create canary pod and pvc for floating mon
-		if IsFloatingMon(c, mon.DaemonName) {
+		if isFloatingMon(c, mon.DaemonName) {
 			log.NamespacedDebug(c.Namespace, logger, "skipping scheduling for floating mon %q", mon.DaemonName)
 			continue
 		}
@@ -1133,7 +1133,7 @@ func (c *Cluster) startDeployments(mons []*monConfig, requireAllInQuorum bool, m
 				// and potentially cause more mons to fail. Therefore, we abort if the mon failed to start after upgrade.
 				return errors.Wrapf(err, "failed to upgrade mon %q.", mons[i].DaemonName)
 			}
-			if IsFloatingMon(c, mons[i].DaemonName) {
+			if isFloatingMon(c, mons[i].DaemonName) {
 				// Floating mon failures must not be silently skipped.
 				return errors.Wrapf(err, "failed to start floating mon %q", mons[i].DaemonName)
 			}
@@ -1571,7 +1571,7 @@ func (c *Cluster) updateMon(m *monConfig, d *apps.Deployment) error {
 //     - if HostPath -> leave node selector as is
 //     - if PVC      -> remove node selector, if present
 func (c *Cluster) startMon(m *monConfig, schedule *controller.MonScheduleInfo) error {
-	floating := IsFloatingMon(c, m.DaemonName)
+	floating := isFloatingMon(c, m.DaemonName)
 	log.NamespacedInfo(c.Namespace, logger, "starting mon %q", m.DaemonName)
 
 	// Build the deployment spec. Floating mons use a YAML template that
@@ -1790,7 +1790,7 @@ func (c *Cluster) waitForQuorumWithMons(context *clusterd.Context, clusterInfo *
 		var runningMonNames []string
 		for _, m := range mons {
 			monLabel := AppName
-			if IsFloatingMon(c, m) {
+			if isFloatingMon(c, m) {
 				monLabel = FloatingMonAppName
 			}
 			running, err := k8sutil.PodsRunningWithLabel(clusterInfo.Context, context.Clientset, clusterInfo.Namespace, fmt.Sprintf("app=%s,mon=%s", monLabel, m))
@@ -1895,7 +1895,9 @@ func (c *Cluster) RotateMonCephxKeys(clusterObj *cephv1.CephCluster) (bool, erro
 	// TODO: for rotation WithCephVersionUpdate fix this to have the right runningCephVersion and desiredCephVersion
 	runningCephVersion := c.ClusterInfo.CephVersion
 
-	shouldRotateMonKeys, err := keyring.ShouldRotateCephxKeys(clusterObj.Spec.Security.CephX.Daemon, runningCephVersion, desiredCephVersion, clusterObj.Status.Cephx.Mon)
+	// daemon key type always takes the default from setDefaultCephxKeyType()
+	shouldRotateMonKeys, err := keyring.ShouldRotateCephxKeys(
+		clusterObj.Spec.Security.CephX.Daemon, runningCephVersion, desiredCephVersion, clusterObj.Status.Cephx.Mon, true, c.ClusterInfo.Namespace)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to check if mon daemon keys should be rotated in the namespace %q", c.ClusterInfo.Namespace)
 	}
@@ -1905,7 +1907,7 @@ func (c *Cluster) RotateMonCephxKeys(clusterObj *cephv1.CephCluster) (bool, erro
 		return shouldRotateMonKeys, nil
 	}
 
-	if !c.ClusterInfo.CephVersion.IsAtLeast(keyring.CephAuthMonRotateSupportedVersion) {
+	if !cephclient.Aes256kKeysSupported(c.ClusterInfo.CephVersion) { // mon key rotation requires aes256k support
 		log.NamespacedDebug(c.Namespace, logger, "cephx key rotation for mons in namespace %q is indicated, but ceph version %#v does not support mon key rotation", c.Namespace, c.ClusterInfo.CephVersion)
 		return false, nil
 	}
@@ -1913,7 +1915,8 @@ func (c *Cluster) RotateMonCephxKeys(clusterObj *cephv1.CephCluster) (bool, erro
 	log.NamespacedInfo(c.Namespace, logger, "cephx keys for mon daemons in the namespace %q will be rotated", c.ClusterInfo.Namespace)
 
 	k := keyring.GetSecretStore(c.context, c.ClusterInfo, c.ClusterInfo.OwnerInfo)
-	newKey, err := k.RotateKey(controller.MonCephxUser)
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	newKey, err := k.RotateKey(controller.MonCephxUser, keyType)
 	if err != nil {
 		return shouldRotateMonKeys, errors.Wrapf(err, "failed to rotate cephx key for mon daemon in the namespace %q", c.ClusterInfo.Namespace)
 	}
@@ -1942,9 +1945,10 @@ func (c *Cluster) UpdateMonCephxStatus(didRotate bool) error {
 		if err := c.context.Client.Get(c.ClusterInfo.Context, c.ClusterInfo.NamespacedName(), cluster); err != nil {
 			return errors.Wrapf(err, "failed to get cluster %v to update the mon cephx status.", c.ClusterInfo.NamespacedName())
 		}
-		updatedStatus := keyring.UpdatedCephxStatus(didRotate, cluster.Spec.Security.CephX.Daemon, c.ClusterInfo.CephVersion, cluster.Status.Cephx.Mon)
+		keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+		updatedStatus := keyring.UpdatedCephxStatus(didRotate, cluster.Spec.Security.CephX.Daemon, c.ClusterInfo.CephVersion, cluster.Status.Cephx.Mon, keyType)
 		cluster.Status.Cephx.Mon = updatedStatus
-		log.NamespacedDebug(c.Namespace, logger, "updating mon daemon cephx status to %+v", cluster.Status.Cephx.Mgr)
+		log.NamespacedDebug(c.Namespace, logger, "updating mon daemon cephx status to %+v", cluster.Status.Cephx.Mon)
 		if err := reporting.UpdateStatus(c.context.Client, cluster); err != nil {
 			return errors.Wrapf(err, "failed to update cluster cephx status for mon daemon in the namespace %q", c.ClusterInfo.Namespace)
 		}

@@ -15,8 +15,12 @@ metadata:
 spec:
   dataDirHostPath: /var/lib/rook
   cephVersion:
-    image: quay.io/ceph/ceph:v20
+    image: quay.io/brgardne/ceph:wip-pdonnell-testing-20260718.230903-centos-stream9 # TODO(key): fix before merge
     allowUnsupported: true
+  security:
+    cephx:
+      csi:
+        keyType: aes # required when Kubernetes nodes don't run Linux kernel 7.0+
   mon:
     count: 1
     allowMultiplePerNode: true

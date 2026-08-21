@@ -160,10 +160,7 @@ func (o *Operator) startCRDManager(context context.Context, mgrErrorCh chan erro
 
 	if o.config.NamespaceToWatch != "" {
 		mgrOpts.Cache = cache.Options{
-			DefaultNamespaces: map[string]cache.Config{
-				o.config.NamespaceToWatch: {},
-				"openshift-etcd":          {},
-			},
+			DefaultNamespaces: map[string]cache.Config{o.config.NamespaceToWatch: {}},
 		}
 	}
 

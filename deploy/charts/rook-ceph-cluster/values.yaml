@@ -150,6 +150,11 @@ cephClusterSpec:
   # Default is false.
   upgradeOSDRequiresHealthyPGs: false
 
+  security:
+    cephx:
+      csi:
+        keyType: aes # required when Kubernetes nodes don't run Linux kernel 7.0+
+
   mon:
     # Set the number of mons to be started. Generally recommended to be 3.
     # For highest availability, an odd number of mons should be specified.
@@ -748,6 +753,14 @@ cephObjectStores:
 #      #   - "http://rgw-a.fqdn"
 #      # if the pools need to be removed from backend enable following setting
 #      # preservePoolsOnDelete: false
+## cephObjectStoreUsers create S3 users in a CephObjectStore. They are disabled by default;
+## remove the comments and set desired values to enable them. See
+## https://rook.io/docs/rook/latest/CRDs/Object-Storage/ceph-object-store-user-crd/
+#cephObjectStoreUsers:
+#  - name: my-user
+#    spec:
+#      store: ceph-objectstore
+#      displayName: my display name
 ## cephECBlockPools are disabled by default, please remove the comments and set desired values to enable it
 ## For erasure coded a replicated metadata pool is required.
 ## https://rook.io/docs/rook/latest/CRDs/Shared-Filesystem/ceph-filesystem-crd/#erasure-coded

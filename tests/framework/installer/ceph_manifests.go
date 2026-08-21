@@ -254,6 +254,19 @@ spec:
       kernelMountOptions: ms_mode=secure
   `
 	}
+
+	if m.settings.RookVersion != Version1_19 {
+		// set CSI cephx key version to aes for compatibility
+		// to support upgrading from old version, ensure this isn't added when using old rook
+		clusterSpec += `
+  security:
+    cephx:
+      csi:
+        # keep the old aes key type when the host kernel does not yet support aes256k
+        keyType: aes
+`
+	}
+
 	return clusterSpec + `
   priorityClassNames:
     mon: system-node-critical
@@ -439,7 +452,7 @@ spec:
     activeStandby: true`
 }
 
-// GetFilesystem returns the manifest to create a Rook Ceph NFS resource with the given config.
+// GetNFS returns the manifest to create a Rook Ceph NFS resource with the given config.
 func (m *CephManifestsMaster) GetNFS(name string, count int) string {
 	return `apiVersion: ceph.rook.io/v1
 kind: CephNFS
@@ -454,7 +467,7 @@ spec:
     active: ` + strconv.Itoa(count)
 }
 
-// GetFilesystem returns the manifest to create a Rook Ceph NFS resource with the given config.
+// GetNFSPool returns the manifest to create the CephBlockPool backing the .nfs pool.
 func (m *CephManifestsMaster) GetNFSPool() string {
 	return `apiVersion: ceph.rook.io/v1
 kind: CephBlockPool

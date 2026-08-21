@@ -347,22 +347,13 @@ spec:
                 - ""
               resources:
                 - pods
+                - nodes
                 - secrets
                 - configmaps
               verbs:
                 - get
                 - list
                 - watch
-            - apiGroups:
-                - ""
-              resources:
-                - nodes
-              verbs:
-                - get
-                - list
-                - watch
-                - patch
-                - update
             - apiGroups:
                 - ""
                 - discovery.k8s.io
@@ -957,6 +948,15 @@ spec:
                 - update
                 - delete
             - apiGroups:
+                - networking.k8s.io
+              resources:
+                - networkpolicies
+              verbs:
+                - get
+                - create
+                - update
+                - delete
+            - apiGroups:
                 - ""
               resources:
                 - pods
@@ -1012,6 +1012,7 @@ spec:
               resources:
                 - networkpolicies
               verbs:
+                - get
                 - create
                 - update
                 - delete
