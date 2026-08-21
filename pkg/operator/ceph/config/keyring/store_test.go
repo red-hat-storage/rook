@@ -54,33 +54,16 @@ func TestGenerateKey(t *testing.T) {
 	ownerInfo := k8sutil.OwnerInfo{}
 	s := GetSecretStore(ctx, cephclient.AdminTestClusterInfo(ns), &ownerInfo)
 
-<<<<<<< HEAD
-	generateKey = "generatedsecretkey"
-	failGenerateKey = false
-=======
 	responses = append(responses, mockResponse{output: `{"key": "generatedsecretkey"}`})
->>>>>>> upstream
 	k, e := s.GenerateKey("testuser", "", []string{"test", "access"})
 	assert.NoError(t, e)
 	assert.Equal(t, "generatedsecretkey", k)
 
-<<<<<<< HEAD
-	generateKey = "differentsecretkey"
-	failGenerateKey = false
-=======
 	responses = append(responses, mockResponse{output: `{"key": "differentsecretkey"}`})
->>>>>>> upstream
 	k, e = s.GenerateKey("testuser", "", []string{"test", "access"})
 	assert.NoError(t, e)
 	assert.Equal(t, "differentsecretkey", k)
 
-<<<<<<< HEAD
-	// make sure error on fail
-	generateKey = "failgeneratekey"
-	failGenerateKey = true
-	_, e = s.GenerateKey("newuser", "", []string{"new", "access"})
-	assert.Error(t, e)
-=======
 	responses = append(responses,
 		mockResponse{err: errors.New("get-or-create error")},
 		mockResponse{err: errors.New("update-caps error")},
@@ -97,7 +80,6 @@ func TestGenerateKey(t *testing.T) {
 	_, e = s.GenerateKey("existinguser", "", []string{"new", "access"})
 	assert.ErrorContains(t, e, "get-key error")
 	assert.NotContains(t, e.Error(), "get-or-create error")
->>>>>>> upstream
 }
 
 func TestKeyringStore(t *testing.T) {

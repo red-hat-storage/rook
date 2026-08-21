@@ -128,11 +128,7 @@ func Aes256kKeysSupported(ver version.CephVersion) bool {
 	case 19:
 		return ver.IsAtLeast(version.CephVersion{Major: 19, Minor: 2, Extra: 6})
 	case 20:
-<<<<<<< HEAD
 		return ver.IsAtLeast(version.CephVersion{Major: 20, Minor: 2, Extra: 1, Build: 297})
-=======
-		return ver.IsAtLeast(version.CephVersion{Major: 20, Minor: 2, Extra: 4})
->>>>>>> upstream
 	default:
 		return ver.Major >= 21
 	}
