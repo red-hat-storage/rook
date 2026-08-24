@@ -72,6 +72,7 @@ rules:
     resources:
       - cephclients
       - cephclusters
+      - cephclusters/finalizers
       - cephblockpools
       - cephfilesystems
       - cephnfses
