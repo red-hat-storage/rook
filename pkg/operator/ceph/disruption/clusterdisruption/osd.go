@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
 	"github.com/rook/rook/pkg/operator/ceph/cluster/osd"
 	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
@@ -43,7 +44,7 @@ import (
 )
 
 const (
-	// osdPDBAppName is that app label value for pdbs targeting osds
+	// osdPDBAppName is the app label value for pdbs targeting osds
 	osdPDBAppName = "rook-ceph-osd"
 	// osdPDBOsdIdLabel is the label on osd pods for pdbs targeting specific osd ids
 	osdPDBOsdIdLabel                 = "osd"
@@ -323,9 +324,9 @@ func (r *ReconcileClusterDisruption) reconcilePDBsForOSDs(
 		}
 	}
 
-	err = r.updateNoout(clusterInfo, pdbStateMap, allFailureDomains)
-	if err != nil {
-		logger.Errorf("failed to update maintenance noout in cluster %q. %v", request, err)
+	nooutUpdateErr := r.updateNoout(clusterInfo, pdbStateMap, allFailureDomains)
+	if nooutUpdateErr != nil {
+		logger.Errorf("failed to update maintenance noout in cluster %q. %v", request, nooutUpdateErr)
 	}
 
 	// update PDB configmap
@@ -335,6 +336,10 @@ func (r *ReconcileClusterDisruption) reconcilePDBsForOSDs(
 			return reconcile.Result{}, nil
 		}
 		return reconcile.Result{}, errors.Wrapf(err, "failed to update configMap %q in cluster %q", pdbStateMapName, request)
+	}
+
+	if nooutUpdateErr != nil {
+		return reconcile.Result{}, errors.Wrapf(nooutUpdateErr, "failed to update maintenance noout in cluster %q", request)
 	}
 
 	return r.requeuePDBController(request)
@@ -460,6 +465,17 @@ func (r *ReconcileClusterDisruption) getOSDFailureDomains(clusterInfo *cephclien
 				topologyLocationLabel, deployment.Name)
 		}
 
+		// Skip OSDs being replaced. The marker Deployment sits at replicas=0 during the replacement, so
+		// counting it as down would create blocking PDBs on the other failure domains and freeze
+		// cluster-wide maintenance for the whole (possibly multi-day) replacement.
+		if shouldIgnoreOSD(&deployment) {
+			logger.Debugf("skipping OSD deployment %q from down-detection because it is marked for replacement", deployment.Name)
+			if !allFailureDomains.Has(failureDomainName) {
+				allFailureDomains.Insert(failureDomainName)
+			}
+			continue
+		}
+
 		// Assume node drain if osd deployment ReadyReplicas count is 0 and OSD pod is not scheduled on a node
 		if deployment.Status.ReadyReplicas < 1 {
 			if !osdDownFailureDomains.Has(failureDomainName) {
@@ -472,7 +488,7 @@ func (r *ReconcileClusterDisruption) getOSDFailureDomains(clusterInfo *cephclien
 			}
 			downOSDs = append(downOSDs, osdID)
 
-			// check if OSD is down on unscheduleable node
+			// check if OSD is down on unschedulable node
 			var osdNodeName string
 			for _, metadata := range *osdMetadata {
 				if metadata.Id == osdID {
@@ -506,6 +522,17 @@ func (r *ReconcileClusterDisruption) getOSDFailureDomains(clusterInfo *cephclien
 		}
 	}
 	return sets.List(allFailureDomains), sets.List(nodeDrainFailureDomains), sets.List(osdDownFailureDomains), downOSDs, nil
+}
+
+// shouldIgnoreOSD reports whether an OSD Deployment is part of an in-flight replacement. It keys
+// solely on the in-progress annotation, which Rook sets once a replacement request passes validation
+// and before the OSD is scaled to replicas=0, so it covers the entire window the replacement OSD is
+// down. The two neighbouring markers are deliberately not consulted: the user's replace annotation
+// lingers on a NOT-owned, still-running OSD when validation rejected it, and the do-not-reconcile
+// fence label is also set by the kubectl-rook-ceph maintenance plugin and by admins fencing an OSD by
+// hand. Keying on either would wrongly exempt a genuinely down OSD from PDB down-detection.
+func shouldIgnoreOSD(deployment *appsv1.Deployment) bool {
+	return deployment.GetAnnotations()[cephv1.ReplaceInProgressOSDAnnotationKey] == "true"
 }
 
 // hasOSDNodeDrained returns true if OSD pod is not assigned to any node or if the OSD node is not schedulable
@@ -542,7 +569,7 @@ func resetPDBConfig(pdbStateMap *corev1.ConfigMap) {
 
 // setPDBConfig updates the OSD PDB config map. If there are unschedulable nodes (that is, a node drain event)
 // then those failureDomains are given higher precedence than the failureDomains where OSDs might be down
-// due to some reason but node is schedulable. `Noout` is set only if nodes are unscheduleable.
+// due to some reason but node is schedulable. `Noout` is set only if nodes are unschedulable.
 func setPDBConfig(pdbStateMap *corev1.ConfigMap, osdDownFailureDomains, nodeDrainFailureDomains []string) {
 	if len(pdbStateMap.Data[drainingFailureDomainKey]) == 0 {
 		if len(nodeDrainFailureDomains) > 0 {
@@ -566,8 +593,8 @@ func setPDBConfig(pdbStateMap *corev1.ConfigMap, osdDownFailureDomains, nodeDrai
 	}
 }
 
-// requeuePDBController returns requeue request with timeout if:
-// - allowedDisruption in main PDB is 0, that is, One or more OSD went down.
+// requeuePDBController returns a requeue request with a timeout if:
+// - allowedDisruption in main PDB is 0, that is, one or more OSDs went down.
 // - MaxUnavailable in the main PDB is > 1, that is, OSDs are down but PGs might be clean.
 // - default OSD PDB is not available.
 func (r *ReconcileClusterDisruption) requeuePDBController(request reconcile.Request) (reconcile.Result, error) {

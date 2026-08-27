@@ -115,7 +115,7 @@ func enableModule(context *clusterd.Context, clusterInfo *ClusterInfo, name stri
 	return nil
 }
 
-// enableDisableBalancerModule enables the ceph balancer module
+// enableDisableBalancerModule enables or disables the ceph balancer module, depending on action
 func enableDisableBalancerModule(context *clusterd.Context, clusterInfo *ClusterInfo, action string) error {
 	args := []string{"balancer", action}
 	_, err := NewCephCommand(context, clusterInfo, args).Run()
@@ -136,7 +136,7 @@ func setBalancerMode(context *clusterd.Context, clusterInfo *ClusterInfo, mode s
 	return nil
 }
 
-// setMinCompatClient set the minimum compatibility for clients
+// setMinCompatClient sets the minimum compatibility for clients
 func setMinCompatClient(context *clusterd.Context, clusterInfo *ClusterInfo, version string) error {
 	args := []string{"osd", "set-require-min-compat-client", version, "--yes-i-really-mean-it"}
 	_, err := NewCephCommand(context, clusterInfo, args).Run()

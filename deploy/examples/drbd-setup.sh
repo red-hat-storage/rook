@@ -63,6 +63,10 @@ OUTPUT_CM_NAME="${OUTPUT_CM_NAME:-drbd-configure}"               # Name for the 
 # OpenShift namespace for DRBD summary ConfigMap, CephCluster, and floating mon (default OpenShift ODF).
 ODF_NAMESPACE="${ODF_NAMESPACE:-openshift-storage}"
 
+# Floating mon DRBD backing device size limits 10GiB–50GiB.
+FLOATING_MON_MIN_BYTES=$((10 * 1024 * 1024 * 1024)) # 10GiB
+FLOATING_MON_MAX_BYTES=$((50 * 1024 * 1024 * 1024)) # 50GiB
+
 # install | upgrade | uninstall (set in parse_args; default install)
 MODE=""
 
@@ -97,7 +101,7 @@ Usage examples:
 Default Mode (install) —
 
 Required (one of):
-  -l                  List block devices on each node (NAME, PATH, SIZE, ROTA, TYPE, FSTYPE).
+  -l                  List block devices on each node (NAME, PATH, SIZE, RO, ROTA, TYPE, FSTYPE, MOUNTPOINT).
   -d PATH             Backing block device, same path & size on both nodes (e.g. /dev/sdb).
   -d0 PATH -d1 PATH   Per-node backing paths (node order = sorted cluster node names).
 
@@ -109,7 +113,14 @@ Optional:
   --drbd-port N           TCP replication port (default ${DRBD_PORT})
 
 Backing paths are raw block device paths (e.g. /dev/sdb). Use the PATH column from -l.
-Disks must be SSD-class (ROTA 0) and same size on both nodes.
+Backing device requirements (checked on both nodes):
+  - TYPE must be disk or part
+  - Size must be the same on both nodes
+  - Size must be 10GiB–50GiB (follow the documentation to create a partition of proper size if needed).
+  - Must be SSD/NVMe (lsblk ROTA 0)
+  - Must be writable (not read-only) and not already mounted
+  - Must have no child devices (use an empty disk or a leaf partition of proper size)
+  - If FSTYPE is already set, install asks for confirmation before proceeding
 
 What install does: setup KMM operator, setup image registry operator,
 build and load DRBD kmods, configure & sync DRBD, create the filesystem over the DRBD device,
@@ -329,13 +340,22 @@ list_devices() {
     echo ""
     for n in "$NODE_0" "$NODE_1"; do
         echo "--- $n ---"
-        if ! oc --request-timeout=120s debug -q "node/$n" -- chroot /host lsblk -o NAME,PATH,SIZE,ROTA,TYPE,FSTYPE; then
+        if ! oc --request-timeout=120s debug -q "node/$n" -- chroot /host lsblk -o NAME,PATH,SIZE,RO,ROTA,TYPE,FSTYPE,MOUNTPOINT; then
             echo "  Could not list block devices on $n (oc debug failed). Check cluster access, then re-run: $0 -l" >&2
         fi
         echo ""
     done
     echo "Same path on both nodes: -d <path>"
     echo "Different paths (same size): -d0 <path0> -d1 <path1>"
+    echo ""
+    echo "Backing device requirements (checked on both nodes):"
+    echo "  - TYPE must be disk or part"
+    echo "  - Size must be the same on both nodes"
+    echo "  - Size must be 10GiB–50GiB (follow the documentation to create a partition of proper size if needed)"
+    echo "  - Must be SSD/NVMe (lsblk ROTA 0)"
+    echo "  - Must be writable (not read-only) and not mounted"
+    echo "  - Must have no child devices (use an empty disk or a leaf partition of proper size)"
+    echo "  - If FSTYPE is already set, install asks for confirmation before proceeding"
 }
 
 # Map user device path -> stable disk by-id symlink for DRBD config on that node.
@@ -419,14 +439,37 @@ print_config() {
 }
 
 
-_lsblk_one_line() {
+# lsblk for a device and its children (SIZE in bytes via -b).
+_lsblk_device_tree() {
     local node="$1" device_path="$2"
-    oc debug -q "node/$node" -- chroot /host lsblk -ndo SIZE,RO,ROTA "$device_path" 2>/dev/null | tr -s ' ' | head -1
+    oc debug -q "node/$node" -- chroot /host lsblk -Pnb -o NAME,SIZE,RO,ROTA,TYPE,FSTYPE,MOUNTPOINT "$device_path" 2>/dev/null
+}
+
+_lsblk_field() {
+    local line="$1" key="$2"
+    if [[ "$line" =~ ${key}=\"([^\"]*)\" ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+    fi
+}
+
+_bytes_as_gib() {
+    printf '%dGiB' $(( $1 / 1024 / 1024 / 1024 ))
+}
+
+_read_yn_consent() {
+    local prompt="$1" answer
+    read -r -p "$prompt" answer
+    case "$answer" in
+        [yY]) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 # validate the backing device paths and resolve the disk by-id symlink for DRBD config on that node.
 validate_and_resolve_disks() {
-    local p0 p1 row0 row1 size0 ro0 rota0 size1 ro1 rota1
+    local p0 p1 tree0 tree1 dev0 dev1 size0 size1 bytes0 bytes1
+    local ro0 rota0 ro1 rota1 type0 type1 fstype0 fstype1 mount0 mount1
+
     if [[ -n "$BACKING_PATH" ]]; then
         p0="$BACKING_PATH"
         p1="$BACKING_PATH"
@@ -436,31 +479,103 @@ validate_and_resolve_disks() {
     fi
 
     msg "Checking backing device paths..."
-    row0=$(_lsblk_one_line "$NODE_0" "$p0")
-    row1=$(_lsblk_one_line "$NODE_1" "$p1")
-    if [[ -z "$row0" ]]; then
+    tree0=$(_lsblk_device_tree "$NODE_0" "$p0")
+    tree1=$(_lsblk_device_tree "$NODE_1" "$p1")
+    dev0=$(printf '%s\n' "$tree0" | head -1)
+    dev1=$(printf '%s\n' "$tree1" | head -1)
+    if [[ -z "$dev0" ]]; then
         die "device path $p0 not found on $NODE_0"
     fi
-    if [[ -z "$row1" ]]; then
+    if [[ -z "$dev1" ]]; then
         die "device path $p1 not found on $NODE_1"
     fi
 
-    read -r size0 ro0 rota0 <<<"$row0"
-    read -r size1 ro1 rota1 <<<"$row1"
+    bytes0=$(_lsblk_field "$dev0" SIZE)
+    bytes1=$(_lsblk_field "$dev1" SIZE)
+    size0=$(_bytes_as_gib "$bytes0")
+    size1=$(_bytes_as_gib "$bytes1")
+    ro0=$(_lsblk_field "$dev0" RO)
+    rota0=$(_lsblk_field "$dev0" ROTA)
+    ro1=$(_lsblk_field "$dev1" RO)
+    rota1=$(_lsblk_field "$dev1" ROTA)
+    type0=$(_lsblk_field "$dev0" TYPE)
+    type1=$(_lsblk_field "$dev1" TYPE)
+    fstype0=$(_lsblk_field "$dev0" FSTYPE)
+    fstype1=$(_lsblk_field "$dev1" FSTYPE)
+    mount0=$(_lsblk_field "$dev0" MOUNTPOINT)
+    mount1=$(_lsblk_field "$dev1" MOUNTPOINT)
+
+    if [[ -z "$bytes0" || ! "$bytes0" =~ ^[0-9]+$ ]]; then
+        die "could not read size of $p0 on $NODE_0"
+    fi
+    if [[ -z "$bytes1" || ! "$bytes1" =~ ^[0-9]+$ ]]; then
+        die "could not read size of $p1 on $NODE_1"
+    fi
+    # Device type must be disk or partition
+    if [[ "$type0" != "disk" && "$type0" != "part" ]]; then
+        die "device path $p0 on $NODE_0 must be a disk or partition (lsblk TYPE=disk|part), got TYPE=${type0:-?}"
+    fi
+    if [[ "$type1" != "disk" && "$type1" != "part" ]]; then
+        die "device path $p1 on $NODE_1 must be a disk or partition (lsblk TYPE=disk|part), got TYPE=${type1:-?}"
+    fi
+    # Device must not have child devices (e.g. partitions)
+    if [[ "$tree0" == *$'\n'* ]]; then
+        die "device path $p0 on $NODE_0 has child partition(s); provide a disk or partition with no children"
+    fi
+    if [[ "$tree1" == *$'\n'* ]]; then
+        die "device path $p1 on $NODE_1 has child partition(s); provide a disk or partition with no children"
+    fi
+    # Device must not be read-only
     if [[ "$ro0" != "0" ]]; then
         die "device path $p0 on $NODE_0 is read-only"
     fi
     if [[ "$ro1" != "0" ]]; then
         die "device path $p1 on $NODE_1 is read-only"
     fi
+    # Device must not be mounted
+    if [[ -n "$mount0" ]]; then
+        die "device path $p0 on $NODE_0 is mounted at ${mount0}"
+    fi
+    if [[ -n "$mount1" ]]; then
+        die "device path $p1 on $NODE_1 is mounted at ${mount1}"
+    fi
+    # Device must be non-rotational (SSD/NVMe)
     if [[ "$rota0" != "0" ]]; then
         die "device path $p0 on $NODE_0 must be non-rotational (SSD/NVMe; lsblk ROTA 0), not rotational HDD (ROTA=${rota0:-?})"
     fi
     if [[ "$rota1" != "0" ]]; then
         die "device path $p1 on $NODE_1 must be non-rotational (SSD/NVMe; lsblk ROTA 0), not rotational HDD (ROTA=${rota1:-?})"
     fi
-    if [[ "$size0" != "$size1" ]]; then
+    # Device sizes must match
+    if [[ "$bytes0" != "$bytes1" ]]; then
         die "backing device path size mismatch: $NODE_0 $size0 vs $NODE_1 $size1"
+    fi
+    # Size must be 10GiB–50GiB
+    if (( bytes0 < FLOATING_MON_MIN_BYTES )); then
+        die "backing device $p0 is too small (${size0}); a disk or partition of 10GiB-50GiB is required for floating mon DRBD setup"
+    fi
+    if (( bytes0 > FLOATING_MON_MAX_BYTES )); then
+        echo "Error: backing device size ${size0} exceeds 50G; provide a disk or partition of 10GiB-50GiB" >&2
+        echo "To create a 10GiB partition, on each node run:" >&2
+        echo '  echo -e "g\nn\n\n\n+10G\nw" | fdisk <parent-disk-path>' >&2
+        die "re-run with the created partition path (e.g. /dev/sdb1)"
+    fi
+    # Confirm wipe if the path has a filesystem
+    if [[ -n "$fstype0" ]]; then
+        echo ""
+        echo "WARNING: device path $p0 on $NODE_0 already has ${fstype0} filesystem."
+        echo "During DRBD setup this device will be wiped and any data on it will be lost."
+        if ! _read_yn_consent "Type y to continue, n to abort: "; then
+            die "aborted by user; device path $p0 on $NODE_0 has an existing filesystem"
+        fi
+    fi
+    if [[ -n "$fstype1" ]]; then
+        echo ""
+        echo "WARNING: device path $p1 on $NODE_1 already has ${fstype1} filesystem."
+        echo "During DRBD setup this device will be wiped and any data on it will be lost."
+        if ! _read_yn_consent "Type y to continue, n to abort: "; then
+            die "aborted by user; device path $p1 on $NODE_1 has an existing filesystem"
+        fi
     fi
 
     echo "  $NODE_0: $p0  $size0"

@@ -272,7 +272,7 @@ func (c *Cluster) SetMgrRoleLabel(daemonNameToUpdate string, isActive bool) erro
 	})
 	if err != nil {
 		log.NamespacedInfo(c.clusterInfo.Namespace, logger, "cannot get pod for mgr daemon %s", daemonNameToUpdate)
-		return err // force mrg_role update in the next call
+		return err // force mgr_role update in the next call
 	}
 
 	newMgrRole := standbyMgrStatus
@@ -347,7 +347,7 @@ func (c *Cluster) reconcileServices() error {
 	return nil
 }
 
-// For the upgrade scenario: we remove any selector DaemonIDLabel from the all
+// For the upgrade scenario: we remove any selector DaemonIDLabel from all
 // the services since new mgr HA doesn't rely on this label anymore and we add
 // the new "mgr_role=active" instead.
 func (c *Cluster) updateServiceSelectors() {
@@ -479,7 +479,34 @@ func (c *Cluster) enableBalancerModule() error {
 	return nil
 }
 
+// The rook mgr module has some issues in specific Ceph releases, so we disable it for those versions.
+// v20.2.2 has a memory leak and v20.2.3 and v20.2.4 cause a mgr pod crash.
+func (c *Cluster) rookModuleDisabledForCephVersion() bool {
+	v := c.clusterInfo.CephVersion
+	if v.Major != 20 || v.Minor != 2 {
+		return false
+	}
+	return v.Extra >= 2 && v.Extra <= 4
+}
+
+// disableRookOrchestratorModule clears the orchestrator backend and then disables the
+// rook mgr module. The backend is cleared first so the orchestrator no longer references
+// the rook module that is about to be disabled.
+func (c *Cluster) disableRookOrchestratorModule() {
+	if err := c.setOrchestratorBackend(""); err != nil {
+		logger.Warningf("failed to clear the orchestrator backend. %v", err)
+	}
+	if err := cephclient.MgrDisableModule(c.context, c.clusterInfo, rookModuleName); err != nil {
+		logger.Warningf("failed to disable rook mgr module. %v", err)
+	}
+}
+
 func (c *Cluster) configureMgrModules() error {
+	if c.rookModuleDisabledForCephVersion() {
+		logger.Infof("disabling the rook mgr module for Ceph %s", c.clusterInfo.CephVersion.String())
+		c.disableRookOrchestratorModule()
+	}
+
 	// Enable mgr modules from the spec
 	for _, module := range c.spec.Mgr.Modules {
 		if module.Name == "" {
@@ -487,6 +514,12 @@ func (c *Cluster) configureMgrModules() error {
 		}
 		if wellKnownModule(module.Name) {
 			return errors.Errorf("cannot configure mgr module %q that is configured with other cluster settings", module.Name)
+		}
+		if module.Name == rookModuleName && c.rookModuleDisabledForCephVersion() {
+			if module.Enabled {
+				logger.Infof("skipping rook mgr module configuration for Ceph %s", c.clusterInfo.CephVersion.String())
+			}
+			continue
 		}
 		minVersion, versionOK := c.moduleMeetsMinVersion(module.Name)
 		if !versionOK {
@@ -517,6 +550,10 @@ func (c *Cluster) configureMgrModules() error {
 			}
 
 		} else {
+			if module.Name == rookModuleName {
+				c.disableRookOrchestratorModule()
+				continue
+			}
 			if err := cephclient.MgrDisableModule(c.context, c.clusterInfo, module.Name); err != nil {
 				return errors.Wrapf(err, "failed to disable mgr module %q", module.Name)
 			}
@@ -544,7 +581,7 @@ func wellKnownModule(name string) bool {
 	return slices.Contains(knownModules, name)
 }
 
-// EnableServiceMonitor add a servicemonitor that allows prometheus to scrape from the monitoring endpoint of the cluster
+// EnableServiceMonitor adds a servicemonitor that allows prometheus to scrape from the monitoring endpoint of the cluster
 func (c *Cluster) EnableServiceMonitor() error {
 	serviceMonitor := k8sutil.GetServiceMonitor(AppName, c.clusterInfo.Namespace, serviceMonitorPort)
 	cephv1.GetMonitoringLabels(c.spec.Labels).OverwriteApplyToObjectMeta(&serviceMonitor.ObjectMeta)
@@ -599,7 +636,9 @@ func shouldRotateMgrKeys(c *clusterd.Context, clusterInfo *cephclient.ClusterInf
 	// TODO: for rotation WithCephVersionUpdate fix this to have the right runningCephVersion and desiredCephVersion
 	runningCephVersion := clusterInfo.CephVersion
 
-	shouldRotateKeys, err := keyring.ShouldRotateCephxKeys(clusterObj.Spec.Security.CephX.Daemon, runningCephVersion, desiredCephVersion, clusterObj.Status.Cephx.Mgr)
+	// daemon key type always takes the default from setDefaultCephxKeyType()
+	shouldRotateKeys, err := keyring.ShouldRotateCephxKeys(
+		clusterObj.Spec.Security.CephX.Daemon, runningCephVersion, desiredCephVersion, clusterObj.Status.Cephx.Mgr, true, clusterInfo.Namespace)
 	if err != nil {
 		return false, errors.Wrap(err, "failed to check if mgr daemon keys should be rotated or not")
 	}
@@ -613,8 +652,20 @@ func updateMgrCephxStatus(c *clusterd.Context, clusterInfo *cephclient.ClusterIn
 		if err := c.Client.Get(clusterInfo.Context, clusterInfo.NamespacedName(), cluster); err != nil {
 			return errors.Wrapf(err, "failed to get cluster %v to update the conditions.", clusterInfo.NamespacedName())
 		}
-		updatedStatus := keyring.UpdatedCephxStatus(didRotate, cluster.Spec.Security.CephX.Daemon, clusterInfo.CephVersion, cluster.Status.Cephx.Mgr)
+		keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+		updatedStatus := keyring.UpdatedCephxStatus(didRotate, cluster.Spec.Security.CephX.Daemon, clusterInfo.CephVersion, cluster.Status.Cephx.Mgr, keyType)
 		cluster.Status.Cephx.Mgr = updatedStatus
+
+		// Attempt to determine the authoritative key type of the mgr reported by ceph
+		// If this fails, leave the key type as it would have been.
+		mgrKeyType, err := keyring.DetermineCephxKeyTypesForEntityType(c, clusterInfo, cephclient.AuthDumpKeysEntityTypeMgr, "")
+		if err == nil && len(mgrKeyType) == 1 {
+			log.NamespacedDebug(clusterInfo.Namespace, logger, "determined authoritative cephx key type for mgrs is %q", mgrKeyType[0])
+			cluster.Status.Cephx.Mgr.KeyType = cephv1.CephxKeyType(mgrKeyType[0])
+		} else {
+			log.NamespacedInfo(clusterInfo.Namespace, logger, "failed to determine authoritative cephx key type for mgrs having key types [%v]: %v", mgrKeyType, err)
+		}
+
 		log.NamespacedDebug(clusterInfo.Namespace, logger, "updating mgr daemon cephx status to %+v", cluster.Status.Cephx.Mgr)
 		if err := reporting.UpdateStatus(c.Client, cluster); err != nil {
 			return errors.Wrap(err, "failed to update cluster cephx status for mgr daemon")

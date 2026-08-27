@@ -74,7 +74,7 @@ func Test_updateExistingOSDs(t *testing.T) {
 	// behavior control
 	var (
 		updateInjectFailures    k8sutil.Failures // return failures from mocked updateDeploymentAndWaitFunc
-		returnOkToStopIDs       []int            // return these IDs are ok-to-stop (or not ok to stop if empty)
+		returnOkToStopIDs       []int            // return these IDs as ok-to-stop (or not ok to stop if empty)
 		forceUpgradeIfUnhealthy bool
 		requiresHealthyPGs      bool
 		cephStatus              string
@@ -896,6 +896,8 @@ func TestCluster_rotateCephxKey(t *testing.T) {
 			},
 		}
 	}
+
+	keyring.SetAllowCephxKeyRotationForCluster("ns", true)
 
 	t.Run("empty status and config", func(t *testing.T) {
 		c := newTest(cephv1.CephxConfig{})

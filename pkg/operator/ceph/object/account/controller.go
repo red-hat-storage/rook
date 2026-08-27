@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"time"
 
 	"github.com/ceph/go-ceph/rgw/admin"
 	"github.com/coreos/pkg/capnslog"
@@ -56,7 +57,7 @@ const (
 	rgwAccountNameMaxLength = 64
 )
 
-// newMultisiteAdminOpsCtxFunc helps us mocking the admin ops API client in unit test
+// newMultisiteAdminOpsCtxFunc helps us mock the admin ops API client in unit tests
 var newMultisiteAdminOpsCtxFunc = object.NewMultisiteAdminOpsContext
 
 var logger = capnslog.NewPackageLogger("github.com/rook/rook", controllerName)
@@ -123,7 +124,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	return nil
 }
 
-// Reconcile reads that state of the cluster for a CephObjectStoreAccount object and makes changes based on the state read
+// Reconcile reads the state of the cluster for a CephObjectStoreAccount object and makes changes based on the state read
 // and what is in the CephObjectStoreAccount.Spec
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
@@ -204,14 +205,9 @@ func (r *ReconcileObjectStoreAccount) reconcile(request reconcile.Request) (reco
 	// Validate the object store has been initialized
 	opsCtx, objectStore, err := object.InitializeObjectStoreContext(r.context, r.clusterInfo, r.client, r.opManagerContext, cephObjectStoreAccount.Spec.Store, newMultisiteAdminOpsCtxFunc)
 	if err != nil {
-		if !cephObjectStoreAccount.GetDeletionTimestamp().IsZero() {
+		if !cephObjectStoreAccount.GetDeletionTimestamp().IsZero() && kerrors.IsNotFound(err) {
 			log.NamedDebug(request.NamespacedName, logger, "deleting object store account")
 			r.recorder.Eventf(cephObjectStoreAccount, nil, corev1.EventTypeNormal, string(cephv1.ReconcileStarted), string(cephv1.ReconcileStarted), "deleting CephObjectStoreAccount %q", cephObjectStoreAccount.Name)
-
-			err := r.deleteAccount(cephObjectStoreAccount)
-			if err != nil {
-				return reconcile.Result{}, *cephObjectStoreAccount, errors.Wrapf(err, "failed to delete ceph object store account %q", cephObjectStoreAccount.Name)
-			}
 
 			// Remove finalizer
 			err = opcontroller.RemoveFinalizer(r.opManagerContext, r.client, cephObjectStoreAccount)
@@ -233,11 +229,13 @@ func (r *ReconcileObjectStoreAccount) reconcile(request reconcile.Request) (reco
 		log.NamedDebug(request.NamespacedName, logger, "deleting object store account")
 		r.recorder.Eventf(cephObjectStoreAccount, nil, corev1.EventTypeNormal, string(cephv1.ReconcileStarted), string(cephv1.ReconcileStarted), "deleting CephObjectStoreAccount %q", cephObjectStoreAccount.Name)
 
-		err := r.deleteAccount(cephObjectStoreAccount)
+		requeue, err := r.deleteAccount(cephObjectStoreAccount)
 		if err != nil {
 			return reconcile.Result{}, *cephObjectStoreAccount, errors.Wrapf(err, "failed to delete ceph object store account %q", cephObjectStoreAccount.Name)
 		}
-
+		if requeue {
+			return reconcile.Result{Requeue: true, RequeueAfter: 2 * time.Minute}, *cephObjectStoreAccount, nil
+		}
 		// Remove finalizer
 		err = opcontroller.RemoveFinalizer(r.opManagerContext, r.client, cephObjectStoreAccount)
 		if err != nil {
@@ -423,12 +421,12 @@ func (r *ReconcileObjectStoreAccount) persistAccountIDToStatus(cephObjectStoreAc
 	return nil
 }
 
-func (r *ReconcileObjectStoreAccount) deleteAccount(cephObjectStoreAccount *cephv1.CephObjectStoreAccount) error {
+func (r *ReconcileObjectStoreAccount) deleteAccount(cephObjectStoreAccount *cephv1.CephObjectStoreAccount) (bool, error) {
 	nsName := types.NamespacedName{Namespace: cephObjectStoreAccount.Namespace, Name: cephObjectStoreAccount.Name}
 	accountID := getAccountID(cephObjectStoreAccount)
 	if accountID == "" {
 		log.NamedInfo(nsName, logger, "no account ID found, skipping deletion")
-		return nil
+		return false, nil
 	}
 
 	// Only delete the account if we have ownership proof (status contains the account ID).
@@ -438,7 +436,7 @@ func (r *ReconcileObjectStoreAccount) deleteAccount(cephObjectStoreAccount *ceph
 	hasOwnershipProof := cephObjectStoreAccount.Status != nil && cephObjectStoreAccount.Status.AccountID == accountID
 	if !hasOwnershipProof {
 		log.NamedInfo(nsName, logger, "account %q was never successfully managed by this CR, skipping deletion to avoid removing a foreign account", accountID)
-		return nil
+		return false, nil
 	}
 
 	// Always attempt to delete the root user to ensure cleanup
@@ -447,7 +445,7 @@ func (r *ReconcileObjectStoreAccount) deleteAccount(cephObjectStoreAccount *ceph
 	err := object.DeleteAccountRootUser(r.opManagerContext, r.objContext, rootUserID)
 	if err != nil {
 		if !errors.Is(err, admin.ErrNoSuchUser) {
-			return errors.Wrapf(err, "failed to delete root user %q for account %q", rootUserID, accountID)
+			return false, errors.Wrapf(err, "failed to delete root user %q for account %q", rootUserID, accountID)
 		}
 		log.NamedInfo(nsName, logger, "root user %q not found, considering deletion successful", rootUserID)
 	} else {
@@ -456,18 +454,26 @@ func (r *ReconcileObjectStoreAccount) deleteAccount(cephObjectStoreAccount *ceph
 
 	log.NamedInfo(nsName, logger, "deleting account %q", accountID)
 
-	err = object.DeleteAccount(r.opManagerContext, r.objContext, accountID)
-	if err != nil {
-		// If account doesn't exist, consider it successful (idempotent)
-		if errors.Is(err, admin.ErrNoSuchKey) {
-			log.NamedInfo(nsName, logger, "account %q not found, considering deletion successful", accountID)
-			return nil
+	// if `rook.io/force-deletion` annotation is set to true, we will force delete the account even if it contains S3 resources
+	if opcontroller.ForceDeleteRequested(cephObjectStoreAccount.Annotations) {
+		log.NamedInfo(nsName, logger, "force-deletion annotation set to true, forcing deletion of account %q", accountID)
+		requeue, err := object.ForceDeleteAccount(cephObjectStoreAccount.UID, nsName, r.objContext, accountID, r.cephClusterSpec)
+		if err != nil {
+			return requeue, errors.Wrapf(err, "failed to force delete account %q", accountID)
 		}
-		return errors.Wrapf(err, "failed to delete account %q", accountID)
+		if requeue {
+			return requeue, nil
+		}
+	} else {
+		log.NamedInfo(nsName, logger, "force-deletion annotation not set for account %q, manual cleanup may be required if the account contains S3 resources", accountID)
+		err = object.DeleteAccount(nsName, r.opManagerContext, r.objContext, accountID)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to delete account %q, manual cleanup may be required if the account contains S3 resources", accountID)
+		}
 	}
 
 	log.NamedInfo(nsName, logger, "successfully deleted account %q", accountID)
-	return nil
+	return false, nil
 }
 
 // deleteRootUserSecret deletes the Kubernetes secret for root user credentials, treating "not found" as success.

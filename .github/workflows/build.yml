@@ -77,13 +77,19 @@ jobs:
       - name: validate gen-csv
         run: tests/scripts/validate_modified_files.sh gen-csv
 
+      - name: run gen-toolbox
+        run: make gen-toolbox
+
+      - name: validate gen-toolbox
+        run: tests/scripts/validate_modified_files.sh gen-toolbox
+
   linux-build-all:
     runs-on: ubuntu-22.04
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-ci')"
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.26"]
+        go-version: ["1.26", "1.27"]
     steps:
       - name: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

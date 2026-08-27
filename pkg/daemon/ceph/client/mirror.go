@@ -61,13 +61,13 @@ var (
 	radosNamespaceMirroringMinimumVersion = cephver.CephVersion{Major: 19, Minor: 2, Extra: 0} // Modified for downstream
 )
 
-// ImportRBDMirrorBootstrapPeer add a mirror peer in the rbd-mirror configuration
+// ImportRBDMirrorBootstrapPeer adds a mirror peer in the rbd-mirror configuration
 func ImportRBDMirrorBootstrapPeer(context *clusterd.Context, clusterInfo *ClusterInfo, poolName string, direction string, token []byte) error {
 	logger.Infof("add rbd-mirror bootstrap peer token for pool %q", poolName)
 
 	// Token file
 	tokenFilePattern := fmt.Sprintf("rbd-mirror-token-%s", poolName)
-	tokenFilePath, err := os.CreateTemp("/tmp", tokenFilePattern)
+	tokenFilePath, err := os.CreateTemp("", tokenFilePattern)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create temporary token file for pool %q", poolName)
 	}
@@ -115,7 +115,7 @@ func ImportRBDMirrorBootstrapPeer(context *clusterd.Context, clusterInfo *Cluste
 	return nil
 }
 
-// CreateRBDMirrorBootstrapPeer add a mirror peer in the rbd-mirror configuration
+// CreateRBDMirrorBootstrapPeer creates a bootstrap peer token for the rbd-mirror configuration
 func CreateRBDMirrorBootstrapPeer(context *clusterd.Context, clusterInfo *ClusterInfo, poolName string) ([]byte, error) {
 	logger.Infof("create rbd-mirror bootstrap peer token for pool %q", poolName)
 
@@ -219,7 +219,7 @@ func GetPoolMirroringStatus(context *clusterd.Context, clusterInfo *ClusterInfo,
 
 	if poolMirroringStatus.Summary != nil {
 		// for backward compatibility, we need to set the states field
-		// so to avoid breaking changes in the CRD that rook user might be using
+		// so to avoid breaking changes in the CRD that rook users might be using
 		if poolMirroringStatus.Summary.ImageStates != nil {
 			poolMirroringStatus.Summary.States = *poolMirroringStatus.Summary.ImageStates
 		}
@@ -251,7 +251,7 @@ func GetMirroredPoolImages(context *clusterd.Context, clusterInfo *ClusterInfo, 
 	return &mirroredImages, nil
 }
 
-// GetPoolMirroringInfo  prints the pool mirroring information
+// GetPoolMirroringInfo prints the pool mirroring information
 // `poolName` is the name of the pool or the pool/radosNamespace
 func GetPoolMirroringInfo(context *clusterd.Context, clusterInfo *ClusterInfo, poolName string) (*cephv1.MirroringInfo, error) {
 	logger.Debugf("retrieving mirroring pool %q info", poolName)
@@ -276,7 +276,7 @@ func GetPoolMirroringInfo(context *clusterd.Context, clusterInfo *ClusterInfo, p
 	return &poolMirroringInfo, nil
 }
 
-// enableSnapshotSchedule configures the snapshots schedule on a mirrored pool
+// enableSnapshotSchedule configures the snapshot schedule on a mirrored pool
 func enableSnapshotSchedule(context *clusterd.Context, clusterInfo *ClusterInfo, snapSpec cephv1.SnapshotScheduleSpec, poolName string) error {
 	logger.Infof("enabling snapshot schedule for pool %q", poolName)
 
@@ -299,7 +299,7 @@ func enableSnapshotSchedule(context *clusterd.Context, clusterInfo *ClusterInfo,
 	return nil
 }
 
-// removeSnapshotSchedule removes the snapshots schedule on a mirrored pool
+// removeSnapshotSchedule removes the snapshot schedule on a mirrored pool
 func removeSnapshotSchedule(context *clusterd.Context, clusterInfo *ClusterInfo, snapScheduleResponse cephv1.SnapshotSchedule, poolName string) error {
 	logger.Debugf("removing snapshot schedule for pool %q (before adding new ones)", poolName)
 
@@ -344,7 +344,7 @@ func EnableSnapshotSchedules(context *clusterd.Context, clusterInfo *ClusterInfo
 
 // removeSnapshotSchedules removes all the existing snapshot schedules
 func removeSnapshotSchedules(context *clusterd.Context, clusterInfo *ClusterInfo, pool string) error {
-	// Get the list of existing snapshot schedule
+	// Get the list of existing snapshot schedules
 	existingSnapshotSchedules, err := listSnapshotSchedules(context, clusterInfo, pool)
 	if err != nil {
 		return errors.Wrap(err, "failed to list snapshot schedule(s)")
@@ -361,7 +361,7 @@ func removeSnapshotSchedules(context *clusterd.Context, clusterInfo *ClusterInfo
 	return nil
 }
 
-// listSnapshotSchedules configures the snapshots schedule on a mirrored pool
+// listSnapshotSchedules lists the snapshot schedules on a mirrored pool
 func listSnapshotSchedules(context *clusterd.Context, clusterInfo *ClusterInfo, poolName string) ([]cephv1.SnapshotSchedule, error) {
 	// Build command
 	args := []string{"mirror", "snapshot", "schedule", "ls", "--pool", poolName}
@@ -384,7 +384,7 @@ func listSnapshotSchedules(context *clusterd.Context, clusterInfo *ClusterInfo, 
 	return snapshotSchedules, nil
 }
 
-// ListSnapshotSchedulesRecursively configures the snapshots schedule on a mirrored pool
+// ListSnapshotSchedulesRecursively recursively lists the snapshot schedules on a mirrored pool
 func ListSnapshotSchedulesRecursively(context *clusterd.Context, clusterInfo *ClusterInfo, poolName string) ([]cephv1.SnapshotSchedulesSpec, error) {
 	// Build command
 	args := []string{"mirror", "snapshot", "schedule", "ls", "--pool", poolName, "--recursive"}
@@ -475,22 +475,25 @@ So the scenario looks like:
  6. Repeat the steps flipping source and destination to enable
     bi-directional mirroring
 */
-func CreateRBDMirrorBootstrapPeerWithoutPool(context *clusterd.Context, clusterInfo *ClusterInfo, rotateMirrorPeerKey bool) ([]byte, error) {
+func CreateRBDMirrorBootstrapPeerWithoutPool(context *clusterd.Context, clusterInfo *ClusterInfo, keyType string, rotateMirrorPeerKey bool) ([]byte, error) {
 	fullClientName := getQualifiedUser(rbdMirrorPeerKeyringID)
 	logger.Infof("create rbd-mirror bootstrap peer token %q", fullClientName)
-	key, err := AuthGetOrCreateKey(context, clusterInfo, fullClientName, rbdMirrorPeerCaps)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create rbd-mirror peer key %q", fullClientName)
-	}
-	logger.Infof("successfully created rbd-mirror bootstrap peer token for cluster %q", clusterInfo.NamespacedName().Name)
 
-	if rotateMirrorPeerKey {
+	key := ""
+	var err error
+	if !rotateMirrorPeerKey {
+		// when user changes key type, `auth get-or-create` will fail, so only call this when not rotating
+		key, err = AuthGetOrCreateKey(context, clusterInfo, fullClientName, keyType, rbdMirrorPeerCaps)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create rbd-mirror peer key %q", fullClientName)
+		}
+		logger.Infof("successfully created rbd-mirror bootstrap peer token for cluster %q", clusterInfo.NamespacedName().Name)
+	} else {
 		logger.Infof("rotating cephx key for rbd-mirror peer key %q in namespace %q", fullClientName, clusterInfo.Namespace)
-		newKey, err := AuthRotate(context, clusterInfo, fullClientName)
+		key, err = AuthRotate(context, clusterInfo, fullClientName, keyType)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to rotate rbd-mirror peer key for %q", fullClientName)
 		}
-		key = newKey
 	}
 
 	mons := sets.New[string]()

@@ -86,14 +86,15 @@ func (r *ReconcileCephNFS) generateKeyring(n *cephv1.CephNFS, name string) error
 	ownerInfo := k8sutil.NewOwnerInfo(n, r.scheme)
 	s := keyring.GetSecretStore(r.context, r.clusterInfo, ownerInfo)
 
-	key, err := s.GenerateKey(user, caps)
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	key, err := s.GenerateKey(user, keyType, caps)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create user %s", user)
 	}
 
 	if r.shouldRotateCephxKeys {
 		log.NamedInfo(nsName, logger, "rotating cephx key for nfs daemon %q", instanceName(n, name))
-		newKey, err := s.RotateKey(user)
+		newKey, err := s.RotateKey(user, keyType)
 		if err != nil {
 			return errors.Wrapf(err, "failed to rotate cephx key for nfs daemon %q", instanceName(n, name))
 		}
@@ -165,7 +166,7 @@ func ganeshaKrbConfigBlock(kerberosSpec *cephv1.KerberosSpec) string {
 }
 
 func ganeshaConfigIncludeKrbBlock(nfs *cephv1.CephNFS, radosObjectName string) string {
-	// don't use sprintf b/c %u on front makes compiler confused
+	// don't use sprintf b/c %u on front makes the compiler confused
 	return `%url "rados://` + nfs.Spec.RADOS.Pool + `/` + nfs.Spec.RADOS.Namespace + `/` + radosObjectName + `"` + "\n\n"
 }
 

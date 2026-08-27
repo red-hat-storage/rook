@@ -13,6 +13,8 @@ docker push "$tag_image"
 
 # build and push rook bundle
 export ROOK_IMAGE=$tag_image
+# Export CSV_VERSION if specified else use the one in makefile
+[ -n "$CSV_VER" ] && export CSV_VERSION=${CSV_VER}
 make gen-csv
 DOCKERCMD=podman BUNDLE_IMAGE=quay.io/ocs-dev/rook-ceph-operator-bundle:${BRANCH_NAME}-$git_hash make bundle
 podman push quay.io/ocs-dev/rook-ceph-operator-bundle:"${BRANCH_NAME}"-"$git_hash"

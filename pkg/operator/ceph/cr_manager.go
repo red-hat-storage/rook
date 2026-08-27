@@ -63,7 +63,7 @@ var resourcesSchemeFuncs = []func(*runtime.Scheme) error{
 	cephv1.AddToScheme,
 }
 
-// EnableMachineDisruptionBudget checks whether machine disruption budget is enabled
+// EnableMachineDisruptionBudget indicates whether the machine disruption budget is enabled
 var EnableMachineDisruptionBudget bool
 
 // AddToManagerFuncsMaintenance is a list of functions to add all Controllers to the Manager (entrypoint for controller)
@@ -103,7 +103,7 @@ var AddToManagerFuncs = []func(manager.Manager, *clusterd.Context, context.Conte
 
 // addToManager adds all the registered controllers to the passed manager.
 // each controller package will have an Add method listed in AddToManagerFuncs
-// which will setup all the necessary watch
+// which will set up all the necessary watches
 func (o *Operator) addToManager(m manager.Manager, c *controllerconfig.Context, opManagerContext context.Context, opconfig opcontroller.OperatorConfig) error {
 	if c == nil {
 		return errors.New("nil context passed")
@@ -160,10 +160,7 @@ func (o *Operator) startCRDManager(context context.Context, mgrErrorCh chan erro
 
 	if o.config.NamespaceToWatch != "" {
 		mgrOpts.Cache = cache.Options{
-			DefaultNamespaces: map[string]cache.Config{
-				o.config.NamespaceToWatch: {},
-				"openshift-etcd":          {},
-			},
+			DefaultNamespaces: map[string]cache.Config{o.config.NamespaceToWatch: {}},
 		}
 	}
 

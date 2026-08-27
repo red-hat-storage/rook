@@ -134,7 +134,7 @@ func (c *updateConfig) updateExistingOSDs(errs *provisionErrors) {
 			continue
 		}
 
-		// osdIDQuery which has been popped off the queue but it does need to be updated
+		// osdIDQuery has been popped off the queue, but it does need to be updated
 		if osdID != osdIDQuery && !c.queue.Exists(osdID) {
 			log.NamespacedDebug(c.cluster.clusterInfo.Namespace, logger, "not updating deployment for OSD %d that is not in the update queue. the OSD has already been updated", osdID)
 			continue
@@ -159,7 +159,7 @@ func (c *updateConfig) updateExistingOSDs(errs *provisionErrors) {
 		}
 
 		// backward compatibility for old deployments
-		// Checking DeviceClass with None too, because ceph-volume lvm list return crush device class as None
+		// Checking DeviceClass with None too, because ceph-volume lvm list returns crush device class as None
 		// Tracker https://tracker.ceph.com/issues/53425
 		if osdInfo.DeviceClass == "" || osdInfo.DeviceClass == "None" {
 			deviceClassInfo, err := cephclient.OSDDeviceClasses(c.cluster.context, c.cluster.clusterInfo, []string{strconv.Itoa(osdID)})
@@ -232,7 +232,7 @@ func (c *updateConfig) updateExistingOSDs(errs *provisionErrors) {
 	c.queue.Remove(osdIDs)
 }
 
-// getOSDUpdateInfo returns an update queue of OSDs which need updated and an existence list of OSD
+// getOSDUpdateInfo returns an update queue of OSDs which need to be updated and an existence list of OSD
 // Deployments which already exist.
 func (c *Cluster) getOSDUpdateInfo(errs *provisionErrors) (*updateQueue, *existenceList, error) {
 	namespace := c.clusterInfo.Namespace
@@ -264,7 +264,7 @@ func (c *Cluster) getOSDUpdateInfo(errs *provisionErrors) (*updateQueue, *existe
 	return updateQueue, existenceList, nil
 }
 
-// An updateQueue keeps track of OSDs which need updated.
+// An updateQueue keeps track of OSDs which need to be updated.
 type updateQueue struct {
 	q []int // just a list of OSD IDs
 }
@@ -327,7 +327,7 @@ func (q *updateQueue) Remove(osdIDs []int) {
 	q.q = q.q[:lastIdx]
 }
 
-// An existenceList keeps track of which OSDs already have Deployments created for them that is
+// An existenceList keeps track of which OSDs already have Deployments created for them. It is
 // queryable in O(1) time.
 type existenceList struct {
 	m map[int]bool
@@ -358,7 +358,7 @@ func (e *existenceList) Add(osdID int) {
 	e.m[osdID] = true
 }
 
-// Exists returns true if an item is recorded in the existence list or false if it does not.
+// Exists returns true if an item is recorded in the existence list or false if it is not.
 func (e *existenceList) Exists(osdID int) bool {
 	_, ok := e.m[osdID]
 	return ok
@@ -397,15 +397,17 @@ func (c *Cluster) rotateCephxKey(osdInfo OSDInfo) (cephv1.CephxStatus, error) {
 	runningCephVersion := c.clusterInfo.CephVersion
 	desiredCephVersion := c.clusterInfo.CephVersion
 	shouldRotate, err := keyring.ShouldRotateCephxKeys(c.spec.Security.CephX.Daemon,
-		runningCephVersion, desiredCephVersion, osdInfo.CephxStatus)
+		runningCephVersion, desiredCephVersion, osdInfo.CephxStatus, true, c.clusterInfo.Namespace) // daemon key type always takes the default from setDefaultCephxKeyType()
 	if err != nil {
 		return osdInfo.CephxStatus, errors.Wrapf(err, "failed to determine if cephx key for OSD %d needs rotated", osdInfo.ID)
 	}
 
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+
 	didRotateCephxStatus := keyring.UpdatedCephxStatus(true, c.spec.Security.CephX.Daemon,
-		c.clusterInfo.CephVersion, osdInfo.CephxStatus)
+		c.clusterInfo.CephVersion, osdInfo.CephxStatus, keyType)
 	didNotRotateCephxStatus := keyring.UpdatedCephxStatus(false, c.spec.Security.CephX.Daemon,
-		c.clusterInfo.CephVersion, osdInfo.CephxStatus)
+		c.clusterInfo.CephVersion, osdInfo.CephxStatus, keyType)
 
 	if !shouldRotate {
 		return didNotRotateCephxStatus, nil
@@ -414,7 +416,8 @@ func (c *Cluster) rotateCephxKey(osdInfo OSDInfo) (cephv1.CephxStatus, error) {
 	log.NamespacedInfo(c.clusterInfo.Namespace, logger, "rotating cephx key of OSD %d for CephCluster in namespace %q", osdInfo.ID, c.clusterInfo.Namespace)
 	user := fmt.Sprintf("osd.%d", osdInfo.ID)
 	// Note: OSD key is not stored in k8s secret; rotated key is picked up by OSD init container
-	_, err = cephclient.AuthRotate(c.context, c.clusterInfo, user)
+
+	_, err = cephclient.AuthRotate(c.context, c.clusterInfo, user, string(keyType))
 	if err != nil {
 		return didNotRotateCephxStatus, errors.Wrapf(err, "failed to rotate cephx key for OSD %d", osdInfo.ID)
 	}
@@ -423,7 +426,7 @@ func (c *Cluster) rotateCephxKey(osdInfo OSDInfo) (cephv1.CephxStatus, error) {
 	if osdInfo.Encrypted {
 		osdLockBoxUser := fmt.Sprintf("client.osd-lockbox.%s", osdInfo.UUID)
 		log.NamespacedInfo(c.clusterInfo.Namespace, logger, "rotating osd-lockbox cephx key of encrypted OSD %d for CephCluster in namespace %q", osdInfo.ID, c.clusterInfo.Namespace)
-		_, err = cephclient.AuthRotate(c.context, c.clusterInfo, osdLockBoxUser)
+		_, err = cephclient.AuthRotate(c.context, c.clusterInfo, osdLockBoxUser, string(keyType))
 		if err != nil {
 			return didNotRotateCephxStatus, errors.Wrapf(err, "failed to rotate osd-lockbox cephx key for the encrypted OSD %d", osdInfo.ID)
 		}

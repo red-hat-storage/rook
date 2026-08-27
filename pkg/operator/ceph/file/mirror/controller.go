@@ -147,7 +147,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	return nil
 }
 
-// Reconcile reads that state of the cluster for a CephFilesystemMirror object and makes changes based on the state read
+// Reconcile reads the state of the cluster for a CephFilesystemMirror object and makes changes based on the state read
 // and what is in the CephFilesystemMirror.Spec
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
@@ -247,7 +247,9 @@ func (r *ReconcileFilesystemMirror) reconcile(request reconcile.Request) (reconc
 	r.clusterInfo.CephVersion = *runningCephVersion
 
 	// check if cephRBDMirror daemon keys should be rotated or not
-	r.shouldRotateCephxKeys, err = keyring.ShouldRotateCephxKeys(cephCluster.Spec.Security.CephX.Daemon, *runningCephVersion, *runningCephVersion, filesystemMirror.Status.Cephx.Daemon)
+	// daemon key type always takes the default from setDefaultCephxKeyType()
+	r.shouldRotateCephxKeys, err = keyring.ShouldRotateCephxKeys(
+		cephCluster.Spec.Security.CephX.Daemon, *runningCephVersion, *runningCephVersion, filesystemMirror.Status.Cephx.Daemon, true, r.clusterInfo.Namespace)
 	if err != nil {
 		return reconcile.Result{}, *filesystemMirror, errors.Wrapf(err, "failed to determine if cephx keys should be rotated for the cephFileSystemMirror %q", request.NamespacedName)
 	}
@@ -262,7 +264,8 @@ func (r *ReconcileFilesystemMirror) reconcile(request reconcile.Request) (reconc
 		return opcontroller.ImmediateRetryResult, *filesystemMirror, errors.Wrap(err, "failed to create ceph filesystem mirror deployments")
 	}
 
-	cephxStatus := keyring.UpdatedCephxStatus(r.shouldRotateCephxKeys, r.cephClusterSpec.Security.CephX.Daemon, r.clusterInfo.CephVersion, filesystemMirror.Status.Cephx.Daemon)
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	cephxStatus := keyring.UpdatedCephxStatus(r.shouldRotateCephxKeys, r.cephClusterSpec.Security.CephX.Daemon, r.clusterInfo.CephVersion, filesystemMirror.Status.Cephx.Daemon, keyType)
 
 	// update ObservedGeneration in status at the end of reconcile
 	// Set Ready status, we are done reconciling

@@ -122,7 +122,7 @@ func GetPoolNamesByID(context *clusterd.Context, clusterInfo *ClusterInfo) (map[
 	return names, nil
 }
 
-func getPoolApplication(context *clusterd.Context, clusterInfo *ClusterInfo, poolName string) (string, error) {
+func GetPoolApplication(context *clusterd.Context, clusterInfo *ClusterInfo, poolName string) (string, error) {
 	args := []string{"osd", "pool", "application", "get", poolName}
 	appDetails, err := NewCephCommand(context, clusterInfo, args).Run()
 	if err != nil {
@@ -160,7 +160,7 @@ func GetPoolDetails(context *clusterd.Context, clusterInfo *ClusterInfo, name st
 func ParsePoolDetails(in []byte) (CephStoragePoolDetails, error) {
 	// The response for osd pool get when passing var=all is actually malformed JSON similar to:
 	// {"pool":"rbd","size":1}{"pool":"rbd","min_size":2}...
-	// Note the multiple top level entities, one for each property returned.  To workaround this,
+	// Note the multiple top level entities, one for each property returned.  To work around this,
 	// we split the JSON response string into its top level entities, then iterate through them, cleaning
 	// up the JSON.  A single pool details object is repeatedly used to unmarshal each JSON snippet into.
 	// Since previously set fields remain intact if they are not overwritten, the result is the JSON
@@ -209,7 +209,7 @@ func CreatePoolWithPGs(context *clusterd.Context, clusterInfo *ClusterInfo, clus
 	}
 
 	if !pool.IsErasureCoded() {
-		// neither a replicated or EC pool
+		// neither a replicated nor an EC pool
 		return errors.Errorf("pool %q type is not defined as replicated or erasure coded", pool.Name)
 	}
 
@@ -324,7 +324,7 @@ func DeletePool(context *clusterd.Context, clusterInfo *ClusterInfo, name string
 }
 
 func givePoolAppTag(context *clusterd.Context, clusterInfo *ClusterInfo, poolName, appName string) error {
-	currentAppName, err := getPoolApplication(context, clusterInfo, poolName)
+	currentAppName, err := GetPoolApplication(context, clusterInfo, poolName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get application for pool %q", poolName)
 	}

@@ -160,7 +160,7 @@ func add(opManagerContext context.Context, mgr manager.Manager, r reconcile.Reco
 		return err
 	}
 
-	// Watch for ConfigMap "rook-ceph-mon-endpoints" update and reconcile, which will reconcile update the bootstrap peer token
+	// Watch for ConfigMap "rook-ceph-mon-endpoints" update and reconcile, which will reconcile and update the bootstrap peer token
 	err = c.Watch(
 		source.Kind(
 			mgr.GetCache(),
@@ -176,7 +176,7 @@ func add(opManagerContext context.Context, mgr manager.Manager, r reconcile.Reco
 	return nil
 }
 
-// Reconcile reads that state of the cluster for a CephFilesystem object and makes changes based on the state read
+// Reconcile reads the state of the cluster for a CephFilesystem object and makes changes based on the state read
 // and what is in the cephFilesystem.Spec
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
@@ -309,7 +309,7 @@ func (r *ReconcileCephFilesystem) reconcile(request reconcile.Request) (reconcil
 				errors.Wrapf(err, "failed to delete filesystem %q. ", cephFilesystem.Name)
 		}
 
-		// If the ceph fs still in the map, we must remove it during CR deletion
+		// If the ceph fs is still in the map, we must remove it during CR deletion
 		r.cancelMirrorMonitoring(cephFilesystem)
 
 		// Remove finalizer
@@ -362,8 +362,9 @@ func (r *ReconcileCephFilesystem) reconcile(request reconcile.Request) (reconcil
 			errors.Wrapf(err, "invalid object filesystem %q arguments", cephFilesystem.Name)
 	}
 
+	// daemon key type always takes the default from setDefaultCephxKeyType()
 	r.shouldRotateCephxKeys, err = keyring.ShouldRotateCephxKeys(cephCluster.Spec.Security.CephX.Daemon, *runningCephVersion,
-		*desiredCephVersion, cephFilesystem.Status.Cephx.Daemon)
+		*desiredCephVersion, cephFilesystem.Status.Cephx.Daemon, true, r.clusterInfo.Namespace)
 	if err != nil {
 		return reconcile.Result{}, *cephFilesystem, errors.Wrap(err, "failed to determine if cephx keys should be rotated")
 	}
@@ -383,7 +384,24 @@ func (r *ReconcileCephFilesystem) reconcile(request reconcile.Request) (reconcil
 	}
 
 	// update Mds cephx status
-	cephxStatus := keyring.UpdatedCephxStatus(r.shouldRotateCephxKeys, cephCluster.Spec.Security.CephX.Daemon, r.clusterInfo.CephVersion, cephFilesystem.Status.Cephx.Daemon)
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	cephxStatus := keyring.UpdatedCephxStatus(r.shouldRotateCephxKeys, cephCluster.Spec.Security.CephX.Daemon, r.clusterInfo.CephVersion, cephFilesystem.Status.Cephx.Daemon, keyType)
+
+	// Attempt to determine the authoritative key type of the MDSes for this filesystem.
+	// If this fails, leave the key type as it would have been.
+	// Note: This code is intended to be best-effort at present. This may pick up other filesystems
+	// if the current FS name is a prefix of another/others. If such FSes have different key types,
+	// it will fall back to less precise reporting. If FSes have the same key type, the
+	// authoritative determination will still be valid for this FS.
+	keyPrefix := fmt.Sprintf("%s-", cephFilesystem.Name)
+	mdsKeyType, err := keyring.DetermineCephxKeyTypesForEntityType(r.context, r.clusterInfo, cephclient.AuthDumpKeysEntityTypeMds, keyPrefix)
+	if err == nil && len(mdsKeyType) == 1 {
+		log.NamespacedDebug(clusterInfo.Namespace, logger, "determined authoritative cephx key type for MDSes is %q", mdsKeyType[0])
+		cephxStatus.KeyType = cephv1.CephxKeyType(mdsKeyType[0])
+	} else {
+		log.NamespacedInfo(clusterInfo.Namespace, logger, "failed to determine authoritative cephx key type for MDSes having key types [%v]: %v", mdsKeyType, err)
+	}
+
 	_, err = r.updateStatus(observedGeneration, request.NamespacedName, cephv1.ConditionProgressing, nil, &cephxStatus)
 	if err != nil {
 		return reconcile.Result{}, *cephFilesystem, errors.Wrapf(err, "failed to set cephx status for cephFileSystem %q", request.NamespacedName)
@@ -450,7 +468,7 @@ func (r *ReconcileCephFilesystem) reconcile(request reconcile.Request) (reconcil
 
 	if !statusUpdated {
 		// update ObservedGeneration in status at the end of reconcile
-		// Set Ready status, we are done reconciling$
+		// Set Ready status, we are done reconciling
 		// TODO: set status to Ready **only** if the filesystem is ready
 		_, err := r.updateStatus(observedGeneration, request.NamespacedName, cephv1.ConditionReady, nil, &cephxStatus)
 		if err != nil {

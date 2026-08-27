@@ -65,6 +65,7 @@ rules:
     resources:
       - networkpolicies
     verbs:
+      - get
       - create
       - update
       - delete

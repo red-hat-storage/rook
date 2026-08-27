@@ -58,7 +58,7 @@ import (
 // OpenStack CLI client (keystone- and swift-functionality).
 // (see https://docs.openstack.org/python-openstackclient/latest/).
 // This was a conscious design decision to use the standard client tooling
-// as close as possible to the used instead of using other go-libraries
+// as closely as possible, instead of using other go-libraries
 // (such as gophercloud) to (re-)implement the client tooling for the test.
 // ***************************************************
 
@@ -146,7 +146,7 @@ func (h *KeystoneAuthSuite) AfterTest(suiteName, testName string) {
 	h.installer.CollectOperatorLog(suiteName, testName)
 }
 
-// Test Object StoreCreation on Rook that was installed via helm
+// Test Object Store Creation on Rook that was installed via helm
 func (h *KeystoneAuthSuite) TestObjectStoreOnRookInstalledViaHelmUsingKeystone() {
 	deleteStore := true
 	tls := false
@@ -160,7 +160,6 @@ func (h *KeystoneAuthSuite) TestWithSwiftAndKeystone() {
 	tls := false
 	swiftAndKeystone := true
 
-	objectStoreServicePrefix = objectStoreServicePrefixUniq
 	runSwiftE2ETest(h.T(), h.helper, h.k8shelper, h.installer, h.settings.Namespace, "default", 3, deleteStore, tls, swiftAndKeystone)
 	cleanUpTLSks(h)
 }
@@ -170,7 +169,6 @@ func (h *KeystoneAuthSuite) TestWithS3AndKeystone() {
 	tls := false
 	swiftAndKeystone := true
 
-	objectStoreServicePrefix = objectStoreServicePrefixUniq
 	runS3E2ETest(h.T(), h.helper, h.k8shelper, h.installer, h.settings.Namespace, "default", 3, deleteStore, tls, swiftAndKeystone)
 	cleanUpTLSks(h)
 }

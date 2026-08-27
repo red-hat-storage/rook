@@ -39,6 +39,11 @@ const TimeoutWaitingForMessage = "exec timeout waiting for"
 
 var CephCommandsTimeout = 15 * time.Second
 
+// outputDrainGracePeriod bounds how long executeCommandWithTimeout waits for the
+// os/exec output-copier goroutines to drain after killing a timed-out process,
+// so a killed command that orphaned a pipe holder cannot block the caller forever.
+var outputDrainGracePeriod = 500 * time.Millisecond
+
 // Executor is the main interface for all the exec commands
 type Executor interface {
 	ExecuteCommand(command string, arg ...string) error
@@ -52,12 +57,12 @@ type Executor interface {
 // CommandExecutor is the type of the Executor
 type CommandExecutor struct{}
 
-// ExecuteCommand starts a process and wait for its completion
+// ExecuteCommand starts a process and waits for its completion
 func (c *CommandExecutor) ExecuteCommand(command string, arg ...string) error {
 	return c.ExecuteCommandWithEnv([]string{}, command, arg...)
 }
 
-// ExecuteCommandWithStdin starts a process, provides stdin and wait for its completion  with timeout.
+// ExecuteCommandWithStdin starts a process, provides stdin and waits for its completion with timeout.
 func (c *CommandExecutor) ExecuteCommandWithStdin(timeout time.Duration, command string, stdin *string, arg ...string) error {
 	output, err := executeCommandWithTimeout(timeout, command, stdin, arg...)
 	logger.Infof("Command %q output: %q", command, output)
@@ -65,7 +70,7 @@ func (c *CommandExecutor) ExecuteCommandWithStdin(timeout time.Duration, command
 	return err
 }
 
-// ExecuteCommandWithEnv starts a process with env variables and wait for its completion
+// ExecuteCommandWithEnv starts a process with env variables and waits for its completion
 func (*CommandExecutor) ExecuteCommandWithEnv(env []string, command string, arg ...string) error {
 	cmd, stdout, stderr, err := startCommand(env, command, arg...)
 	if err != nil {
@@ -88,12 +93,12 @@ func IsTimeout(err error) bool {
 	return strings.Contains(err.Error(), TimeoutWaitingForMessage)
 }
 
-// ExecuteCommandWithTimeout starts a process and wait for its completion with timeout.
+// ExecuteCommandWithTimeout starts a process and waits for its completion with timeout.
 func (*CommandExecutor) ExecuteCommandWithTimeout(timeout time.Duration, command string, arg ...string) (string, error) {
 	return executeCommandWithTimeout(timeout, command, nil, arg...)
 }
 
-// executeCommandWithTimeout starts a process, provides stdin and wait for its completion with timeout.
+// executeCommandWithTimeout starts a process, provides stdin and waits for its completion with timeout.
 func executeCommandWithTimeout(timeout time.Duration, command string, stdin *string, arg ...string) (string, error) {
 	logCommand(command, arg...)
 	//nolint:gosec // Rook controls the input to the exec arguments
@@ -122,14 +127,26 @@ func executeCommandWithTimeout(timeout time.Duration, command string, stdin *str
 		case <-time.After(timeout):
 			if interruptSent {
 				logger.Infof("%s process %s to return after interrupt signal was sent. Sending kill signal to the process", TimeoutWaitingForMessage, command)
-				var e error
 				if err := cmd.Process.Kill(); err != nil {
 					logger.Errorf("Failed to kill process %s: %v", command, err)
-					e = fmt.Errorf("%s the command %s to return after interrupt signal was sent. Tried to kill the process but that failed: %v", TimeoutWaitingForMessage, command, err)
-				} else {
-					e = fmt.Errorf("%s the command %s to return", TimeoutWaitingForMessage, command)
+					// The process may still be running with the output-copier
+					// goroutines writing into b, so don't read it here.
+					return "", fmt.Errorf("%s the command %s to return; sent an interrupt, then the kill failed: %v", TimeoutWaitingForMessage, command, err)
 				}
-				return strings.TrimSpace(b.String()), e
+				// Kill() only signals the process; the os/exec goroutines that copy
+				// its output into b are joined only by cmd.Wait() (done). Reading b
+				// before done fires races with those writers, so wait for them. Bound
+				// the wait, though — a killed process can leave an orphaned descendant
+				// holding the output pipe open (a D-state cryptsetup/dmsetup child, or
+				// the downstream of a "sh -c '... | head'" pipeline), so cmd.Wait() may
+				// never return. Give up on the captured output after a grace period
+				// rather than blocking the caller forever.
+				select {
+				case <-done:
+					return strings.TrimSpace(b.String()), fmt.Errorf("%s the command %s to return", TimeoutWaitingForMessage, command)
+				case <-time.After(outputDrainGracePeriod):
+					return "", fmt.Errorf("%s the command %s to return", TimeoutWaitingForMessage, command)
+				}
 			}
 
 			logger.Infof("%s process %s to return. Sending interrupt signal to the process", TimeoutWaitingForMessage, command)
@@ -249,7 +266,7 @@ func runCommandWithOutput(cmd *exec.Cmd, combinedOutput bool) (string, error) {
 }
 
 func logCommand(command string, arg ...string) {
-	logger.Debugf("Running command: %s %s", command, strings.Join(arg, " "))
+	logger.Debugf("Running command: %s", FormatCommand(command, arg...))
 }
 
 func assertErrorType(err error) string {

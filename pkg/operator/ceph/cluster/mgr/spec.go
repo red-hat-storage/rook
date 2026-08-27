@@ -160,7 +160,7 @@ func (c *Cluster) makeChownInitContainer(mgrConfig *mgrConfig) v1.Container {
 		controller.GetContainerImagePullPolicy(c.spec.CephVersion.ImagePullPolicy),
 		controller.DaemonVolumeMounts(mgrConfig.DataPathMap, mgrConfig.ResourceName, c.spec.DataDirHostPath),
 		cephv1.GetMgrResources(c.spec.Resources),
-		controller.DefaultContainerSecurityContext(),
+		controller.RootContainerSecurityContext(),
 		"",
 	)
 }
@@ -398,7 +398,7 @@ func (c *Cluster) buildSelectorLabels(labels map[string]string) map[string]strin
 	return selectorLabels
 }
 
-// isHostNetworkEnabled checks if hostNetwork field is set in mgr spec, if not
+// isHostNetworkEnabled checks if the hostNetwork field is set in the mgr spec, if not
 // gets it from Cluster Spec
 func isHostNetworkEnabled(c *Cluster) bool {
 	hostNetwork := c.spec.Network.IsHost()

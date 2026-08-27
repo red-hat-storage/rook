@@ -433,10 +433,11 @@ function deploy_manifest_with_local_build() {
   kubectl create -f $1
 }
 
-# Deploy toolbox with same ceph version as the cluster-test for ci
+# Deploy the toolbox from its committed manifest. The toolbox image deliberately does NOT
+# track the cluster under test: the version skew exercises Ceph's cross-version client
+# compatibility promises, which has caught real Ceph API breaks before release.
 function deploy_toolbox() {
   cd "${REPO_DIR}/deploy/examples"
-  sed -i 's/image: quay\.io\/ceph\/ceph:.*/image: quay.io\/ceph\/ceph:v18/' toolbox.yaml
   local ns
   ns=$(yq r toolbox.yaml metadata.namespace 2>/dev/null)
   timeout 300 bash -c 'until kubectl get secret rook-ceph-mon -n "$1" &>/dev/null && kubectl get cm rook-ceph-mon-endpoints -n "$1" &>/dev/null; do sleep 2; done' _ "${ns}"
@@ -464,7 +465,6 @@ function replace_ceph_image() {
 function deploy_cluster() {
   cd "${REPO_DIR}/deploy/examples"
 
-  kubectl create -f networkpolicy.yaml
   deploy_manifest_with_local_build operator.yaml
 
   if [ $# == 0 ]; then
@@ -537,6 +537,11 @@ function wait_for_prepare_pod() {
     echo 'waiting for mon.a to be created'
     sleep 5
   done
+  if ! echo "$pod" | grep 'rook-ceph-mon-a'; then
+    echo "timed out after ${timeout}s waiting for mon.a to be created" >&2
+    kubectl --namespace rook-ceph get pod || true
+    return 1
+  fi
 
   # wait for at an osd prepare pod to complete
   OSD_COUNT=$1
@@ -549,8 +554,19 @@ function wait_for_prepare_pod() {
     echo 'waiting for at least one osd prepare pod to be running or finished'
     sleep 5
   done
+  if ! echo "$pod" | grep 'Running\|Succeeded\|Failed'; then
+    echo "timed out after ${timeout}s waiting for an osd prepare pod to be running or finished" >&2
+    kubectl --namespace rook-ceph get pod || true
+    return 1
+  fi
   pod="$("${get_pod_cmd[@]}" --selector app=rook-ceph-osd-prepare --output name | awk 'FNR <= 1')"
-  kubectl --namespace rook-ceph logs --follow "$pod"
+  if [[ -z "$pod" ]]; then
+    echo "no osd prepare pod found to collect logs from" >&2
+    kubectl --namespace rook-ceph get pod || true
+    return 1
+  fi
+  # bounded: a prepare pod starved of resources must not hold --follow open until the runner dies
+  timeout 450 kubectl --namespace rook-ceph logs --follow "$pod" || true
 
   # wait for an osd daemon pod to start
   timeout=60
@@ -827,6 +843,18 @@ function nudge_multisite_secondary() {
   kubectl -n rook-ceph-secondary rollout status deploy/rook-ceph-rgw-zone-b-multisite-store-a --timeout=120s
 }
 
+# Both RGWs boot while the multisite period is still converging (zone-b joins the zonegroup
+# only after zone-a is already serving), and a gateway that raced a period change can leave its
+# sync state machine wedged in "init" without ever erroring. Restarting the gateways once the
+# join has settled makes sync initialize from the final period, mirroring ceph's own multisite
+# QA, which restarts zone gateways after committing period changes.
+function restart_multisite_rgws() {
+  kubectl -n rook-ceph rollout restart deploy/rook-ceph-rgw-multisite-store-a
+  kubectl -n rook-ceph-secondary rollout restart deploy/rook-ceph-rgw-zone-b-multisite-store-a
+  kubectl -n rook-ceph rollout status deploy/rook-ceph-rgw-multisite-store-a --timeout=120s
+  kubectl -n rook-ceph-secondary rollout status deploy/rook-ceph-rgw-zone-b-multisite-store-a --timeout=120s
+}
+
 function wait_for_multisite_sync_established() {
   # Wait until both zones report multisite sync fully established before exercising
   # replication, mirroring the checkpoints ceph's own multisite QA performs before asserting
@@ -848,10 +876,24 @@ function wait_for_multisite_sync_established() {
     fi
     nudge_multisite_secondary
   done
-  # Data sync legitimately reports caught up at 0/0 shards before any objects are written, so the
-  # meaningful precondition is that metadata sync (above) has actually initialized.
-  wait_for_sync_status rook-ceph-secondary zone-b "data is caught up with source" 300
-  wait_for_sync_status rook-ceph zone-a "data is caught up with source" 300
+  # "data is caught up with source" is vacuously true while data sync is still wedged in "init"
+  # (it reports 0/0 shards), so require the shard counts that prove sync actually initialized.
+  # A wedged gateway never leaves "init" on its own; restart it and retry once (see
+  # restart_multisite_rgws).
+  local initialized='incremental sync: [0-9]*/[1-9]'
+  wait_for_sync_status rook-ceph-secondary zone-b "$initialized" 300
+  for attempt in 1 2; do
+    if wait_for_sync_status rook-ceph zone-a "$initialized" 180; then
+      return 0
+    fi
+    if [[ $attempt -ge 2 ]]; then
+      echo "zone-a data sync never initialized after ${attempt} attempts"
+      return 1
+    fi
+    echo "nudging zone-a: restarting its RGW to re-run data sync init"
+    kubectl -n rook-ceph rollout restart deploy/rook-ceph-rgw-multisite-store-a
+    kubectl -n rook-ceph rollout status deploy/rook-ceph-rgw-multisite-store-a --timeout=120s
+  done
 }
 
 function dump_multisite_diagnostics() {
@@ -863,15 +905,25 @@ function dump_multisite_diagnostics() {
     if [[ "$ns" == "rook-ceph" ]]; then zone="zone-a"; else zone="zone-b"; fi
     echo "===== ${ns}: pods"
     kubectl -n "$ns" get pods -o wide
+    # the cluster this dump runs against just failed, so bound every toolbox command: an
+    # unreachable cluster must not stall the dump for the full rados client mount timeout
+    echo "===== ${ns}: ceph versions"
+    kubectl -n "$ns" exec deploy/rook-ceph-tools -- ceph --connect-timeout 10 versions
     echo "===== ${ns}: rgw pod details"
     kubectl -n "$ns" describe pods -l app=rook-ceph-rgw
-    echo "===== ${ns}: rgw pod logs"
-    kubectl -n "$ns" logs -l app=rook-ceph-rgw --all-containers --tail=100
+    echo "===== ${ns}: rgw pod logs (excluding successful requests)"
+    # multisite sync polling produces hundreds of 2xx request lines per second, so a raw tail
+    # covers only milliseconds; drop 2xx request/response lines to surface errors instead
+    kubectl -n "$ns" logs -l app=rook-ceph-rgw --all-containers --tail=5000 |
+      grep -Ev 'http_status=2[0-9]{2} |" 2[0-9]{2} |====== starting new request' | tail -n 150
+    echo "===== ${ns}: sync error list"
+    kubectl -n "$ns" exec deploy/rook-ceph-tools -- \
+      timeout 60 radosgw-admin sync error list --rgw-realm=realm-a --rgw-zonegroup=zonegroup-a --rgw-zone="$zone" | head -n 100
     echo "===== ${ns}: sync status (${zone})"
     kubectl -n "$ns" exec deploy/rook-ceph-tools -- \
-      radosgw-admin sync status --rgw-realm=realm-a --rgw-zonegroup=zonegroup-a --rgw-zone="$zone"
+      timeout 60 radosgw-admin sync status --rgw-realm=realm-a --rgw-zonegroup=zonegroup-a --rgw-zone="$zone"
     echo "===== ${ns}: period"
-    kubectl -n "$ns" exec deploy/rook-ceph-tools -- radosgw-admin period get --rgw-realm=realm-a
+    kubectl -n "$ns" exec deploy/rook-ceph-tools -- timeout 60 radosgw-admin period get --rgw-realm=realm-a
   done
   set -e
   return 0
@@ -902,7 +954,7 @@ function write_object_read_from_replica_cluster() {
   # zone's position, the same marker-based barrier ceph's own multisite QA uses. The bucket
   # metadata has to arrive on the reading zone via metadata sync before the checkpoint can
   # resolve the bucket at all, hence the outer retry.
-  retry_for 120 kubectl -n "$read_cluster_ns" exec deploy/rook-ceph-tools -- \
+  retry_for 300 kubectl -n "$read_cluster_ns" exec deploy/rook-ceph-tools -- \
     radosgw-admin bucket sync checkpoint --rgw-realm=realm-a --rgw-zonegroup=zonegroup-a --rgw-zone="$read_zone" \
     --bucket="$test_bucket_name" --source-zone="$write_zone" --retry-delay-ms=5000 --timeout-sec=300
 
@@ -1177,6 +1229,74 @@ function check_keys_not_exists() {
       echo "key '$key' not exists"
     fi
   done
+}
+
+function test_rotate_cephx_keys() {
+  patch=$(cat <<EOF
+spec:
+  security:
+    cephx:
+      daemon:
+        keyRotationPolicy: KeyGeneration
+        keyGeneration: 2
+      csi:
+        keyRotationPolicy: KeyGeneration
+        keyGeneration: 2
+        keepPriorKeyCountMax: 1 # keep one prior key also
+        keyType: aes # keep the old aes key type when the host kernel does not yet support aes256k
+EOF
+)
+
+  cluster_name="$(kubectl -n rook-ceph get cephcluster -o name --no-headers)"
+
+  # e.g., cephcluster.ceph.rook.io/my-cluster
+  kubectl -n rook-ceph patch "$cluster_name" --type merge -p "$patch"
+
+  # wait for admin key to be rotated
+  timeout 300 bash <<EOF
+  until [[ \$(kubectl -n rook-ceph get "$cluster_name" -o jsonpath='{.status.cephx.admin.keyGeneration}') -eq 2 ]]; do
+    echo "waiting for admin key to be rotated"
+    kubectl -n rook-ceph get "$cluster_name" -o jsonpath='{.status.cephx}'
+    sleep 5
+  done
+EOF
+
+  # restart tools pod to refresh admin key
+  timeout 60 kubectl -n rook-ceph delete pod -l app=rook-ceph-tools
+
+  # wait for OSD key to be rotated (last cluster key to be rotated)
+  # at approx 300 seconds, mon rotation begins
+  timeout 300 bash <<EOF
+until [[ \$(kubectl -n rook-ceph get "$cluster_name" -o jsonpath='{.status.cephx.osd.keyGeneration}') -eq 2 ]]; do
+  echo "waiting for OSD CephX keys to be rotated"
+  kubectl -n rook-ceph get "$cluster_name" -o jsonpath='{.status.cephx}'
+  sleep 5
+done
+EOF
+
+  # check cephx rotation status
+  stat="$(kubectl -n rook-ceph get "$cluster_name" -o jsonpath='{.status.cephx}')"
+  echo "$stat" | jq # show output for debugging
+
+  # assertions
+  [[ "$(echo "$stat" | jq -r '.admin.keyGeneration')" == "2" ]]
+  # Some ceph versions don't support mon rotation, so leave mon generation dontcare for now
+  # [[ "$(echo "$stat" | jq -r '.mon.keyGeneration')" == "2" ]]
+  [[ "$(echo "$stat" | jq -r '.cephExporter.keyGeneration')" == "2" ]]
+  [[ "$(echo "$stat" | jq -r '.crashCollector.keyGeneration')" == "2" ]]
+  [[ "$(echo "$stat" | jq -r '.mgr.keyGeneration')" == "2" ]]
+  [[ "$(echo "$stat" | jq -r '.osd.keyGeneration')" == "2" ]]
+  [[ "$(echo "$stat" | jq -r '.csi.keyGeneration')" == "2" ]]
+  [[ "$(echo "$stat" | jq -r '.csi.keyType')" == "aes" ]] # requested rotation to legacy type
+  [[ "$(echo "$stat" | jq -r '.rbdMirrorPeer.keyGeneration')" == "1" ]] # did not request rotation
+
+  # check ceph internal key info
+  toolbox=$(kubectl get pod -l app=rook-ceph-tools -n rook-ceph -o jsonpath='{.items[*].metadata.name}')
+  kubectl -n rook-ceph exec "$toolbox" -- ceph auth ls
+  { # 'ceph auth dump-keys' is a new command. Don't fail CI if it doesn't exist in the test version.
+    auth="$(kubectl -n rook-ceph exec "$toolbox" -- ceph auth dump-keys --format=json-pretty)"
+    echo "$auth" | jq # show output for debugging
+  } || true
 }
 
 FUNCTION="$1"

@@ -203,7 +203,7 @@ metadata:
     repository: https://github.com/red-hat-storage/rook
     containerImage: docker.io/rook/ceph:v1.17.0.29.g2348ff689
     operators.operatorframework.io/operator-type: non-standalone
-  name: rook-ceph-operator.v4.22.0
+  name: rook-ceph-operator.v5.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -347,22 +347,13 @@ spec:
                 - ""
               resources:
                 - pods
+                - nodes
                 - secrets
                 - configmaps
               verbs:
                 - get
                 - list
                 - watch
-            - apiGroups:
-                - ""
-              resources:
-                - nodes
-              verbs:
-                - get
-                - list
-                - watch
-                - patch
-                - update
             - apiGroups:
                 - ""
                 - discovery.k8s.io
@@ -957,6 +948,15 @@ spec:
                 - update
                 - delete
             - apiGroups:
+                - networking.k8s.io
+              resources:
+                - networkpolicies
+              verbs:
+                - get
+                - create
+                - update
+                - delete
+            - apiGroups:
                 - ""
               resources:
                 - pods
@@ -1012,6 +1012,7 @@ spec:
               resources:
                 - networkpolicies
               verbs:
+                - get
                 - create
                 - update
                 - delete
@@ -1044,7 +1045,7 @@ spec:
   provider:
     name: Red Hat
     url: https://www.redhat.com
-  version: 4.22.0
+  version: 5.0.0
   minKubeVersion: 1.16.0
   relatedImages:
     - image: docker.io/rook/ceph:v1.17.0.29.g2348ff689

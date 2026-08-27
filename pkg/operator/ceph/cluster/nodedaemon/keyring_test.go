@@ -57,10 +57,12 @@ func TestCreateCrashCollectorKeyring(t *testing.T) {
 		CephVersion: cephver.Squid,
 	}
 
+	keyring.SetAllowCephxKeyRotationForCluster(clusterInfo.Namespace, true)
+
 	clusterInfo.SetName("mycluster")
 	clusterInfo.OwnerInfo = cephclient.NewMinimumOwnerInfo(t)
 
-	// create a sample ceph cluster at add to fake controller
+	// create a sample ceph cluster and add to fake controller
 	status := keyring.UninitializedCephxStatus()
 	cephCluster := &cephv1.CephCluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -149,10 +151,12 @@ func TestCreateCephExporterKeyring(t *testing.T) {
 		CephVersion: cephver.Squid,
 	}
 
+	keyring.SetAllowCephxKeyRotationForCluster(clusterInfo.Namespace, true)
+
 	clusterInfo.SetName("mycluster")
 	clusterInfo.OwnerInfo = cephclient.NewMinimumOwnerInfo(t)
 
-	// create a sample ceph cluster at add to fake controller
+	// create a sample ceph cluster and add to fake controller
 	status := keyring.UninitializedCephxStatus()
 	cephCluster := &cephv1.CephCluster{
 		ObjectMeta: metav1.ObjectMeta{

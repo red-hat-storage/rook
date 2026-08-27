@@ -10,6 +10,7 @@ CRD_ERR="changes found by 'make crds'. please run 'make crds' locally and update
 BUILD_ERR="changes found by make build', please commit your go.sum or other changed files"
 HELM_ERR="changes found by 'make gen-rbac'. please run 'make gen-rbac' locally and update your PR"
 CSV_ERR="changes found by make gen-csv',please run 'make gen-csv' locally and update your PR"
+TOOLBOX_ERR="changes found by 'make gen-toolbox'. please run 'make gen-toolbox' locally and update your PR"
 DOCS_ERR="changes found by 'make docs'. please run 'make docs' locally and update your PR"
 HELM_DOCS_ERR="changes found by 'make helm-docs'. please run 'make helm-docs' locally and update your PR"
 
@@ -56,7 +57,10 @@ gen-rbac)
 gen-csv)
   validate "$CSV_ERR"
   ;;
-*)
-  echo $"Usage: $0 {docs|helm-docs|codegen|modcheck|crd|build|gen-rbac}"
-  exit 1
+gen-toolbox)
+    validate "$TOOLBOX_ERR"
+  ;;
+  *)
+    echo $"Usage: $0 {docs|helm-docs|codegen|modcheck|crd|build|gen-rbac|gen-toolbox}"
+    exit 1
 esac

@@ -33,6 +33,7 @@ CT_VERSION := v3.13.0
 KUSTOMIZE_VERSION := v5.3.0
 MARKDOWNLINT_IMAGE_VERSION := v0.22.0
 SHELLCHECK_VERSION := v0.10.0
+BLACK_VERSION := 26.5.1
 
 # For future updates,the SHA of the 'latest' tag can be obtained like this:
 # podman inspect --format='{{index .RepoDigests 0}}' docker.io/cytopia/yamllint:latest
@@ -117,6 +118,9 @@ ifneq ($(filter $(PLATFORM),$(SERVER_PLATFORMS)),)
 GO_STATIC_PACKAGES += $(SERVER_PACKAGES)
 endif
 
+# build holds the toolbox manifest generator, so it belongs in the test and vet sweeps
+GO_SUBDIRS=cmd pkg build
+
 GO_BUILDFLAGS=$(BUILDFLAGS)
 GO_LDFLAGS=$(LDFLAGS)
 GO_TAGS=$(TAGS)
@@ -139,7 +143,7 @@ build.version:
 
 
 .PHONY: build.common
-build.common: build.version helm.build mod.check crds.manifests gen.rbac
+build.common: build.version helm.build mod.check crds.manifests gen.rbac gen.toolbox
 	@$(MAKE) go.init
 	@$(MAKE) go.validate
 	@$(MAKE) -C images/ceph list-image
@@ -204,6 +208,15 @@ lint.markdown: check.container.runtime ## Check formatting of documentation sour
 lint.markdown-links: check.container.runtime
 	@$(DOCKERCMD) run --rm -v "$$PWD:/workspace" --entrypoint "/workspace/tests/scripts/check-markdown-links-internal.sh" ghcr.io/tcort/markdown-link-check:stable
 
+# The base ref that lint.commits checks against; every commit reachable from HEAD but not from it
+# is linted. It defaults to the remote-tracking master so a stale local master branch does not drag
+# already-merged upstream commits into the range. Override when the upstream is a different remote,
+# e.g. lint.commits COMMITLINT_BASE=upstream/master.
+COMMITLINT_BASE ?= origin/master
+.PHONY: lint.commits
+lint.commits: ## Check this branch's commit messages with commitlint (requires npx).
+	@npx --yes -p @commitlint/cli -p @commitlint/config-conventional commitlint --config .commitlintrc.json --from $(COMMITLINT_BASE) --to HEAD
+
 .PHONY: fix.markdown
 fix.markdown: check.container.runtime ## Check and fix formatting of documentation sources
 	@$(MARKDOWNLINT) "Documentation/**/**.md" "#Documentation/Helm-Charts/**" --fix --config .markdownlint-cli2.cjs
@@ -222,14 +235,35 @@ lint.helm: $(HELM) $(KUSTOMIZE) ## Check the helm charts
 	$(KUSTOMIZE) build >/dev/null
 	rm templated.yaml kustomization.yaml
 
-.PHONY: lint.quick
-lint.quick: lint.yaml lint.shell lint.make lint.go lint.helm lint.markdown ## run some (faster) linters
-.PHONY: lint
-lint: lint.quick lint.python ## Run various linters
+.PHONY: test.helm
+test.helm: $(HELM_UNITTEST) ## Run the helm chart unit tests
+	$(HELM_UNITTEST) --strict $(addprefix $(HELM_CHARTS_DIR)/,$(HELM_CHARTS))
 
+
+.PHONY: lint.quick
+lint.quick: lint.yaml lint.markdown lint.shell lint.go lint.make lint.markdown lint.workflows lint.commits lint.python ## run some (fast) linters
+.PHONY: lint
+lint: lint.quick lint.helm ## Run various linters
+
+.PHONY: lint.python.pylint
+lint.python.pylint: ## lint python scripts with pylint.
+	@echo "Linting python code with pylint..."
+	@pylint $(shell find $(ROOT_DIR) -name '*.py') -E
+	@echo "All python scripts are good."
+
+.PHONY: lint.python.black
+lint.python.black: check.container.runtime ## lint python scripts with the black formatter.
+	@echo "Linting python code with black..."
+	@$(BLACK) --check .
+	@echo "All python scripts are good."
+.PHONY: format.python.black
+format.python.black: check.container.runtime
+	@$(BLACK) .
+
+.PHONY: format.python
+format.python: format.python.black
 .PHONY: lint.python
-lint.python: ## lint python scripts
-	pylint $(shell find $(ROOT_DIR) -name '*.py') -E
+lint.python: lint.python.black ## lint python scripts
 
 .PHONY: lint.make
 lint.make: ## lint the Makefile
@@ -295,6 +329,12 @@ gen-rbac: $(HELM) $(YQ) helm.dependency.build ## Generate RBAC from Helm charts
 	@# output only stdout to the file; stderr for debugging should keep going to stderr
 	HELM=$(HELM) ./build/rbac/gen-common.sh
 
+.PHONY: gen.toolbox
+gen.toolbox: gen-toolbox
+.PHONY: gen-toolbox
+gen-toolbox: ## Generate the inline toolbox scripts from images/ceph/toolbox.sh
+	go run ./build/toolbox
+
 .PHONY: gen.docs
 gen.docs: docs ## generate docs
 .PHONY: docs
@@ -324,7 +364,7 @@ gen.crd-docs: generate-docs-crds
 generate-docs-crds: crds.docs ## Build the documentation for CRDs
 
 .PHONY: generate
-generate: gen.codegen gen.crds gen.rbac ## Update all generated files (code, manifests, charts, and docs).
+generate: gen.codegen gen.crds gen.rbac gen.toolbox ## Update all generated files (code, manifests, charts, and docs).
 
 # Change how CRDs are generated for CSVs
 gen-csv: export MAX_DESC_LEN=0 # sets the description length to 0 since CSV cannot be bigger than 1MB

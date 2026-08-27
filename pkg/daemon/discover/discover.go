@@ -147,7 +147,7 @@ func matchUdevEvent(text string, matches, exclusions []string) (bool, error) {
 
 // Scans `udevadm monitor` output for block sub-system events. Each line of
 // output matching a set of substrings is sent to the provided channel. An event
-// is returned if it passes any matches tests, and passes all exclusion tests.
+// is returned if it passes any of the match tests, and passes all exclusion tests.
 func rawUdevBlockMonitor(c chan struct{}, matches, exclusions []string) {
 	defer close(c)
 
@@ -281,15 +281,16 @@ func checkDeviceListsEqual(oldDevs, newDevs []sys.LocalDisk) bool {
 			// device has been removed
 			return false
 		}
-		if !oldDev.Empty && match.Empty {
-			// device has changed from non-empty to empty
+		if oldDev.Empty != match.Empty {
+			// device changed between empty and in-use (either direction)
+			// from empty to in-use triggers discovery for the osd replacement flow
 			return false
 		}
 		if oldDev.Partitions != nil && match.Partitions == nil {
 			return false
 		}
 		if string(oldDev.CephVolumeData) == "" && string(match.CephVolumeData) != "" {
-			// return ceph volume inventory data was not enabled before
+			// ceph volume inventory data was not enabled before
 			return false
 		}
 	}

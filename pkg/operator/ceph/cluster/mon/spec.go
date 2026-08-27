@@ -56,6 +56,9 @@ func (c *Cluster) getLabels(monConfig *monConfig, canary, includeNewLabels bool)
 	// Mons have a service for each mon, so the additional pod data is relevant for its services
 	// Use pod labels to keep "mon: id" for legacy
 	labels := controller.CephDaemonAppLabels(AppName, c.Namespace, config.MonType, monConfig.DaemonName, c.ClusterInfo.NamespacedName().Name, "cephclusters.ceph.rook.io", includeNewLabels)
+	if isFloatingMon(c, monConfig.DaemonName) {
+		labels = controller.CephDaemonAppLabels(FloatingMonAppName, c.Namespace, config.MonType, monConfig.DaemonName, c.ClusterInfo.NamespacedName().Name, "cephclusters.ceph.rook.io", includeNewLabels)
+	}
 	// Add "mon_cluster: <namespace>" for legacy
 	labels[monClusterAttr] = c.Namespace
 	if canary {
@@ -279,7 +282,7 @@ func (c *Cluster) makeChownInitContainer(monConfig *monConfig) corev1.Container 
 		controller.GetContainerImagePullPolicy(c.spec.CephVersion.ImagePullPolicy),
 		controller.DaemonVolumeMounts(monConfig.DataPathMap, keyringStoreName, c.spec.DataDirHostPath),
 		cephv1.GetMonResources(c.spec.Resources),
-		controller.DefaultContainerSecurityContext(),
+		controller.RootContainerSecurityContext(),
 		"",
 	)
 }
@@ -321,7 +324,7 @@ func (c *Cluster) makeMonDaemonContainer(monConfig *monConfig) corev1.Container 
 			// If the mon is already in the monmap, when the port is left off of --public-addr,
 			// it will still advertise on the previous port b/c monmap is saved to mon database.
 			config.NewFlag("public-addr", monConfig.PublicIP),
-			// Set '--setuser-match-path' so that existing directory owned by root won't affect the daemon startup.
+			// Set '--setuser-match-path' so that an existing directory owned by root won't affect the daemon startup.
 			// For existing data store owned by root, the daemon will continue to run as root
 			//
 			// We use 'store.db' here because during an upgrade the init container will set 'ceph:ceph' to monConfig.DataPathMap.ContainerDataDir
@@ -397,6 +400,15 @@ func (c *Cluster) makeMonDaemonContainer(monConfig *monConfig) corev1.Container 
 		container.Args = append(container.Args, config.NewFlag("public-bind-addr", bindaddr))
 	}
 
+	if c.spec.Security.CephX.Daemon.KeyType != "" && client.Aes256kKeysSupported(c.ClusterInfo.CephVersion) {
+		// if daemon keyType is set, it may be for a bootstrapping workaround which would require
+		// Rook to tell mons at runtime to accept an old cipher type. Otherwise, Rook prefers to set
+		// auth_allowed_ciphers via CLI commands after mons are running.
+		allowedList := cephv1.KeyTypesListToArgString(cephv1.KnownCephxKeyTypes)
+		logger.Infof("setting mon-auth-emergency-allowed-ciphers=%q on mons for cluster in namespace %q", allowedList, c.Namespace)
+		container.Args = append(container.Args, config.NewFlag("mon-auth-emergency-allowed-ciphers", allowedList))
+	}
+
 	return container
 }
 
@@ -449,7 +461,7 @@ func (c *Cluster) makeFloatingMonDeployment(monConfig *monConfig) (*apps.Deploym
 	return d, nil
 }
 
-// buildFloatingMonTemplateParams create template for floating mon spec.
+// buildFloatingMonTemplateParams builds the template parameters for the floating mon spec.
 func (c *Cluster) buildFloatingMonTemplateParams(
 	floating cephv1.FloatingMonSpec,
 	monConfig *monConfig,

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	csiopv1 "github.com/ceph/ceph-csi-operator/api/v1"
 	"github.com/coreos/pkg/capnslog"
@@ -227,6 +228,8 @@ func (r *ReconcileCephNVMeOFGateway) reconcile(request reconcile.Request) (recon
 		}
 		r.clusterInfo.CephVersion = runningCephVersion
 
+		r.deleteAllNVMeOFGateways(cephNVMeOFGateway)
+
 		err = opcontroller.RemoveFinalizer(r.opManagerContext, r.client, cephNVMeOFGateway)
 		if err != nil {
 			return reconcile.Result{}, *cephNVMeOFGateway, errors.Wrap(err, "failed to remove finalizer")
@@ -257,8 +260,9 @@ func (r *ReconcileCephNVMeOFGateway) reconcile(request reconcile.Request) (recon
 		return reconcile.Result{}, *cephNVMeOFGateway, errors.Wrapf(err, "invalid configuration")
 	}
 
+	// daemon key type always takes the default from setDefaultCephxKeyType()
 	r.shouldRotateCephxKeys, err = keyring.ShouldRotateCephxKeys(cephCluster.Spec.Security.CephX.Daemon, *runningCephVersion,
-		*desiredCephVersion, cephNVMeOFGateway.Status.Cephx.Daemon)
+		*desiredCephVersion, cephNVMeOFGateway.Status.Cephx.Daemon, true, r.clusterInfo.Namespace)
 	if err != nil {
 		return reconcile.Result{}, *cephNVMeOFGateway, errors.Wrap(err, "failed to determine if cephx keys should be rotated")
 	}
@@ -266,12 +270,20 @@ func (r *ReconcileCephNVMeOFGateway) reconcile(request reconcile.Request) (recon
 		logger.Infof("cephx keys will be rotated for %q", request.NamespacedName)
 	}
 
+	// The gateway stores OMAP state in the .nvmeof pool. Creating pods before that
+	// pool exists causes CrashLoopBackOff. Fail and retry until the pool is ready.
+	if err := r.ensureNVMeOFMetadataPoolReady(); err != nil {
+		return reconcile.Result{Requeue: true, RequeueAfter: 10 * time.Second}, *cephNVMeOFGateway,
+			errors.Wrapf(err, "waiting for nvmeof metadata pool %q to be ready before creating gateway deployments", nvmeofPoolName)
+	}
+
 	_, err = r.reconcileCreateCephNVMeOFGateway(cephNVMeOFGateway)
 	if err != nil {
 		return reconcile.Result{}, *cephNVMeOFGateway, errors.Wrap(err, "failed to create deployments")
 	}
 
-	cephxStatus := keyring.UpdatedCephxStatus(r.shouldRotateCephxKeys, cephCluster.Spec.Security.CephX.Daemon, r.clusterInfo.CephVersion, cephNVMeOFGateway.Status.Cephx.Daemon)
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	cephxStatus := keyring.UpdatedCephxStatus(r.shouldRotateCephxKeys, cephCluster.Spec.Security.CephX.Daemon, r.clusterInfo.CephVersion, cephNVMeOFGateway.Status.Cephx.Daemon, keyType)
 	err = r.updateStatus(observedGeneration, request.NamespacedName, &cephxStatus, k8sutil.ReadyStatus)
 	if err != nil {
 		logger.Errorf("failed to update status: %v", err)
@@ -365,6 +377,10 @@ func (r *ReconcileCephNVMeOFGateway) downCephNVMeOFGateway(cephNVMeOFGateway *ce
 		daemonID := k8sutil.IndexToName(i)
 		name := instanceName(cephNVMeOFGateway, daemonID)
 
+		if err := r.deleteNVMeOFGateway(name, cephNVMeOFGateway.Spec.Group); err != nil {
+			return errors.Wrapf(err, "failed to delete nvme-gw %q from Ceph", name)
+		}
+
 		err := r.context.Clientset.AppsV1().Deployments(cephNVMeOFGateway.Namespace).Delete(r.opManagerContext, name, metav1.DeleteOptions{})
 		if err != nil && !kerrors.IsNotFound(err) {
 			return errors.Wrapf(err, "failed to delete deployment %q", name)
@@ -376,6 +392,28 @@ func (r *ReconcileCephNVMeOFGateway) downCephNVMeOFGateway(cephNVMeOFGateway *ce
 		}
 	}
 
+	return nil
+}
+
+func (r *ReconcileCephNVMeOFGateway) deleteAllNVMeOFGateways(cephNVMeOFGateway *cephv1.CephNVMeOFGateway) {
+	for i := 0; i < cephNVMeOFGateway.Spec.Instances; i++ {
+		daemonID := k8sutil.IndexToName(i)
+		gwName := instanceName(cephNVMeOFGateway, daemonID)
+		if err := r.deleteNVMeOFGateway(gwName, cephNVMeOFGateway.Spec.Group); err != nil {
+			logger.Warningf("failed to delete nvme-gw %q during CR deletion, continuing: %v", gwName, err)
+		}
+	}
+}
+
+func (r *ReconcileCephNVMeOFGateway) deleteNVMeOFGateway(gatewayName, group string) error {
+	logger.Infof("deleting nvme-gw %q from pool %q group %q", gatewayName, nvmeofPoolName, group)
+	args := []string{"nvme-gw", "delete", gatewayName, nvmeofPoolName, group}
+	cmd := cephclient.NewCephCommand(r.context, r.clusterInfo, args)
+	cmd.JsonOutput = false
+	_, err := cmd.Run()
+	if err != nil {
+		return errors.Wrapf(err, "failed to run ceph nvme-gw delete for %q", gatewayName)
+	}
 	return nil
 }
 
@@ -543,6 +581,26 @@ func validateGateway(g *cephv1.CephNVMeOFGateway) error {
 		return errors.New("gateway group name is required")
 	}
 
+	return nil
+}
+
+// ensureNVMeOFMetadataPoolReady confirms the .nvmeof RADOS pool exists and has
+// been fully initialized (application tag set) before gateway deployments are
+// created. Checking via Ceph commands is more reliable than CR status which may
+// lag behind the actual pool state.
+func (r *ReconcileCephNVMeOFGateway) ensureNVMeOFMetadataPoolReady() error {
+	_, err := cephclient.GetPoolDetails(r.context, r.clusterInfo, nvmeofPoolName)
+	if err != nil {
+		return errors.Wrapf(err, "nvmeof metadata pool %q does not exist yet", nvmeofPoolName)
+	}
+
+	app, err := cephclient.GetPoolApplication(r.context, r.clusterInfo, nvmeofPoolName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to check application for nvmeof metadata pool %q", nvmeofPoolName)
+	}
+	if app == "" {
+		return errors.Errorf("nvmeof metadata pool %q exists but is not yet initialized (no application set)", nvmeofPoolName)
+	}
 	return nil
 }
 

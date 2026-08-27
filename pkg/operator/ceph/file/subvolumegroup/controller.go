@@ -32,8 +32,10 @@ import (
 	"github.com/rook/rook/pkg/util/log"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
@@ -46,6 +48,7 @@ import (
 	"github.com/rook/rook/pkg/operator/ceph/file"
 	"github.com/rook/rook/pkg/operator/ceph/reporting"
 	"github.com/rook/rook/pkg/operator/k8sutil"
+	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -89,7 +92,7 @@ func Add(mgr manager.Manager, context *clusterd.Context, opManagerContext contex
 	}); err != nil {
 		return fmt.Errorf("failed to index CephFilesystemSubVolumeGroup by %s: %v", cephSVGFileSystemNameIndex, err)
 	}
-	return add(mgr, newReconciler(mgr, context, opManagerContext, opConfig))
+	return add(opManagerContext, mgr, newReconciler(mgr, context, opManagerContext, opConfig))
 }
 
 // newReconciler returns a new reconcile.Reconciler
@@ -103,7 +106,7 @@ func newReconciler(mgr manager.Manager, context *clusterd.Context, opManagerCont
 	}
 }
 
-func add(mgr manager.Manager, r reconcile.Reconciler) error {
+func add(opManagerContext context.Context, mgr manager.Manager, r reconcile.Reconciler) error {
 	// Create a new controller
 	c, err := controller.New(controllerName, mgr, controller.Options{Reconciler: r})
 	if err != nil {
@@ -129,10 +132,74 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	// Build handler to map events to CephFilesystemSubVolumeGroup reconcile requests
+	clientProfileHandler, err := opcontroller.ObjectToCRMapper[*cephv1.CephFilesystemSubVolumeGroupList, *csiopv1.ClientProfile](
+		opManagerContext,
+		mgr.GetClient(),
+		&cephv1.CephFilesystemSubVolumeGroupList{},
+		mgr.GetScheme(),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Watch for ClientProfile changes
+	err = c.Watch(
+		source.Kind(
+			mgr.GetCache(),
+			&csiopv1.ClientProfile{TypeMeta: metav1.TypeMeta{Kind: "ClientProfile", APIVersion: fmt.Sprintf("%s/%s", csiopv1.GroupVersion.Group, csiopv1.GroupVersion.Version)}},
+			handler.TypedEnqueueRequestsFromMapFunc(clientProfileHandler),
+			opcontroller.WatchControllerPredicate[*csiopv1.ClientProfile](mgr.GetScheme()),
+		),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Build handler to map Secret events to CephFilesystemSubVolumeGroup reconcile requests
+	secretHandler, err := opcontroller.ObjectToCRMapper[*cephv1.CephFilesystemSubVolumeGroupList, *corev1.Secret](
+		opManagerContext,
+		mgr.GetClient(),
+		&cephv1.CephFilesystemSubVolumeGroupList{},
+		mgr.GetScheme(),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Watch for CSI secret changes (cephfs provisioner/node secrets)
+	err = c.Watch(
+		source.Kind(
+			mgr.GetCache(),
+			&corev1.Secret{TypeMeta: metav1.TypeMeta{Kind: "Secret", APIVersion: corev1.SchemeGroupVersion.String()}},
+			handler.TypedEnqueueRequestsFromMapFunc(secretHandler),
+			predicate.TypedFuncs[*corev1.Secret]{
+				CreateFunc: func(e event.TypedCreateEvent[*corev1.Secret]) bool {
+					return isCSICephFSSecret(e.Object.GetName())
+				},
+				UpdateFunc: func(e event.TypedUpdateEvent[*corev1.Secret]) bool {
+					return isCSICephFSSecret(e.ObjectNew.GetName())
+				},
+				DeleteFunc: func(e event.TypedDeleteEvent[*corev1.Secret]) bool {
+					return isCSICephFSSecret(e.Object.GetName())
+				},
+			},
+		),
+	)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-// Reconcile reads that state of the cluster for a CephFilesystemSubVolumeGroup object and makes changes based on the state read
+// check for cephfs secrets
+func isCSICephFSSecret(name string) bool {
+	return strings.HasPrefix(name, csi.CsiCephFSProvisionerSecret) ||
+		strings.HasPrefix(name, csi.CsiCephFSNodeSecret)
+}
+
+// Reconcile reads the state of the cluster for a CephFilesystemSubVolumeGroup object and makes changes based on the state read
 // and what is in the CephFilesystemSubVolumeGroup.Spec
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
@@ -290,7 +357,7 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) reconcile(request reconcile.Requ
 
 	// If the CephFilesystem is not ready to accept commands, we should wait for it to be ready
 	if cephFilesystem.Status == nil || cephFilesystem.Status.Phase != cephv1.ConditionReady {
-		// We know the CR is present so it should a matter of second for it to become ready
+		// We know the CR is present so it should be a matter of seconds for it to become ready
 		return reconcile.Result{Requeue: true, RequeueAfter: 10 * time.Second}, errors.Wrapf(err, "failed to fetch ceph filesystem %q, cannot create subvolume group %q", cephFilesystemSubVolumeGroup.Spec.FilesystemName, cephFilesystemSubVolumeGroup.Name)
 	}
 
@@ -354,7 +421,7 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) deleteSubVolumeGroup(cephFilesys
 	log.NamedInfo(nsName, logger, "deleting ceph filesystem subvolume group object")
 	if err := cephclient.DeleteCephFSSubVolumeGroup(r.context, r.clusterInfo, cephFilesystemSubVolumeGroup.Spec.FilesystemName, getSubvolumeGroupName(cephFilesystemSubVolumeGroup)); err != nil {
 		code, ok := exec.ExitStatus(err)
-		// If the subvolume group does not exit, we should not return an error
+		// If the subvolume group does not exist, we should not return an error
 		if ok && code == int(syscall.ENOENT) {
 			log.NamedDebug(nsName, logger, "ceph filesystem subvolume group does not exist")
 			return nil

@@ -90,6 +90,8 @@ func createCSIKeyring(
 		cephCluster.Spec.Security.CephX.CSI.CephxConfig,
 		clusterInfo.CephVersion, clusterInfo.CephVersion,
 		interpretedCephxStatus.CephxStatus,
+		false, // do not ignore key type for non-daemon csi keys
+		clusterInfo.Namespace,
 	)
 	if err != nil {
 		return "", "", 0, shouldRotate, errors.Wrap(err, "failed to call `shouldRotateCephxKeys` during CSI key rotation")
@@ -99,15 +101,29 @@ func createCSIKeyring(
 	desiredCephxStatus := keyring.UpdatedCephxStatus(shouldRotate,
 		cephCluster.Spec.Security.CephX.CSI.CephxConfig,
 		clusterInfo.CephVersion,
-		interpretedCephxStatus.CephxStatus)
+		interpretedCephxStatus.CephxStatus,
+		cephCluster.Spec.Security.CephX.CSI.CephxConfig.KeyType, // assume key type is what was given
+	)
 
 	// determine the client ID that should exist as the latest entry
 	latestClientId := generateCsiUserIdWithGenerationSuffix(csiKeyrigName, desiredCephxStatus.KeyGeneration)
 
 	// ensure the client key exists
-	key, err := s.GenerateKey(latestClientId, keyCaps)
+	key, err := client.AuthGetKey(context, clusterInfo, latestClientId)
 	if err != nil {
-		return "", "", 0, shouldRotate, errors.Wrapf(err, "failed to check if keys should to be rotated for CSI key %s", csiKeyrigName)
+		// CSI keys are non-daemon and so need to be able to be specified by users. however,
+		// `auth get-or-create` fails if the key type passed doesn't match the existing key, so only
+		// call it when key doesn't already exist
+		keyType := string(cephCluster.Spec.Security.CephX.CSI.KeyType)
+		key, err = client.AuthGetOrCreateKey(context, clusterInfo, latestClientId, keyType, keyCaps)
+		if err != nil {
+			return "", "", 0, shouldRotate, errors.Wrapf(err, "failed to create CSI client %q key", latestClientId)
+		}
+	} else {
+		err = client.AuthUpdateCaps(context, clusterInfo, latestClientId, keyCaps)
+		if err != nil {
+			return "", "", 0, shouldRotate, errors.Wrapf(err, "failed to update caps for CSI client %q key", latestClientId)
+		}
 	}
 
 	// add the new key to the list of all keys
@@ -223,7 +239,7 @@ func createOrUpdateCSISecret(clusterInfo *client.ClusterInfo, csiSecretContent c
 	return nil
 }
 
-// generateCsiUserIdWithGenerationSuffix generate ceph client ID with suffix `<baseName>.<keyGeneration>`
+// generateCsiUserIdWithGenerationSuffix generates a ceph client ID with suffix `<baseName>.<keyGeneration>`
 // Example; client.csi-rbd-node.1
 func generateCsiUserIdWithGenerationSuffix(clientBaseName string, keyGeneration uint32) string {
 	if keyGeneration > 0 {
@@ -279,7 +295,7 @@ func CreateCSISecrets(context *clusterd.Context, clusterInfo *client.ClusterInfo
 	}
 
 	// The latestClientIdMap contains latestClientID without prefix `client.` in the format CSI requires in the secret created below.
-	// Ex for "client.csi-rbd-provisioner" values will `csi-rbd-provisioner.<keyGen>` that is  latestClientID.
+	// Ex for "client.csi-rbd-provisioner" values will be `csi-rbd-provisioner.<keyGen>` that is latestClientID.
 	csiSecretContent := csiSecretStore{
 		CsiRBDProvisionerSecret:    {Name: strings.TrimPrefix(rbdProvName, "client."), Key: rbdProvKey},
 		CsiRBDNodeSecret:           {Name: strings.TrimPrefix(rbdNodeName, "client."), Key: rbdNodeKey},
@@ -307,7 +323,8 @@ func updateCephStatusWithCephxStatus(context *clusterd.Context, clusterInfo *cli
 	namespacedName types.NamespacedName, didRotate bool, currentKeyCount int,
 ) error {
 	logger.Infof("updating cephCluster %s cephStatus with CSI cephxStatus in namespace %s", namespacedName.Name, namespacedName.Namespace)
-	cephxStatus := keyring.UpdatedCephxStatus(didRotate, cephCluster.Spec.Security.CephX.CSI.CephxConfig, clusterInfo.CephVersion, cephCluster.Status.Cephx.CSI.CephxStatus)
+	keyType := cephCluster.Spec.Security.CephX.CSI.CephxConfig.KeyType // assume key type is what was given
+	cephxStatus := keyring.UpdatedCephxStatus(didRotate, cephCluster.Spec.Security.CephX.CSI.CephxConfig, clusterInfo.CephVersion, cephCluster.Status.Cephx.CSI.CephxStatus, keyType)
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cephCluster := &cephv1.CephCluster{}
@@ -338,10 +355,10 @@ func getPriorKeyCount(currentKeyCount int) int {
 	return max(0, currentKeyCount-1)
 }
 
-// getCsiKeyRotationInfo runs the `ceph auth ls` command to fetch all the keys and filter out the keys with same base name. Example
+// getCsiKeyRotationInfo runs the `ceph auth ls` command to fetch all the keys and filters out the keys with the same base name. Example
 // for base name `client.csi-rbd-node`.
-// From the list of key name return from `getMatchingClient` we'll read the suffix index eg; for key `client.csi-rbd-node.3` we'll take `3` and compare with
-// KeyGeneration and basaed on the comparison we'll return bool to check if we should rotate the keys or not and returning list
+// From the list of key names returned from `getMatchingClient` we'll read the suffix index eg; for key `client.csi-rbd-node.3` we'll take `3` and compare with
+// KeyGeneration and based on the comparison we'll return bool to check if we should rotate the keys or not and returning list
 // of all the matching keys.
 func getCsiKeyRotationInfo(context *clusterd.Context, clusterInfo *client.ClusterInfo, keyBaseName string) (int, []string, error) {
 	authList, err := client.AuthList(context, clusterInfo)
@@ -354,7 +371,7 @@ func getCsiKeyRotationInfo(context *clusterd.Context, clusterInfo *client.Cluste
 		return 0, keyWithBaseName, err
 	}
 
-	// In fresh deployment `keyWithBaseName` length will be empty, so let's not return error.
+	// In a fresh deployment `keyWithBaseName` length will be empty, so let's not return an error.
 	if len(keyWithBaseName) == 0 {
 		logger.Debugf("no key matching with %s found in auth list must be fresh cluster", keyBaseName)
 		return 0, keyWithBaseName, nil
@@ -374,9 +391,9 @@ func getCsiKeyRotationInfo(context *clusterd.Context, clusterInfo *client.Cluste
 	return currentMaxKeyGen, keyWithBaseName, nil
 }
 
-// getMatchingClient return list of all the ceph key which contains `client.csi-rbd-node`, we will have keys like
-// `client.csi-rbd-node.1`, `client.csi-rbd-node.2`, `client.csi-rbd-node.3` so the list will have all these key name.
-// Return list of keys are expected to contain `client.`.
+// getMatchingClient returns a list of all the ceph keys which contain `client.csi-rbd-node`, we will have keys like
+// `client.csi-rbd-node.1`, `client.csi-rbd-node.2`, `client.csi-rbd-node.3` so the list will have all these key names.
+// The returned keys are expected to contain `client.`.
 func getMatchingClient(authList client.AuthListOutput, clientBaseName string) ([]string, error) {
 	keyWithBaseName := []string{}
 

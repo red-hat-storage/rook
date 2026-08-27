@@ -93,7 +93,7 @@ func (e *RemotePodCommandExecutor) ExecWithOptions(ctx context.Context, options 
 }
 
 // ExecCommandInContainerWithFullOutput executes a command in the
-// specified container and return stdout, stderr and error
+// specified container and returns stdout, stderr and error
 func (e *RemotePodCommandExecutor) ExecCommandInContainerWithFullOutput(ctx context.Context, appLabel, containerName, namespace string, cmd ...string) (string, string, error) {
 	options := metav1.ListOptions{LabelSelector: fmt.Sprintf("app=%s", appLabel)}
 	pods, err := e.ClientSet.CoreV1().Pods(namespace).List(ctx, options)
@@ -151,7 +151,7 @@ func (e *RemotePodCommandExecutor) CopyLocalFileToContainer(ctx context.Context,
 	}
 	defer file.Close()
 	stdOut, stdErr, err := e.ExecWithOptions(ctx, ExecOptions{
-		Command:            []string{"sh", "-c", fmt.Sprintf("cat - > %s", dstPath)},
+		Command:            []string{"sh", "-c", fmt.Sprintf("cat - > %s", quoteArg(dstPath))},
 		Namespace:          namespace,
 		PodName:            pods.Items[0].Name,
 		ContainerName:      containerName,

@@ -105,6 +105,18 @@ func (a *OsdAgent) configureCVDevices(context *clusterd.Context, devices *Device
 	var block, lvPath, metadataBlock, walBlock string
 	var err error
 
+	// Destroyed OSDs are reserved for replacement and must not be reported to the status CM, or the
+	// controller would rebuild them. The ceph-volume list results below are filtered against this set.
+	// PVC-backed OSDs are never part of host-based replacement, so the set is empty there.
+	var destroyedOSDIds []int
+	if !a.pvcBacked {
+		tree, err := client.HostTree(context, a.clusterInfo)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get osd tree for destroyed slots")
+		}
+		destroyedOSDIds = tree.GetDestroyedIDs()
+	}
+
 	// Idempotency check, if the device list is empty devices have been prepared already
 	// In this case, just return the OSDInfo via a 'ceph-volume lvm|raw list' call
 	if len(devices.Entries) == 0 {
@@ -136,8 +148,8 @@ func (a *OsdAgent) configureCVDevices(context *clusterd.Context, devices *Device
 			// For block mode
 			block = fmt.Sprintf("/mnt/%s", a.nodeName)
 
-			// This is hard to determine a potential metadata device here
-			// Also, I don't think (leseb) this code we have run in this condition
+			// It is hard to determine a potential metadata device here
+			// Also, I don't think (leseb) this code has ever run in this condition
 			// I tried several things:
 			//    * evict a node, osd moves, the prepare job was never relaunched ever because we check for the osd deployment and skip the prepare
 			//    * restarted the operator, again the prepare job was not re-run
@@ -157,14 +169,14 @@ func (a *OsdAgent) configureCVDevices(context *clusterd.Context, devices *Device
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to get devices already provisioned by ceph-volume")
 			}
-			osds = append(osds, lvmOsds...)
+			osds = append(osds, slices.DeleteFunc(lvmOsds, func(o oposd.OSDInfo) bool { return slices.Contains(destroyedOSDIds, o.ID) })...)
 
 			// List existing OSD(s) configured with ceph-volume raw mode
 			rawOsds, err = GetCephVolumeRawOSDs(context, a.clusterInfo, a.clusterInfo.FSID, block, "", "", false, false, a.devices)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to get device already provisioned by ceph-volume raw")
 			}
-			osds = appendOSDInfo(osds, rawOsds)
+			osds = appendOSDInfo(osds, slices.DeleteFunc(rawOsds, func(o oposd.OSDInfo) bool { return slices.Contains(destroyedOSDIds, o.ID) }))
 		}
 
 		return osds, nil
@@ -176,7 +188,8 @@ func (a *OsdAgent) configureCVDevices(context *clusterd.Context, devices *Device
 		return nil, errors.Wrap(err, "failed to generate osd keyring")
 	}
 
-	// Check if the PVC is an LVM block device (certain StorageClass do this)
+	// Check if the PVC is an LVM block device (certain StorageClasses do this)
+	var preparedRawDevices []string
 	if a.pvcBacked {
 		for _, device := range devices.Entries {
 			dev := device.Config.Name
@@ -190,7 +203,7 @@ func (a *OsdAgent) configureCVDevices(context *clusterd.Context, devices *Device
 			return nil, errors.Wrap(err, "failed to initialize devices on PVC")
 		}
 	} else {
-		err = a.initializeDevices(context, devices)
+		preparedRawDevices, err = a.initializeDevices(context, devices)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to initialize osd")
 		}
@@ -201,7 +214,7 @@ func (a *OsdAgent) configureCVDevices(context *clusterd.Context, devices *Device
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get devices already provisioned by ceph-volume lvm")
 	}
-	osds = append(osds, lvmOsds...)
+	osds = append(osds, slices.DeleteFunc(lvmOsds, func(o oposd.OSDInfo) bool { return slices.Contains(destroyedOSDIds, o.ID) })...)
 
 	// List THE configured OSD with ceph-volume raw mode
 	// When the block is encrypted we need to list against the encrypted device mapper
@@ -216,9 +229,73 @@ func (a *OsdAgent) configureCVDevices(context *clusterd.Context, devices *Device
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get devices already provisioned by ceph-volume raw")
 	}
-	osds = appendOSDInfo(osds, rawOsds)
+
+	// "ceph-volume raw list" without a device argument can miss freshly prepared OSDs.
+	// On Ceph v20.2.0/v20.2.1, get_devices() enumerates via udev data under /run/udev/data
+	// and returns nothing when that data is empty or not yet populated
+	// (https://tracker.ceph.com/issues/77968). On every released v20.2.x, a sub-4KiB block
+	// device in the scan (e.g. an MBR extended-partition node) crashes the batched
+	// ceph-bluestore-tool call behind the listing, which ceph-volume reports as an empty
+	// result (https://tracker.ceph.com/issues/76354). Either way the listing comes back
+	// empty or incomplete even though the OSD exists. Without this check the prepare job
+	// would silently report fewer OSDs than it just prepared and the operator would never
+	// create the missing OSD deployments.
+	if !isEncrypted {
+		rawOsds, err = ensurePreparedDevicesListed(context, a.clusterInfo, rawOsds, preparedRawDevices, a.devices)
+		if err != nil {
+			return nil, err
+		}
+	}
+	osds = appendOSDInfo(osds, slices.DeleteFunc(rawOsds, func(o oposd.OSDInfo) bool { return slices.Contains(destroyedOSDIds, o.ID) }))
 
 	return osds, err
+}
+
+// ensurePreparedDevicesListed verifies that every device that was just prepared in raw mode is
+// represented in the OSD list reported by "ceph-volume raw list". Any prepared device missing
+// from the results is listed individually ("ceph-volume raw list <device>"), which is immune to
+// the failure modes that can blank the no-argument listing. If a prepared device still yields no OSD,
+// an error is returned so the prepare job exits non-zero and Kubernetes restarts it with a
+// freshly re-scanned environment, rather than silently under-reporting the OSDs on the node.
+func ensurePreparedDevicesListed(context *clusterd.Context, clusterInfo *client.ClusterInfo, osds []oposd.OSDInfo, preparedDevices []string, devices []DesiredDevice) ([]oposd.OSDInfo, error) {
+	for _, device := range preparedDevices {
+		if deviceInOSDInfoList(device, osds) {
+			continue
+		}
+
+		logger.Warningf("prepared device %q is missing from the ceph-volume raw list results, listing the device individually", device)
+		deviceOsds, err := GetCephVolumeRawOSDs(context, clusterInfo, clusterInfo.FSID, device, "", "", false, false, devices)
+		if err != nil {
+			return nil, errors.Wrapf(err, "an OSD was prepared on device %q, but listing it individually failed", device)
+		}
+		if len(deviceOsds) == 0 {
+			return nil, errors.Errorf("an OSD was prepared on device %q, but ceph-volume does not report it", device)
+		}
+		osds = appendOSDInfo(osds, deviceOsds)
+	}
+
+	return osds, nil
+}
+
+// deviceInOSDInfoList returns true if the given device path is the block path of one of the
+// given OSDs. Paths are compared after symlink resolution since ceph-volume may report a device
+// through a different alias (e.g. /dev/sdb1 configured as /dev/disk/by-id/...-part1).
+func deviceInOSDInfoList(device string, osds []oposd.OSDInfo) bool {
+	resolve := func(devicePath string) string {
+		if resolved, err := filepath.EvalSymlinks(devicePath); err == nil {
+			return resolved
+		}
+		return devicePath
+	}
+
+	resolvedDevice := resolve(device)
+	for _, osd := range osds {
+		if osd.BlockPath == device || resolve(osd.BlockPath) == resolvedDevice {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (a *OsdAgent) initializeBlockPVC(context *clusterd.Context, devices *DeviceOsdMapping, lvBackedPV bool) (string, string, string, error) {
@@ -393,7 +470,7 @@ func UpdateLVMConfig(context *clusterd.Context, onPVC, lvBackedPV bool) error {
 		// And reject everything else
 		// We have 2 different regex depending on the version of LVM present in the container...
 		// Since https://github.com/lvmteam/lvm2/commit/08396b4bce45fb8311979250623f04ec0ddb628c#diff-13c602a6258e57ce666a240e67c44f38
-		// the content changed, so depending which version is installed one of the two replace will work
+		// the content changed, so depending on which version is installed one of the two replacements will work
 		if lvBackedPV {
 			// ceph-volume calls lvs to locate given "vg/lv", so allow "/dev" here. However, ignore loopback devices
 			output = bytes.Replace(output, []byte(`# filter = [ "a|.*/|" ]`), []byte(`filter = [ "a|^/mnt/.*|", "r|^/dev/loop.*|", "a|^/dev/.*|", "r|.*|" ]`), 1)
@@ -475,18 +552,20 @@ func lvmModeAllowed(device *DeviceOsdIDEntry, storeConfig *config.StoreConfig) b
 	return true
 }
 
-func (a *OsdAgent) initializeDevices(context *clusterd.Context, devices *DeviceOsdMapping) error {
+// initializeDevices prepares the given devices with ceph-volume and returns the paths of the
+// devices that were newly prepared in raw mode.
+func (a *OsdAgent) initializeDevices(context *clusterd.Context, devices *DeviceOsdMapping) ([]string, error) {
 	// Should we allow ceph-volume raw mode?
 	allowRawMode, err := a.allowRawMode(context)
 	if err != nil {
-		return errors.Wrap(err, "failed to determine which ceph-volume mode to use")
+		return nil, errors.Wrap(err, "failed to determine which ceph-volume mode to use")
 	}
 
 	// If not raw mode we must execute a few LVM prerequisites
 	if !allowRawMode {
 		err = lvmPreReq(context)
 		if err != nil {
-			return errors.Wrap(err, "failed to run lvm prerequisites")
+			return nil, errors.Wrap(err, "failed to run lvm prerequisites")
 		}
 	}
 
@@ -518,26 +597,29 @@ func (a *OsdAgent) initializeDevices(context *clusterd.Context, devices *DeviceO
 		}
 	}
 
-	err = a.initializeDevicesRawMode(context, rawDevices)
+	preparedRawDevices, err := a.initializeDevicesRawMode(context, rawDevices)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = a.initializeDevicesLVMMode(context, lvmDevices)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return preparedRawDevices, nil
 }
 
-func (a *OsdAgent) initializeDevicesRawMode(context *clusterd.Context, devices *DeviceOsdMapping) error {
+// initializeDevicesRawMode prepares the given devices with "ceph-volume raw prepare" and returns
+// the paths of the devices that were newly prepared.
+func (a *OsdAgent) initializeDevicesRawMode(context *clusterd.Context, devices *DeviceOsdMapping) ([]string, error) {
 	baseCommand := "stdbuf"
 	cephVolumeMode := "raw"
 	storeFlag := a.storeConfig.GetStoreFlag()
 
 	baseArgs := []string{"-oL", cephVolumeCmd, cephVolumeMode, "prepare", storeFlag}
 
+	var preparedDevices []string
 	for name, device := range devices.Entries {
 		deviceArg := path.Join("/dev", name)
 		if device.Data == -1 {
@@ -573,15 +655,16 @@ func (a *OsdAgent) initializeDevicesRawMode(context *clusterd.Context, devices *
 				}
 
 				// Return failure
-				return errors.Wrapf(err, "failed to run ceph-volume raw command. %s", op) // fail return here as validation provided by ceph-volume
+				return nil, errors.Wrapf(err, "failed to run ceph-volume raw command. %s", op) // fail return here as validation provided by ceph-volume
 			}
 			logger.Infof("%v", op)
+			preparedDevices = append(preparedDevices, deviceArg)
 		} else {
 			logger.Infof("skipping device %q with osd %d already configured", deviceArg, device.Data)
 		}
 	}
 
-	return nil
+	return preparedDevices, nil
 }
 
 func (a *OsdAgent) initializeDevicesLVMMode(context *clusterd.Context, devices *DeviceOsdMapping) error {
@@ -984,8 +1067,8 @@ func (a *OsdAgent) WipeDevicesFromOtherClusters(context *clusterd.Context) error
 	}
 
 	if len(existingOSDs) == 0 {
-		// ceph-volume raw list didn't return any existing OSDs. Its possible that /dev/mapper entry of the encrypted disks were removed.
-		// Check for cephFSID in the luks header of the disk and clean the disk if does not match the cephFSID of the current cluster.
+		// ceph-volume raw list didn't return any existing OSDs. It's possible that /dev/mapper entries of the encrypted disks were removed.
+		// Check for cephFSID in the luks header of the disk and clean the disk if it does not match the cephFSID of the current cluster.
 		logger.Infof("ceph-volume didn't return any existing OSDs. Checking for cephFSID of a different cluster in the luks header of the disk")
 		err := wipeEncryptedDevicesFromOtherClusters(context, a.clusterInfo.FSID)
 		if err != nil {
@@ -1121,7 +1204,7 @@ func sanitizeOSDsPerDevice(count int) string {
 	return strconv.Itoa(count)
 }
 
-// GetCephVolumeLVMOSDs list OSD prepared with lvm mode
+// GetCephVolumeLVMOSDs lists OSDs prepared with lvm mode
 func GetCephVolumeLVMOSDs(context *clusterd.Context, clusterInfo *client.ClusterInfo, cephfsid, lv string, skipLVRelease, lvBackedPV bool) ([]oposd.OSDInfo, error) {
 	// lv can be a block device if raw mode is used
 	cvMode := "lvm"
@@ -1217,8 +1300,8 @@ func readCVLogContent(cvLogFilePath string) string {
 	return string(b)
 }
 
-// GetCephVolumeRawOSDs list OSD prepared with raw mode.
-// Sometimes this function called against a device, sometimes it's not. For instance, in the cleanup
+// GetCephVolumeRawOSDs lists OSDs prepared with raw mode.
+// Sometimes this function is called against a device, sometimes it's not. For instance, in the cleanup
 // scenario, we don't pass any block because we are looking for all the OSDs present on the machine.
 // On the other hand, the PVC scenario always uses the PVC block as a block to check whether the
 // disk is an OSD or not.
@@ -1239,7 +1322,7 @@ func GetCephVolumeRawOSDs(context *clusterd.Context, clusterInfo *client.Cluster
 	// If block is passed, check if it's an encrypted device, this is needed to get the correct
 	// device path and populate the OSDInfo for that OSD
 	// When the device is passed, this means we entered the case where no devices were found
-	// available, this indicates OSD have been prepared already.
+	// available, this indicates OSDs have been prepared already.
 	// However, there is a scenario where we run the prepare job again and this is when the OSD
 	// deployment is removed. The operator will reconcile upon deletion of the OSD deployment thus
 	// re-running the prepare job to re-hydrate the OSDInfo.
@@ -1256,8 +1339,8 @@ func GetCephVolumeRawOSDs(context *clusterd.Context, clusterInfo *client.Cluster
 			var encryptedBlock string
 			// Find the encrypted block as part of the output
 			// Most of the time we get 2 devices, the parent and the child but we don't want to guess
-			// which one is the child by looking at the index, instead the iterate over the list
-			// Our encrypted device **always** have "-dmcrypt" in the name.
+			// which one is the child by looking at the index, instead we iterate over the list
+			// Our encrypted devices **always** have "-dmcrypt" in the name.
 			for _, device := range childDevice {
 				if strings.Contains(device, "-dmcrypt") {
 					encryptedBlock = device
@@ -1421,7 +1504,7 @@ func GetCephVolumeRawOSDs(context *clusterd.Context, clusterInfo *client.Cluster
 		// If this is an encrypted OSD
 		// Always rely on the env variable and NOT what we find as a block name, this function is
 		// called by:
-		//   * the prepare job, which pass the env variable for encryption or not
+		//   * the prepare job, which passes the env variable for encryption or not
 		//   * the cleanup job which lists **all** devices and cleans them up
 		// They do different things, in the case of the prepare job we want to close the encrypted
 		// device because the device is going to be detached from the pod and re-attached to the OSD
@@ -1491,7 +1574,7 @@ func callCephVolume(context *clusterd.Context, args ...string) (string, error) {
 	}
 	baseArgs := []string{"-oL", cephVolumeCmd, "--log-path", logPath}
 
-	// Do not use combined output for "list" calls, otherwise we will get stderr is the output and this will break the json unmarshall
+	// Do not use combined output for "list" calls, otherwise we will get stderr in the output and this will break the json unmarshall
 	f := context.Executor.ExecuteCommandWithOutput
 	co, err := f(baseCommand, append(baseArgs, args...)...)
 	if err != nil {

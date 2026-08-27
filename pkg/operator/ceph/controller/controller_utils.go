@@ -70,7 +70,7 @@ const (
 )
 
 var (
-	// ImmediateRetryResult Return this for a immediate retry of the reconciliation loop with the same request object.
+	// ImmediateRetryResult is returned for an immediate retry of the reconciliation loop with the same request object.
 	ImmediateRetryResult = reconcile.Result{Requeue: true}
 
 	// WaitForRequeueIfCephClusterNotReady waits for the CephCluster to be ready
@@ -82,7 +82,7 @@ var (
 	// WaitForRequeueIfFinalizerBlocked waits for resources to be cleaned up before the finalizer can be removed
 	WaitForRequeueIfFinalizerBlocked = reconcile.Result{Requeue: true, RequeueAfter: 10 * time.Second}
 
-	// WaitForRequeueIfOperatorNotInitialized waits for resources to be cleaned up before the finalizer can be removed
+	// WaitForRequeueIfOperatorNotInitialized waits for the operator to finish initializing
 	WaitForRequeueIfOperatorNotInitialized = reconcile.Result{Requeue: true, RequeueAfter: 10 * time.Second}
 
 	// OperatorCephBaseImageVersion is the ceph version in the operator image
@@ -190,8 +190,11 @@ func canIgnoreHealthErrStatusInReconcile(cephCluster cephv1.CephCluster, control
 	}
 
 	allowedErrStatus := map[string]struct{}{
-		"MDS_ALL_DOWN":     {},
-		"MGR_MODULE_ERROR": {},
+		"MDS_ALL_DOWN":                            {},
+		"MGR_MODULE_ERROR":                        {},
+		"AUTH_INSECURE_SERVICE_KEY_TYPE":          {}, // rook can reconcile cephx keys to clear this
+		"AUTH_INSECURE_ROTATING_SERVICE_KEY_TYPE": {}, // rook can reconcile cephx keys to clear this
+		"AUTH_INSECURE_SERVICE_TICKETS":           {}, // rook can reconcile cephx keys to clear this
 	}
 	allCanBeIgnored := true
 	for _, healthErrKey := range healthErrKeys {

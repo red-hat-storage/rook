@@ -70,7 +70,7 @@ The following table lists the configurable parameters of the rook-operator chart
 | `cephFileSystems` | A list of CephFileSystem configurations to deploy | See [below](#ceph-file-systems) |
 | `cephImage.allowUnsupported` |  | `false` |
 | `cephImage.repository` |  | `"quay.io/ceph/ceph"` |
-| `cephImage.tag` |  | `"v20.2.2"` |
+| `cephImage.tag` |  | `"v20.2.4"` |
 | `cephObjectStores` | A list of CephObjectStore configurations to deploy | See [below](#ceph-object-stores) |
 | `clusterName` | The metadata.name of the CephCluster CR | The same as the namespace |
 | `configOverride` | Cluster ceph.conf override | `nil` |
@@ -180,6 +180,17 @@ commented out by default; uncomment and adjust them to deploy a multisite config
 | `cephObjectZoneGroups[].spec` | The CephObjectZoneGroup spec, see the [CephObjectZoneGroup CRD](../CRDs/Object-Storage/ceph-object-zonegroup-crd.md) documentation. | see values.yaml |
 | `cephObjectZones[].name` | The name of the CephObjectZone | `zone-a` |
 | `cephObjectZones[].spec` | The CephObjectZone spec, see the [CephObjectZone CRD](../CRDs/Object-Storage/ceph-object-zone-crd.md) documentation. | see values.yaml |
+
+### **Ceph Object Store Users**
+
+The `cephObjectStoreUsers` array in the values file defines a list of S3 users to create in an
+object store. The entries are commented out by default; uncomment and adjust them to create users,
+pointing each at a `cephObjectStores` entry via its `spec.store`.
+
+| Parameter | Description | Default |
+| --------- | ----------- | ------- |
+| `cephObjectStoreUsers[].name` | The name of the CephObjectStoreUser | `my-user` |
+| `cephObjectStoreUsers[].spec` | The CephObjectStoreUser spec, see the [CephObjectStoreUser CRD](../CRDs/Object-Storage/ceph-object-store-user-crd.md) documentation. | see values.yaml |
 
 ### **Existing Clusters**
 

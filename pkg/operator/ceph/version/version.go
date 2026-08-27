@@ -53,7 +53,7 @@ var (
 	// supportedVersions are production-ready versions that rook supports
 	supportedVersions = []CephVersion{Squid, Tentacle}
 
-	// unsupportedVersions are possibly Ceph pin-point release that introduced breaking changes and not recommended
+	// unsupportedVersions are possibly Ceph pin-point releases that introduced breaking changes and are not recommended
 	unsupportedVersions []CephVersion
 
 	// for parsing the output of `ceph --version`
@@ -96,7 +96,7 @@ func (v *CephVersion) ReleaseName() string {
 	}
 }
 
-// ExtractCephVersion extracts the major, minor and extra digit of a Ceph release
+// ExtractCephVersion extracts the major, minor and extra digits of a Ceph release
 func ExtractCephVersion(src string) (*CephVersion, error) {
 	var build int
 	var commitID string
@@ -143,7 +143,7 @@ func (v *CephVersion) Supported() bool {
 	return slices.ContainsFunc(supportedVersions, v.isRelease)
 }
 
-// Unsupported checks if a given release is supported
+// Unsupported checks if a given release is not supported
 func (v *CephVersion) Unsupported() bool {
 	return slices.ContainsFunc(unsupportedVersions, v.isExactly)
 }
@@ -156,7 +156,7 @@ func (v *CephVersion) isExactly(other CephVersion) bool {
 	return v.Major == other.Major && v.Minor == other.Minor && v.Extra == other.Extra
 }
 
-// IsAtLeast checks a given Ceph version is at least a given one
+// IsAtLeast checks if a given Ceph version is at least a given one
 func (v *CephVersion) IsAtLeast(other CephVersion) bool {
 	if v.Major > other.Major {
 		return true
@@ -173,6 +173,12 @@ func (v *CephVersion) IsAtLeast(other CephVersion) bool {
 	if v.Extra > other.Extra {
 		return true
 	} else if v.Extra < other.Extra {
+		return false
+	}
+	// If we arrive here then v.Extra == other.Extra
+	if v.Build > other.Build {
+		return true
+	} else if v.Build < other.Build {
 		return false
 	}
 	// If we arrive here then both versions are identical
@@ -211,7 +217,7 @@ func IsIdentical(a, b CephVersion) bool {
 	return false
 }
 
-// IsSuperior checks if a given version if superior to another one
+// IsSuperior checks if a given version is superior to another one
 func IsSuperior(a, b CephVersion) bool {
 	if a.Major > b.Major {
 		return true
@@ -244,7 +250,18 @@ func IsSuperior(a, b CephVersion) bool {
 	return false
 }
 
-// IsInferior checks if a given version if inferior to another one
+// IsStrictlySuperior checks if a given version is superior to another one, ignoring any
+// difference in commit ID. Commit IDs are hashes and have no ordering, so unlike IsSuperior
+// this never reports one version as superior to another purely because the two were built
+// from different commits.
+func IsStrictlySuperior(a, b CephVersion) bool {
+	a.CommitID = ""
+	b.CommitID = ""
+
+	return IsSuperior(a, b)
+}
+
+// IsInferior checks if a given version is inferior to another one
 func IsInferior(a, b CephVersion) bool {
 	if a.Major < b.Major {
 		return true
@@ -275,7 +292,7 @@ func IsInferior(a, b CephVersion) bool {
 }
 
 // ValidateCephVersionsBetweenLocalAndExternalClusters makes sure an external cluster can be connected
-// by checking the external ceph versions available and comparing it with the local image provided
+// by checking the external ceph versions available and comparing them with the local image provided
 func ValidateCephVersionsBetweenLocalAndExternalClusters(localVersion, externalVersion CephVersion) error {
 	logger.Debugf("local version is %q, external version is %q", localVersion.String(), externalVersion.String())
 
@@ -289,14 +306,16 @@ func ValidateCephVersionsBetweenLocalAndExternalClusters(localVersion, externalV
 		return nil
 	}
 
-	// Local version must never be higher than the external one
-	if IsSuperior(localVersion, externalVersion) {
+	// Local version must never be higher than the external one. Compare the releases with
+	// IsStrictlySuperior so that two clusters running the same release built from different
+	// commits are not reported as one being higher than the other.
+	if IsStrictlySuperior(localVersion, externalVersion) {
 		return errors.Errorf("local cluster ceph version %q is higher than the external cluster version %q, this must never happen", localVersion.String(), externalVersion.String())
 	}
 
 	// External cluster was updated to a minor version higher, consider updating too!
 	if localVersion.Major == externalVersion.Major {
-		if IsSuperior(externalVersion, localVersion) {
+		if IsStrictlySuperior(externalVersion, localVersion) {
 			logger.Warningf("external cluster ceph version is a minor version higher %q than the local cluster %q, consider upgrading", externalVersion.String(), localVersion.String())
 			return nil
 		}

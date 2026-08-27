@@ -153,10 +153,10 @@ type OsdTree struct {
 	} `json:"stray"`
 }
 
-// OsdList returns the list of OSD by their IDs
+// OsdList is the list of OSDs by their IDs
 type OsdList []int
 
-// StatusByID returns status and inCluster states for given OSD id
+// StatusByID returns status and inCluster states for a given OSD id
 func (dump *OSDDump) StatusByID(id int64) (int64, int64, error) {
 	for _, d := range dump.OSDs {
 		i, err := d.OSD.Int64()
@@ -180,6 +180,20 @@ func (dump *OSDDump) StatusByID(id int64) (int64, int64, error) {
 	}
 
 	return 0, 0, errors.Errorf("not found osd.%d in OSDDump", id)
+}
+
+// Exists reports whether the given OSD id is present in the osdmap.
+func (dump *OSDDump) Exists(id int64) bool {
+	for _, d := range dump.OSDs {
+		idFromDump, err := d.OSD.Int64()
+		if err != nil {
+			continue
+		}
+		if idFromDump == id {
+			return true
+		}
+	}
+	return false
 }
 
 func GetOSDUsage(context *clusterd.Context, clusterInfo *ClusterInfo) (*OSDUsage, error) {
@@ -216,7 +230,7 @@ func ResizeOsdCrushWeight(actualOSD OSDNodeUsage, ctx *clusterd.Context, cluster
 		return false, errors.Wrapf(err, "failed to convert KiB to TiB for osd.%d crush weight %q", actualOSD.ID, actualOSD.KB.String())
 	}
 
-	// do not reweight if the calculated crush weight is 0 or less than equal to actualCrushWeight or there percentage resize is less than 1 percent
+	// do not reweight if the calculated crush weight is 0, or is less than or equal to currentCrushWeight, or the percentage resize is less than or equal to 1 percent
 	if calculatedCrushWeight == float64(0) {
 		logger.Debugf("osd size is 0 for osd.%d, not resizing the crush weights", actualOSD.ID)
 		return false, nil
@@ -309,6 +323,53 @@ func HostTree(context *clusterd.Context, clusterInfo *ClusterInfo) (OsdTree, err
 	return output, nil
 }
 
+// GetDestroyedIDs returns the ids of osd nodes whose status is "destroyed".
+func (tree OsdTree) GetDestroyedIDs() []int {
+	destroyed := []int{}
+	for _, node := range tree.Nodes {
+		if node.Status == "destroyed" {
+			destroyed = append(destroyed, node.ID)
+		}
+	}
+	return destroyed
+}
+
+func OSDOut(context *clusterd.Context, clusterInfo *ClusterInfo, osdID int) error {
+	args := []string{"osd", "out", strconv.Itoa(osdID)}
+	cmd := NewCephCommand(context, clusterInfo, args)
+	if _, err := cmd.Run(); err != nil {
+		return errors.Wrapf(err, "failed to mark osd.%d out", osdID)
+	}
+	return nil
+}
+
+func OSDIn(context *clusterd.Context, clusterInfo *ClusterInfo, osdID int) error {
+	args := []string{"osd", "in", strconv.Itoa(osdID)}
+	cmd := NewCephCommand(context, clusterInfo, args)
+	if _, err := cmd.Run(); err != nil {
+		return errors.Wrapf(err, "failed to mark osd.%d in", osdID)
+	}
+	return nil
+}
+
+func OSDDown(context *clusterd.Context, clusterInfo *ClusterInfo, osdID int) error {
+	args := []string{"osd", "down", strconv.Itoa(osdID)}
+	cmd := NewCephCommand(context, clusterInfo, args)
+	if _, err := cmd.Run(); err != nil {
+		return errors.Wrapf(err, "failed to mark osd.%d down", osdID)
+	}
+	return nil
+}
+
+func OSDDestroy(context *clusterd.Context, clusterInfo *ClusterInfo, osdID int) error {
+	args := []string{"osd", "destroy", fmt.Sprintf("osd.%d", osdID), confirmFlag}
+	cmd := NewCephCommand(context, clusterInfo, args)
+	if _, err := cmd.Run(); err != nil {
+		return errors.Wrapf(err, "failed to destroy osd.%d", osdID)
+	}
+	return nil
+}
+
 // OsdListNum returns the list of OSDs
 func OsdListNum(context *clusterd.Context, clusterInfo *ClusterInfo) (OsdList, error) {
 	var output OsdList
@@ -327,7 +388,7 @@ func OsdListNum(context *clusterd.Context, clusterInfo *ClusterInfo) (OsdList, e
 	return output, nil
 }
 
-// OSDDeviceClass report device class for osd
+// OSDDeviceClass reports the device class for an osd
 type OSDDeviceClass struct {
 	ID          int    `json:"osd"`
 	DeviceClass string `json:"device_class"`
@@ -352,7 +413,7 @@ func OSDDeviceClasses(context *clusterd.Context, clusterInfo *ClusterInfo, osdId
 	return deviceClasses, nil
 }
 
-// OSDOkToStopStats report detailed information about which OSDs are okay to stop
+// OSDOkToStopStats reports detailed information about which OSDs are okay to stop
 type OSDOkToStopStats struct {
 	OkToStop          bool     `json:"ok_to_stop"`
 	OSDs              []int    `json:"osds"`
@@ -407,6 +468,9 @@ func SetPrimaryAffinity(context *clusterd.Context, clusterInfo *ClusterInfo, osd
 type OSDMetadata struct {
 	Id       int    `json:"id"`
 	HostName string `json:"hostname"`
+	// Devices is the sorted, comma-separated set of physical block devices backing the OSD, resolved
+	// past any LVM/dm layer, e.g. "vdb" or "nvme0n1,vdb" when the DB is on a separate device.
+	Devices string `json:"devices"`
 }
 
 // GetOSDMetadata returns the output of `ceph osd metadata`
@@ -423,7 +487,7 @@ func GetOSDMetadata(context *clusterd.Context, clusterInfo *ClusterInfo) (*[]OSD
 	return &osdMetadata, nil
 }
 
-// Blocklist blocklists the client address for predefined duration
+// Blocklist blocklists the client address for the given duration
 func Blocklist(context *clusterd.Context, clusterInfo *ClusterInfo, address, duration string) error {
 	args := []string{"osd", "blocklist", "add", address, duration}
 	_, err := NewCephCommand(context, clusterInfo, args).Run()

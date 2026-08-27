@@ -164,6 +164,9 @@ spec:
   mgr:
     count: ` + strconv.Itoa(mgrCount) + `
     allowMultiplePerNode: true
+    modules:
+      - name: rook
+        enabled: false
   dashboard:
     enabled: true
   network:
@@ -254,6 +257,19 @@ spec:
       kernelMountOptions: ms_mode=secure
   `
 	}
+
+	if m.settings.RookVersion != Version1_19 {
+		// set CSI cephx key version to aes for compatibility
+		// to support upgrading from old version, ensure this isn't added when using old rook
+		clusterSpec += `
+  security:
+    cephx:
+      csi:
+        # keep the old aes key type when the host kernel does not yet support aes256k
+        keyType: aes
+`
+	}
+
 	return clusterSpec + `
   priorityClassNames:
     mon: system-node-critical
@@ -439,7 +455,7 @@ spec:
     activeStandby: true`
 }
 
-// GetFilesystem returns the manifest to create a Rook Ceph NFS resource with the given config.
+// GetNFS returns the manifest to create a Rook Ceph NFS resource with the given config.
 func (m *CephManifestsMaster) GetNFS(name string, count int) string {
 	return `apiVersion: ceph.rook.io/v1
 kind: CephNFS
@@ -454,7 +470,7 @@ spec:
     active: ` + strconv.Itoa(count)
 }
 
-// GetFilesystem returns the manifest to create a Rook Ceph NFS resource with the given config.
+// GetNFSPool returns the manifest to create the CephBlockPool backing the .nfs pool.
 func (m *CephManifestsMaster) GetNFSPool() string {
 	return `apiVersion: ceph.rook.io/v1
 kind: CephBlockPool
@@ -553,7 +569,7 @@ spec:
 `
 }
 
-// GetBucketStorageClass returns the manifest to create object bucket
+// GetBucketStorageClass returns the manifest to create the object bucket storage class
 func (m *CephManifestsMaster) GetBucketStorageClass(storeName, storageClassName, reclaimPolicy string) string {
 	return `apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -566,7 +582,7 @@ parameters:
     objectStoreNamespace: ` + m.settings.Namespace
 }
 
-// GetOBC returns the manifest to create object bucket claim
+// GetOBC returns the manifest to create an object bucket claim
 func (m *CephManifestsMaster) GetOBC(claimName string, storageClassName string, objectBucketName string, maxObject string, varBucketName bool) string {
 	bucketParameter := "generateBucketName"
 	if varBucketName {
@@ -583,7 +599,7 @@ spec:
     maxObjects: "` + maxObject + `"`
 }
 
-// GetBucketTopic returns the manifest to create ceph bucket topic
+// GetBucketTopic returns the manifest to create a ceph bucket topic
 func (m *CephManifestsMaster) GetBucketTopic(topicName string, storeName string, httpEndpointService string) string {
 	return `apiVersion: ceph.rook.io/v1
 kind: CephBucketTopic

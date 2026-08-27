@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	"github.com/rook/rook/pkg/operator/ceph/config"
 	"github.com/rook/rook/pkg/operator/ceph/config/keyring"
 	"github.com/rook/rook/pkg/util/log"
@@ -51,7 +52,7 @@ type mgrConfig struct {
 // If the port is greater than 1024, for backward compatibility the port and
 // targetPort should be the same value. If the port is less than 1024,
 // the internal port must use a higher port number. In that case, the internal
-// port will be the default port numbers and only the public port will be
+// port will be the default port number and only the public port will be
 // the desired port in the cluster CR.
 func (c *Cluster) dashboardInternalPort() int {
 	port := c.dashboardPublicPort()
@@ -84,14 +85,15 @@ func (c *Cluster) generateKeyring(m *mgrConfig) (string, error) {
 	access := []string{"mon", "allow profile mgr", "mds", "allow *", "osd", "allow *"}
 	s := keyring.GetSecretStore(c.context, c.clusterInfo, c.clusterInfo.OwnerInfo)
 
-	key, err := s.GenerateKey(user, access)
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	key, err := s.GenerateKey(user, keyType, access)
 	if err != nil {
 		return "", err
 	}
 
 	if c.shouldRotateCephxKeys {
 		log.NamespacedInfo(c.clusterInfo.Namespace, logger, "rotating cephx key for mgr daemon %q in the namespace %q", m.ResourceName, c.clusterInfo.Namespace)
-		newKey, err := s.RotateKey(user)
+		newKey, err := s.RotateKey(user, keyType)
 		if err != nil {
 			return "", errors.Wrapf(err, "failed to rotate cephx key for mgr daemon %q", m.ResourceName)
 		}

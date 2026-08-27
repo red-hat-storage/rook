@@ -72,7 +72,7 @@ var (
 	SquidVersion                 = cephv1.CephVersionSpec{Image: squidTestImage}
 	SquidDevelVersion            = cephv1.CephVersionSpec{Image: squidDevelTestImage}
 	TentacleVersion              = cephv1.CephVersionSpec{Image: tentacleTestImage}
-	UmbrellaVersion              = cephv1.CephVersionSpec{Image: umbrellaTestImage}
+	UmbrellaVersion              = cephv1.CephVersionSpec{Image: umbrellaTestImage, AllowUnsupported: true}
 	TentacleDevelVersion         = cephv1.CephVersionSpec{Image: tentacleDevelTestImage, AllowUnsupported: true}
 	UmbrellaDevelVersion         = cephv1.CephVersionSpec{Image: umbrellaDevelTestImage, AllowUnsupported: true}
 	MainVersion                  = cephv1.CephVersionSpec{Image: mainTestImage, AllowUnsupported: true}
@@ -125,7 +125,7 @@ func (h *CephInstaller) CreateCephOperator() (err error) {
 	}
 
 	if h.changeHostnames {
-		// give nodes a hostname that is different from its k8s node name to confirm that all the daemons will be initialized properly
+		// give nodes a hostname that is different from their k8s node name to confirm that all the daemons will be initialized properly
 		err = h.k8shelper.ChangeHostnames()
 		assert.NoError(h.T(), err)
 	}
@@ -139,13 +139,6 @@ func (h *CephInstaller) CreateCephOperator() (err error) {
 	_, err = h.k8shelper.KubectlWithStdin(h.Manifests.GetCommon(), createFromStdinArgs...)
 	if err != nil {
 		return errors.Errorf("Failed to create rook-operator pod: %v ", err)
-	}
-
-	if networkPolicy := h.Manifests.GetNetworkPolicy(); networkPolicy != "" {
-		logger.Info("Creating NetworkPolicies")
-		if _, err = h.k8shelper.KubectlWithStdin(networkPolicy, createFromStdinArgs...); err != nil {
-			return errors.Wrap(err, "failed to create network policies")
-		}
 	}
 
 	if err := h.CreateVolumeReplicationCRDs(); err != nil {
@@ -172,6 +165,21 @@ func (h *CephInstaller) CreateCephOperator() (err error) {
 
 	logger.Infof("Rook operator started")
 
+	return nil
+}
+
+// CreateNetworkPolicies applies the network-policy manifest when the current
+// Rook version ships one.  It is called from installRookOperator so that both
+// the Helm and the plain-kubectl operator paths are covered.
+func (h *CephInstaller) CreateNetworkPolicies() error {
+	networkPolicy := h.Manifests.GetNetworkPolicy()
+	if networkPolicy == "" {
+		return nil
+	}
+	logger.Info("Creating NetworkPolicies")
+	if _, err := h.k8shelper.KubectlWithStdin(networkPolicy, createFromStdinArgs...); err != nil {
+		return errors.Wrap(err, "failed to create network policies")
+	}
 	return nil
 }
 
@@ -221,7 +229,7 @@ func (h *CephInstaller) CreateRookToolbox(manifests CephManifests) (err error) {
 	return nil
 }
 
-// Execute a command in the ceph toolbox
+// Execute runs a command in the ceph toolbox
 func (h *CephInstaller) Execute(command string, parameters []string, namespace string) (string, error) {
 	clusterInfo := client.AdminTestClusterInfo(namespace)
 	cmd, args := client.FinalizeCephCommandArgs(command, clusterInfo, parameters, h.k8shelper.MakeContext().ConfigDir)
@@ -406,7 +414,7 @@ func (h *CephInstaller) CreateRookExternalCluster(externalManifests CephManifest
 	return errors.Errorf("failed to start external cluster, state: %v", clusterStatus)
 }
 
-// injectRookExternalClusterInfo inject connection information for an external cluster
+// injectRookExternalClusterInfo injects connection information for an external cluster
 func (h *CephInstaller) injectRookExternalClusterInfo(externalSettings *TestCephSettings) error {
 	ctx := context.TODO()
 	// get config map
@@ -563,6 +571,10 @@ func (h *CephInstaller) installRookOperator() (bool, error) {
 			return false, errors.Wrap(err, "failed to configure ceph operator")
 		}
 	}
+	if err := h.CreateNetworkPolicies(); err != nil {
+		return false, err
+	}
+
 	if !h.k8shelper.IsPodInExpectedState("rook-ceph-operator", h.settings.OperatorNamespace, "Running") {
 		logger.Error("rook-ceph-operator is not running")
 		h.k8shelper.GetLogsFromNamespace(h.settings.OperatorNamespace, "test-setup", utils.TestEnvName())
@@ -861,7 +873,7 @@ func (h *CephInstaller) UninstallRookFromMultipleNS(manifests ...CephManifests) 
 		assert.NoError(h.T(), err)
 	}
 
-	// wait a bit longer for the system namespace to be cleaned up after their deletion
+	// wait a bit longer for the system namespace to be cleaned up after its deletion
 	for i := 0; i < 15; i++ {
 		_, err := h.k8shelper.Clientset.CoreV1().Namespaces().Get(ctx, h.settings.OperatorNamespace, metav1.GetOptions{})
 		if err != nil && kerrors.IsNotFound(err) {
@@ -983,7 +995,7 @@ func (h *CephInstaller) GatherAllRookLogs(testName string, namespaces ...string)
 	}
 }
 
-// NewCephInstaller creates new instance of CephInstaller
+// NewCephInstaller creates a new instance of CephInstaller
 func NewCephInstaller(t func() *testing.T, clientset *kubernetes.Clientset, settings *TestCephSettings) *CephInstaller {
 	// By default set a cluster name that is different from the namespace so we don't rely on the namespace
 	// in expected places
@@ -1045,7 +1057,7 @@ spec:
                    path:  ` + removalDir
 }
 
-// GetCleanupVerificationPod verifies that the dataDirHostPath is empty
+// GetCleanupVerificationPod returns a job manifest that verifies the dataDirHostPath is empty
 func (h *CephInstaller) GetCleanupVerificationPod(node, hostPathDir string) string {
 	return `apiVersion: batch/v1
 kind: Job
