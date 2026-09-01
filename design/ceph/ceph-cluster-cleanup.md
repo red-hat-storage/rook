@@ -6,7 +6,7 @@ As a rook user, I want to clean up data on the hosts after I intentionally unins
 
 ## Background
 
-### Cluster deletion
+### Cluster deletiona
 If the user deletes a rook-ceph cluster and wants to start a new cluster on the same hosts, then following manual steps should be performed:
 - Delete the dataDirHostPath on each host. Otherwise, stale keys and other configs will remain from the previous cluster and the new mons will fail to start.
 - Clean the OSD disks from the previous cluster before starting a new one.
