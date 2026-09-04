@@ -35,7 +35,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -323,7 +322,7 @@ func TestCephExporterBindAddress(t *testing.T) {
 		cephVersion := cephver.CephVersion{Major: 18, Minor: 0, Extra: 0}
 
 		cephCluster.Spec.Monitoring.Exporter = &cephv1.CephExporterSpec{}
-		cephCluster.Spec.Monitoring.Exporter.HostNetwork = ptr.To(false)
+		cephCluster.Spec.Monitoring.Exporter.HostNetwork = new(false)
 		cephCluster.Spec.Monitoring.Exporter.PerfCountersPrioLimit = prioLimitString
 		cephCluster.Spec.Monitoring.Exporter.StatsPeriodSeconds = statsPeriodString
 
@@ -341,7 +340,7 @@ func TestCephExporterBindAddress(t *testing.T) {
 		cephVersion := cephver.CephVersion{Major: 18, Minor: 0, Extra: 0}
 
 		cephCluster.Spec.Monitoring.Exporter = &cephv1.CephExporterSpec{}
-		cephCluster.Spec.Monitoring.Exporter.HostNetwork = ptr.To(false)
+		cephCluster.Spec.Monitoring.Exporter.HostNetwork = new(false)
 		cephCluster.Spec.Monitoring.Exporter.PerfCountersPrioLimit = prioLimitString
 		cephCluster.Spec.Monitoring.Exporter.StatsPeriodSeconds = statsPeriodString
 
@@ -358,7 +357,7 @@ func TestCephExporterBindAddress(t *testing.T) {
 		cephVersion := cephver.CephVersion{Major: 18, Minor: 0, Extra: 0}
 
 		cephCluster.Spec.Monitoring.Exporter = &cephv1.CephExporterSpec{}
-		cephCluster.Spec.Monitoring.Exporter.HostNetwork = ptr.To(false)
+		cephCluster.Spec.Monitoring.Exporter.HostNetwork = new(false)
 		cephCluster.Spec.Monitoring.Exporter.PerfCountersPrioLimit = prioLimitString
 		cephCluster.Spec.Monitoring.Exporter.StatsPeriodSeconds = statsPeriodString
 
@@ -376,7 +375,7 @@ func TestCephExporterBindAddress(t *testing.T) {
 		cephVersion := cephver.CephVersion{Major: 18, Minor: 0, Extra: 0}
 
 		cephCluster.Spec.Monitoring.Exporter = &cephv1.CephExporterSpec{}
-		cephCluster.Spec.Monitoring.Exporter.HostNetwork = ptr.To(false)
+		cephCluster.Spec.Monitoring.Exporter.HostNetwork = new(false)
 		cephCluster.Spec.Monitoring.Exporter.PerfCountersPrioLimit = prioLimitString
 		cephCluster.Spec.Monitoring.Exporter.StatsPeriodSeconds = statsPeriodString
 
@@ -394,7 +393,7 @@ func TestCephExporterBindAddress(t *testing.T) {
 		cephVersion := cephver.CephVersion{Major: 18, Minor: 0, Extra: 0}
 
 		cephCluster.Spec.Monitoring.Exporter = &cephv1.CephExporterSpec{}
-		cephCluster.Spec.Monitoring.Exporter.HostNetwork = ptr.To(false)
+		cephCluster.Spec.Monitoring.Exporter.HostNetwork = new(false)
 		cephCluster.Spec.Monitoring.Exporter.PerfCountersPrioLimit = prioLimitString
 		cephCluster.Spec.Monitoring.Exporter.StatsPeriodSeconds = statsPeriodString
 
@@ -411,7 +410,7 @@ func TestCephExporterBindAddress(t *testing.T) {
 		cephVersion := cephver.CephVersion{Major: 18, Minor: 0, Extra: 0}
 
 		cephCluster.Spec.Monitoring.Exporter = &cephv1.CephExporterSpec{}
-		cephCluster.Spec.Monitoring.Exporter.HostNetwork = ptr.To(false)
+		cephCluster.Spec.Monitoring.Exporter.HostNetwork = new(false)
 		cephCluster.Spec.Monitoring.Exporter.PerfCountersPrioLimit = prioLimitString
 		cephCluster.Spec.Monitoring.Exporter.StatsPeriodSeconds = statsPeriodString
 
@@ -488,7 +487,7 @@ func TestApplyCephExporterLabels(t *testing.T) {
 	assert.Nil(t, sm.Spec.Endpoints[0].RelabelConfigs)
 }
 
-func TestDeleteOrphanedExporterDeployments(t *testing.T) {
+func TestDeleteOrphanedNodeDaemonDeployments(t *testing.T) {
 	const namespace = "rook-ceph"
 	ctx := context.TODO()
 
@@ -498,10 +497,10 @@ func TestDeleteOrphanedExporterDeployments(t *testing.T) {
 	err = corev1.AddToScheme(s)
 	assert.NoError(t, err)
 
-	// helper to build a ceph-exporter Deployment with an optional node_name label
-	makeExporterDeployment := func(name, nodeName string) *appsv1.Deployment {
+	// helper to build a node daemon Deployment with an optional node_name label
+	makeNodeDaemonDeployment := func(appName, name, nodeName string) *appsv1.Deployment {
 		labels := map[string]string{
-			k8sutil.AppAttr: cephExporterAppName,
+			k8sutil.AppAttr: appName,
 		}
 		if nodeName != "" {
 			labels[NodeNameLabel] = nodeName
@@ -526,17 +525,17 @@ func TestDeleteOrphanedExporterDeployments(t *testing.T) {
 			client:           fake.NewClientBuilder().WithScheme(s).Build(),
 			opManagerContext: ctx,
 		}
-		assert.NoError(t, r.deleteOrphanedExporterDeployments(namespace))
+		assert.NoError(t, r.deleteOrphanedNodeDaemonDeployments(namespace))
 	})
 
 	t.Run("deployment whose node still exists is not deleted", func(t *testing.T) {
-		deploy := makeExporterDeployment("exporter-existing", "node1")
+		deploy := makeNodeDaemonDeployment(cephExporterAppName, "exporter-existing", "node1")
 		node := makeNode("node1")
 		r := &ReconcileNode{
 			client:           fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(deploy, node).Build(),
 			opManagerContext: ctx,
 		}
-		assert.NoError(t, r.deleteOrphanedExporterDeployments(namespace))
+		assert.NoError(t, r.deleteOrphanedNodeDaemonDeployments(namespace))
 
 		remaining := &appsv1.DeploymentList{}
 		assert.NoError(t, r.client.List(ctx, remaining, client.InNamespace(namespace)))
@@ -544,12 +543,12 @@ func TestDeleteOrphanedExporterDeployments(t *testing.T) {
 	})
 
 	t.Run("deployment whose node no longer exists is deleted", func(t *testing.T) {
-		deploy := makeExporterDeployment("exporter-orphaned", "gone-node")
+		deploy := makeNodeDaemonDeployment(cephExporterAppName, "exporter-orphaned", "gone-node")
 		r := &ReconcileNode{
 			client:           fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(deploy).Build(),
 			opManagerContext: ctx,
 		}
-		assert.NoError(t, r.deleteOrphanedExporterDeployments(namespace))
+		assert.NoError(t, r.deleteOrphanedNodeDaemonDeployments(namespace))
 
 		remaining := &appsv1.DeploymentList{}
 		assert.NoError(t, r.client.List(ctx, remaining, client.InNamespace(namespace)))
@@ -557,12 +556,12 @@ func TestDeleteOrphanedExporterDeployments(t *testing.T) {
 	})
 
 	t.Run("deployment without node_name label is skipped", func(t *testing.T) {
-		deploy := makeExporterDeployment("exporter-no-label", "")
+		deploy := makeNodeDaemonDeployment(cephExporterAppName, "exporter-no-label", "")
 		r := &ReconcileNode{
 			client:           fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(deploy).Build(),
 			opManagerContext: ctx,
 		}
-		assert.NoError(t, r.deleteOrphanedExporterDeployments(namespace))
+		assert.NoError(t, r.deleteOrphanedNodeDaemonDeployments(namespace))
 
 		remaining := &appsv1.DeploymentList{}
 		assert.NoError(t, r.client.List(ctx, remaining, client.InNamespace(namespace)))
@@ -570,18 +569,64 @@ func TestDeleteOrphanedExporterDeployments(t *testing.T) {
 	})
 
 	t.Run("mixed: one orphaned one healthy deployment", func(t *testing.T) {
-		deployOrphaned := makeExporterDeployment("exporter-orphaned", "gone-node")
-		deployHealthy := makeExporterDeployment("exporter-healthy", "live-node")
+		deployOrphaned := makeNodeDaemonDeployment(cephExporterAppName, "exporter-orphaned", "gone-node")
+		deployHealthy := makeNodeDaemonDeployment(cephExporterAppName, "exporter-healthy", "live-node")
 		node := makeNode("live-node")
 		r := &ReconcileNode{
 			client:           fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(deployOrphaned, deployHealthy, node).Build(),
 			opManagerContext: ctx,
 		}
-		assert.NoError(t, r.deleteOrphanedExporterDeployments(namespace))
+		assert.NoError(t, r.deleteOrphanedNodeDaemonDeployments(namespace))
 
 		remaining := &appsv1.DeploymentList{}
 		assert.NoError(t, r.client.List(ctx, remaining, client.InNamespace(namespace)))
 		assert.Len(t, remaining.Items, 1)
 		assert.Equal(t, "exporter-healthy", remaining.Items[0].Name)
+	})
+
+	t.Run("crash collector whose node no longer exists is deleted", func(t *testing.T) {
+		deploy := makeNodeDaemonDeployment(CrashCollectorAppName, "crashcollector-orphaned", "gone-node")
+		r := &ReconcileNode{
+			client:           fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(deploy).Build(),
+			opManagerContext: ctx,
+		}
+		assert.NoError(t, r.deleteOrphanedNodeDaemonDeployments(namespace))
+
+		remaining := &appsv1.DeploymentList{}
+		assert.NoError(t, r.client.List(ctx, remaining, client.InNamespace(namespace)))
+		assert.Empty(t, remaining.Items)
+	})
+
+	t.Run("crash collector whose node still exists is not deleted", func(t *testing.T) {
+		deploy := makeNodeDaemonDeployment(CrashCollectorAppName, "crashcollector-existing", "node1")
+		node := makeNode("node1")
+		r := &ReconcileNode{
+			client:           fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(deploy, node).Build(),
+			opManagerContext: ctx,
+		}
+		assert.NoError(t, r.deleteOrphanedNodeDaemonDeployments(namespace))
+
+		remaining := &appsv1.DeploymentList{}
+		assert.NoError(t, r.client.List(ctx, remaining, client.InNamespace(namespace)))
+		assert.Len(t, remaining.Items, 1)
+	})
+
+	t.Run("mixed: crash collector and exporter for the same deleted node are both cleaned up", func(t *testing.T) {
+		crashOrphaned := makeNodeDaemonDeployment(CrashCollectorAppName, "crashcollector-orphaned", "gone-node")
+		exporterOrphaned := makeNodeDaemonDeployment(cephExporterAppName, "exporter-orphaned", "gone-node")
+		crashHealthy := makeNodeDaemonDeployment(CrashCollectorAppName, "crashcollector-healthy", "live-node")
+		exporterHealthy := makeNodeDaemonDeployment(cephExporterAppName, "exporter-healthy", "live-node")
+		node := makeNode("live-node")
+		r := &ReconcileNode{
+			client:           fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(crashOrphaned, exporterOrphaned, crashHealthy, exporterHealthy, node).Build(),
+			opManagerContext: ctx,
+		}
+		assert.NoError(t, r.deleteOrphanedNodeDaemonDeployments(namespace))
+
+		remaining := &appsv1.DeploymentList{}
+		assert.NoError(t, r.client.List(ctx, remaining, client.InNamespace(namespace)))
+		assert.Len(t, remaining.Items, 2)
+		remainingNames := []string{remaining.Items[0].Name, remaining.Items[1].Name}
+		assert.ElementsMatch(t, []string{"crashcollector-healthy", "exporter-healthy"}, remainingNames)
 	})
 }

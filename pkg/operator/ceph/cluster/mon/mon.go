@@ -344,9 +344,19 @@ func isFloatingMon(c *Cluster, name string) bool {
 }
 
 func (c *Cluster) configureStretchCluster(mons []*monConfig) error {
-	// Enable the mon connectivity strategy
-	if err := cephclient.EnableStretchElectionStrategy(c.context, c.ClusterInfo); err != nil {
-		return errors.Wrap(err, "failed to enable stretch cluster")
+	// Enable the mon connectivity strategy, but only if stretch mode is not already enabled.
+	// Ceph Squid rejects any attempt to change the election strategy once stretch mode is
+	// enabled, so calling this unconditionally on every reconcile breaks already-stretched
+	// clusters after a Reef->Squid upgrade. If we can't determine the current state, skip
+	// the change and requeue rather than risk hitting that same rejection.
+	monDump, err := cephclient.GetMonDump(c.context, c.ClusterInfo)
+	if err != nil {
+		return errors.Wrap(err, "failed to get mon dump to determine current stretch mode state")
+	}
+	if !monDump.StretchMode {
+		if err := cephclient.EnableStretchElectionStrategy(c.context, c.ClusterInfo); err != nil {
+			return errors.Wrap(err, "failed to enable stretch cluster")
+		}
 	}
 
 	// Create the default crush rule for stretch clusters, that by default will also apply to all pools
@@ -508,10 +518,7 @@ func crushWeightsBalanced(a, b int) bool {
 	if a == b {
 		return true
 	}
-	maxWeight := a
-	if b > a {
-		maxWeight = b
-	}
+	maxWeight := max(b, a)
 	if maxWeight == 0 {
 		return false
 	}
@@ -795,7 +802,7 @@ func scheduleMonitor(c *Cluster, mon *monConfig) (*apps.Deployment, error) {
 	// spin up the canary deployment. if it exists, delete it first, since if it
 	// already exists it may have been scheduled with a different crd config.
 	createdDeployment := false
-	for i := 0; i < canaryRetries; i++ {
+	for range canaryRetries {
 		if c.ClusterInfo.Context.Err() != nil {
 			return nil, c.ClusterInfo.Context.Err()
 		}
@@ -845,7 +852,7 @@ func realWaitForMonitorScheduling(c *Cluster, d *apps.Deployment) (SchedulingRes
 	result := SchedulingResult{}
 
 	// wait for the scheduler to make a placement decision
-	for i := 0; i < canaryRetries; i++ {
+	for i := range canaryRetries {
 		if c.ClusterInfo.Context.Err() != nil {
 			return result, c.ClusterInfo.Context.Err()
 		}
@@ -1119,7 +1126,7 @@ func (c *Cluster) startDeployments(mons []*monConfig, requireAllInQuorum bool, m
 	}
 
 	// Ensure each of the mons have been created. If already created, it will be a no-op.
-	for i := 0; i < len(mons); i++ {
+	for i := range mons {
 		if monsToSkipDeployment.Has(mons[i].DaemonName) {
 			log.NamespacedInfo(c.Namespace, logger, "skipping starting deployment for mon %q since marked to skip reconcile", mons[i].DaemonName)
 			continue
@@ -1338,14 +1345,14 @@ func (c *Cluster) createEndpointSliceForAddresses(addresses []string, addressTyp
 
 	endpointSlicePorts := []discoveryv1.EndpointPort{}
 	endpointSlicePorts = append(endpointSlicePorts, discoveryv1.EndpointPort{
-		Name:     ptr.To(DefaultMsgr2PortName),
-		Port:     ptr.To(DefaultMsgr2Port),
+		Name:     new(DefaultMsgr2PortName),
+		Port:     new(DefaultMsgr2Port),
 		Protocol: ptr.To(corev1.ProtocolTCP),
 	})
 	if !c.spec.RequireMsgr2() {
 		endpointSlicePorts = append(endpointSlicePorts, discoveryv1.EndpointPort{
-			Name:     ptr.To(DefaultMsgr1PortName),
-			Port:     ptr.To(DefaultMsgr1Port),
+			Name:     new(DefaultMsgr1PortName),
+			Port:     new(DefaultMsgr1Port),
 			Protocol: ptr.To(corev1.ProtocolTCP),
 		})
 	}

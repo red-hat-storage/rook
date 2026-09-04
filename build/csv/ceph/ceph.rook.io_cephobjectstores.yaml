@@ -254,6 +254,9 @@ spec:
                                 defaultMode:
                                   format: int32
                                   type: integer
+                                defaultUser:
+                                  format: int64
+                                  type: integer
                                 items:
                                   items:
                                     properties:
@@ -264,6 +267,9 @@ spec:
                                         type: integer
                                       path:
                                         type: string
+                                      user:
+                                        format: int64
+                                        type: integer
                                     required:
                                     - key
                                     - path
@@ -281,6 +287,9 @@ spec:
                               properties:
                                 medium:
                                   type: string
+                                mode:
+                                  format: int32
+                                  type: integer
                                 sizeLimit:
                                   anyOf:
                                   - type: integer
@@ -310,6 +319,9 @@ spec:
                               properties:
                                 defaultMode:
                                   format: int32
+                                  type: integer
+                                defaultUser:
+                                  format: int64
                                   type: integer
                                 sources:
                                   items:
@@ -350,6 +362,9 @@ spec:
                                             type: string
                                           signerName:
                                             type: string
+                                          user:
+                                            format: int64
+                                            type: integer
                                         required:
                                         - path
                                         type: object
@@ -365,6 +380,9 @@ spec:
                                                   type: integer
                                                 path:
                                                   type: string
+                                                user:
+                                                  format: int64
+                                                  type: integer
                                               required:
                                               - key
                                               - path
@@ -414,6 +432,9 @@ spec:
                                                   - resource
                                                   type: object
                                                   x-kubernetes-map-type: atomic
+                                                user:
+                                                  format: int64
+                                                  type: integer
                                               required:
                                               - path
                                               type: object
@@ -435,6 +456,9 @@ spec:
                                             type: integer
                                           signerName:
                                             type: string
+                                          user:
+                                            format: int64
+                                            type: integer
                                           userAnnotations:
                                             additionalProperties:
                                               type: string
@@ -455,6 +479,9 @@ spec:
                                                   type: integer
                                                 path:
                                                   type: string
+                                                user:
+                                                  format: int64
+                                                  type: integer
                                               required:
                                               - key
                                               - path
@@ -477,6 +504,9 @@ spec:
                                             type: integer
                                           path:
                                             type: string
+                                          user:
+                                            format: int64
+                                            type: integer
                                         required:
                                         - path
                                         type: object
@@ -489,6 +519,9 @@ spec:
                                 defaultMode:
                                   format: int32
                                   type: integer
+                                defaultUser:
+                                  format: int64
+                                  type: integer
                                 items:
                                   items:
                                     properties:
@@ -499,6 +532,9 @@ spec:
                                         type: integer
                                       path:
                                         type: string
+                                      user:
+                                        format: int64
+                                        type: integer
                                     required:
                                     - key
                                     - path
@@ -1225,6 +1261,8 @@ spec:
                             type: integer
                           grpc:
                             properties:
+                              mode:
+                                type: string
                               port:
                                 format: int32
                                 type: integer
@@ -1258,6 +1296,8 @@ spec:
                                 - type: integer
                                 - type: string
                                 x-kubernetes-int-or-string: true
+                              protocol:
+                                type: string
                               scheme:
                                 type: string
                             required:
@@ -1312,6 +1352,8 @@ spec:
                             type: integer
                           grpc:
                             properties:
+                              mode:
+                                type: string
                               port:
                                 format: int32
                                 type: integer
@@ -1345,6 +1387,8 @@ spec:
                                 - type: integer
                                 - type: string
                                 x-kubernetes-int-or-string: true
+                              protocol:
+                                type: string
                               scheme:
                                 type: string
                             required:

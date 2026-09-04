@@ -105,6 +105,15 @@ func (c *ClusterController) configureExternalCephCluster(cluster *cluster) error
 	}
 	log.NamespacedInfo(cluster.Namespace, logger, "external cluster identity established")
 
+	// Create CSI Secrets only if the user has provided the admin key
+	// We no longer create the CSI secrets for external clusters in downstream, so disable this for external clusters.
+	if cluster.ClusterInfo.CephCred.Username == client.AdminUsername && false {
+		err = csi.CreateCSISecrets(c.context, cluster.ClusterInfo, cluster.namespacedName)
+		if err != nil {
+			return errors.Wrap(err, "failed to create csi kubernetes secrets")
+		}
+	}
+
 	// update the msgr2 flag
 	for _, m := range cluster.ClusterInfo.InternalMonitors {
 		// m.Endpoint=10.1.115.104:3300
