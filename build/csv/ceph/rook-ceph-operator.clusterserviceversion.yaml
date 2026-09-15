@@ -691,6 +691,8 @@ spec:
               metadata:
                 labels:
                   app: rook-ceph-operator
+                annotations:
+                  openshift.io/required-scc: rook-ceph
               spec:
                 containers:
                   - args:
