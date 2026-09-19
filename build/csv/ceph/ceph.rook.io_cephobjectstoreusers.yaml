@@ -182,6 +182,16 @@ spec:
                 type: object
               clusterNamespace:
                 type: string
+              defaultPlacement:
+                maxLength: 2048
+                minLength: 1
+                pattern: ^[a-zA-Z0-9._-]+$
+                type: string
+              defaultStorageClass:
+                maxLength: 2048
+                minLength: 1
+                pattern: ^[a-zA-Z0-9._-]+$
+                type: string
               displayName:
                 type: string
               keys:
@@ -247,6 +257,9 @@ spec:
               store:
                 type: string
             type: object
+            x-kubernetes-validations:
+            - message: defaultStorageClass requires defaultPlacement
+              rule: '!has(self.defaultStorageClass) || has(self.defaultPlacement)'
           status:
             properties:
               info:
