@@ -3130,6 +3130,76 @@ spec:
                         Whether to disable the metrics reported by Ceph. If false, the prometheus mgr module and Ceph exporter are enabled.
                         If true, the prometheus mgr module and Ceph exporter are both disabled. Default is false.
                       type: boolean
+                    metricsTLS:
+                      description: |-
+                        MetricsTLS configures native HTTPS for the MGR Prometheus metrics endpoint.
+                        Requires Ceph with prometheus module TLS support: https://github.com/ceph/ceph/pull/70989
+                        Rook mounts a Kubernetes TLS Secret into the mgr pod and configures the module.
+                      properties:
+                        ca:
+                          description: |-
+                            CA is an optional trust anchor for the ServiceMonitor tlsConfig.ca.
+                            Omit when the server cert contains a public CA.
+                          maxProperties: 1
+                          minProperties: 1
+                          properties:
+                            configMap:
+                              description: Selects a key from a ConfigMap.
+                              properties:
+                                key:
+                                  description: |-
+                                    The key to select from the ConfigMap's Data field.
+                                    Keys in the BinaryData field are not currently propagated to container env vars.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the ConfigMap or its key must be defined
+                                  type: boolean
+                              required:
+                                - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            secret:
+                              description: SecretKeySelector selects a key of a Secret.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key must be defined
+                                  type: boolean
+                              required:
+                                - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                        secretName:
+                          description: |-
+                            SecretName is the Kubernetes Secret containing tls.crt and tls.key for the
+                            mgr HTTPS listener.
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                      required:
+                        - secretName
+                      type: object
                     port:
                       description: Port is the prometheus server port
                       maximum: 65535
@@ -15885,6 +15955,31 @@ spec:
                 clusterNamespace:
                   description: The namespace where the parent CephCluster and CephObjectStore are found
                   type: string
+                defaultPlacement:
+                  description: |-
+                    DefaultPlacement sets the default pool placement target for buckets
+                    created by this user. It must name a placement target known to the
+                    zonegroup serving the referenced object store; RGW rejects unknown
+                    targets. If this field is absent the controller does not manage the
+                    user's placement: an existing value (set previously through this
+                    field, or outside of Rook) is left in place.
+                  maxLength: 2048
+                  minLength: 1
+                  pattern: ^[a-zA-Z0-9._-]+$
+                  type: string
+                defaultStorageClass:
+                  description: |-
+                    DefaultStorageClass sets the default storage class for objects created
+                    by this user, within the placement set by DefaultPlacement (which must
+                    also be set). The storage class must exist on that placement target;
+                    RGW rejects unknown storage classes. If this field is absent the
+                    controller does not manage the user's storage class: an existing value
+                    is preserved, except when DefaultPlacement changes, which resets the
+                    storage class to the new target's default (STANDARD).
+                  maxLength: 2048
+                  minLength: 1
+                  pattern: ^[a-zA-Z0-9._-]+$
+                  type: string
                 displayName:
                   description: The display name for the ceph user.
                   type: string
@@ -15984,6 +16079,9 @@ spec:
                   description: The store the user will be created in
                   type: string
               type: object
+              x-kubernetes-validations:
+                - message: defaultStorageClass requires defaultPlacement
+                  rule: '!has(self.defaultStorageClass) || has(self.defaultPlacement)'
             status:
               description: ObjectStoreUserStatus represents the status Ceph Object Store Gateway User
               properties:

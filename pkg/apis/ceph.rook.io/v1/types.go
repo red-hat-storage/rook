@@ -619,9 +619,42 @@ type MonitoringSpec struct {
 	// +optional
 	Interval *metav1.Duration `json:"interval,omitempty"`
 
+	// MetricsTLS configures native HTTPS for the MGR Prometheus metrics endpoint.
+	// Requires Ceph with prometheus module TLS support: https://github.com/ceph/ceph/pull/70989
+	// Rook mounts a Kubernetes TLS Secret into the mgr pod and configures the module.
+	// +optional
+	MetricsTLS MetricsTLSSpec `json:"metricsTLS,omitzero"`
+
 	// Ceph exporter configuration
 	// +optional
 	Exporter *CephExporterSpec `json:"exporter,omitempty"`
+}
+
+// MetricsTLSSpec defines TLS for the MGR Prometheus metrics endpoint.
+// The presence of metricsTLS enables TLS.
+type MetricsTLSSpec struct {
+	// SecretName is the Kubernetes Secret containing tls.crt and tls.key for the
+	// mgr HTTPS listener.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	SecretName string `json:"secretName,omitempty"`
+
+	// CA is an optional trust anchor for the ServiceMonitor tlsConfig.ca.
+	// Omit when the server cert contains a public CA.
+	// +optional
+	CA MetricsTLSCASpec `json:"ca,omitzero"`
+}
+
+// MetricsTLSCASpec selects a CA bundle from a Secret or ConfigMap.
+// Exactly one of secret or configMap must be set.
+// +kubebuilder:validation:MinProperties=1
+// +kubebuilder:validation:MaxProperties=1
+type MetricsTLSCASpec struct {
+	// +optional
+	Secret *v1.SecretKeySelector `json:"secret,omitempty"`
+	// +optional
+	ConfigMap *v1.ConfigMapKeySelector `json:"configMap,omitempty"`
 }
 
 type CephExporterSpec struct {
@@ -2433,6 +2466,7 @@ type CephObjectStoreUserList struct {
 }
 
 // ObjectStoreUserSpec represents the spec of a CephObjectStoreUser
+// +kubebuilder:validation:XValidation:message="defaultStorageClass requires defaultPlacement",rule="!has(self.defaultStorageClass) || has(self.defaultPlacement)"
 type ObjectStoreUserSpec struct {
 	// The store the user will be created in
 	// +optional
@@ -2466,6 +2500,29 @@ type ObjectStoreUserSpec struct {
 	// +optional
 	// +kubebuilder:validation:XValidation:message="accountRef is immutable",rule="self == oldSelf"
 	AccountRef ObjectStoreUserAccountRef `json:"accountRef,omitzero"`
+	// DefaultPlacement sets the default pool placement target for buckets
+	// created by this user. It must name a placement target known to the
+	// zonegroup serving the referenced object store; RGW rejects unknown
+	// targets. If this field is absent the controller does not manage the
+	// user's placement: an existing value (set previously through this
+	// field, or outside of Rook) is left in place.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
+	DefaultPlacement string `json:"defaultPlacement,omitempty"`
+	// DefaultStorageClass sets the default storage class for objects created
+	// by this user, within the placement set by DefaultPlacement (which must
+	// also be set). The storage class must exist on that placement target;
+	// RGW rejects unknown storage classes. If this field is absent the
+	// controller does not manage the user's storage class: an existing value
+	// is preserved, except when DefaultPlacement changes, which resets the
+	// storage class to the new target's default (STANDARD).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9._-]+$`
+	DefaultStorageClass string `json:"defaultStorageClass,omitempty"`
 }
 
 // ObjectStoreUserAccountRef is a reference to a CephObjectStoreAccount

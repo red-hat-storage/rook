@@ -2248,6 +2248,41 @@ When set, the user is created as an account user with no default permissions,
 and resources created by this user are owned by the account.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>defaultPlacement</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DefaultPlacement sets the default pool placement target for buckets
+created by this user. It must name a placement target known to the
+zonegroup serving the referenced object store; RGW rejects unknown
+targets. If this field is absent the controller does not manage the
+user&rsquo;s placement: an existing value (set previously through this
+field, or outside of Rook) is left in place.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>defaultStorageClass</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DefaultStorageClass sets the default storage class for objects created
+by this user, within the placement set by DefaultPlacement (which must
+also be set). The storage class must exist on that placement target;
+RGW rejects unknown storage classes. If this field is absent the
+controller does not manage the user&rsquo;s storage class: an existing value
+is preserved, except when DefaultPlacement changes, which resets the
+storage class to the new target&rsquo;s default (STANDARD).</p>
+</td>
+</tr>
 </table>
 </td>
 </tr>
@@ -9691,6 +9726,97 @@ This factor is applied when resources.requests.memory is set and resources.limit
 </tr>
 </tbody>
 </table>
+<h3 id="ceph.rook.io/v1.MetricsTLSCASpec">MetricsTLSCASpec
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.MetricsTLSSpec">MetricsTLSSpec</a>)
+</p>
+<div>
+<p>MetricsTLSCASpec selects a CA bundle from a Secret or ConfigMap.
+Exactly one of secret or configMap must be set.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>secret</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#secretkeyselector-v1-core">
+Kubernetes core/v1.SecretKeySelector
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+</td>
+</tr>
+<tr>
+<td>
+<code>configMap</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#configmapkeyselector-v1-core">
+Kubernetes core/v1.ConfigMapKeySelector
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ceph.rook.io/v1.MetricsTLSSpec">MetricsTLSSpec
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.MonitoringSpec">MonitoringSpec</a>)
+</p>
+<div>
+<p>MetricsTLSSpec defines TLS for the MGR Prometheus metrics endpoint.
+The presence of metricsTLS enables TLS.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>secretName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>SecretName is the Kubernetes Secret containing tls.crt and tls.key for the
+mgr HTTPS listener.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>ca,omitzero</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.MetricsTLSCASpec">
+MetricsTLSCASpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CA is an optional trust anchor for the ServiceMonitor tlsConfig.ca.
+Omit when the server cert contains a public CA.</p>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="ceph.rook.io/v1.MgrSpec">MgrSpec
 </h3>
 <p>
@@ -10641,6 +10767,22 @@ Kubernetes meta/v1.Duration
 <td>
 <em>(Optional)</em>
 <p>Interval determines prometheus scrape interval</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>metricsTLS,omitzero</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.MetricsTLSSpec">
+MetricsTLSSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MetricsTLS configures native HTTPS for the MGR Prometheus metrics endpoint.
+Requires Ceph with prometheus module TLS support: <a href="https://github.com/ceph/ceph/pull/70989">https://github.com/ceph/ceph/pull/70989</a>
+Rook mounts a Kubernetes TLS Secret into the mgr pod and configures the module.</p>
 </td>
 </tr>
 <tr>
@@ -12779,6 +12921,41 @@ ObjectStoreUserAccountRef
 The referenced account must be in the same namespace as the user.
 When set, the user is created as an account user with no default permissions,
 and resources created by this user are owned by the account.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>defaultPlacement</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DefaultPlacement sets the default pool placement target for buckets
+created by this user. It must name a placement target known to the
+zonegroup serving the referenced object store; RGW rejects unknown
+targets. If this field is absent the controller does not manage the
+user&rsquo;s placement: an existing value (set previously through this
+field, or outside of Rook) is left in place.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>defaultStorageClass</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DefaultStorageClass sets the default storage class for objects created
+by this user, within the placement set by DefaultPlacement (which must
+also be set). The storage class must exist on that placement target;
+RGW rejects unknown storage classes. If this field is absent the
+controller does not manage the user&rsquo;s storage class: an existing value
+is preserved, except when DefaultPlacement changes, which resets the
+storage class to the new target&rsquo;s default (STANDARD).</p>
 </td>
 </tr>
 </tbody>
