@@ -95,7 +95,7 @@ PREVIOUS_DRBD_IMAGE=""   # prior DRBD_UTILS_IMAGE from drbd-configure ConfigMap
 usage() {
     cat <<USAGE
 Usage examples:
-  $0 -l | $0 -d <path> | $0 -d0 <path> -d1 <path> | $0 upgrade | $0 uninstall | $0 help
+  $0 -l | $0 -d <path> | $0 -d0 <path> -d1 <path> | $0 upgrade | $0 uninstall | $0 uninstall -d <path> | $0 help
 
 Default Mode (install) —
 
@@ -135,7 +135,16 @@ recreate autostart DaemonSet, scale mon back.
 
 Uninstall Mode —
 
-(no disk flags — state is read from ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME})
+Disks (optional; required when ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME} is missing):
+  -d PATH             Backing block device, same path on both nodes (e.g. /dev/sdb).
+  -d0 PATH -d1 PATH   Per-node backing paths (node order = sorted cluster node names).
+
+When -d / -d0 -d1 are omitted, DISK_BY_ID_NODE_0/1 are read from ConfigMap
+${ODF_NAMESPACE}/${OUTPUT_CM_NAME}. Pass disk flags to clean up a partial install that
+failed before that ConfigMap was created (e.g. during DRBD sync).
+
+Optional (same as install; useful if non-default paths were used):
+  --drbd-conf-path, --drbd-dir-path, --drbd-resource, --drbd-device, --drbd-port
 
 Prerequisite: delete the StorageCluster and CephCluster before running uninstall.
 
@@ -247,14 +256,7 @@ parse_args() {
     elif [[ "$1" == "uninstall" ]]; then
         MODE="uninstall"
         shift
-        if [[ $# -eq 0 ]]; then
-            :
-        elif [[ "$1" == "-h" || "$1" == "--help" ]]; then
-            usage
-            exit 0
-        else
-            die "uninstall accepts no arguments (got '$1'). See: $0 uninstall -h"
-        fi
+        _parse_install_options "$@"
     elif [[ "$1" == "install" ]]; then
         MODE="install"
         shift
@@ -271,9 +273,9 @@ parse_args() {
         return 0
     fi
 
-    if [[ "$MODE" == "upgrade" || "$MODE" == "uninstall" ]]; then
+    if [[ "$MODE" == "upgrade" ]]; then
         if [[ -n "$BACKING_PATH" || -n "$BACKING_PATH_NODE0" || -n "$BACKING_PATH_NODE1" ]]; then
-            die "${MODE} does not use -d/-d0/-d1; use ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME} (from default setup). Run: $0 ${MODE}"
+            die "upgrade does not use -d/-d0/-d1; use ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME} (from default setup). Run: $0 upgrade"
         fi
         return 0
     fi
@@ -285,6 +287,11 @@ parse_args() {
         if [[ -z "$BACKING_PATH_NODE0" || -z "$BACKING_PATH_NODE1" ]]; then
             die "Both -d0 and -d1 are required when using per-node paths"
         fi
+    fi
+
+    # uninstall: disks optional when ConfigMap exists; install: disks required
+    if [[ "$MODE" == "uninstall" ]]; then
+        return 0
     fi
     if [[ -z "$BACKING_PATH" && -z "$BACKING_PATH_NODE0" ]]; then
         die "Specify backing path(s): -d, or -d0 and -d1, or -l to list devices (see -h)"
@@ -420,6 +427,17 @@ validate_and_load_drbd_configure_cm() {
     fi
 }
 
+# Prefer ConfigMap when present; otherwise require -d / -d0 -d1 for partial-install cleanup.
+load_uninstall_disks() {
+    if oc get configmap "${OUTPUT_CM_NAME}" -n "${ODF_NAMESPACE}" &>/dev/null; then
+        validate_and_load_drbd_configure_cm
+    elif [[ -n "$BACKING_PATH" || -n "$BACKING_PATH_NODE0" ]]; then
+        resolve_disk
+    else
+        die "ConfigMap ${ODF_NAMESPACE}/${OUTPUT_CM_NAME} not found. Pass backing paths to uninstall a partial install: $0 uninstall -d <path> (or -d0/-d1)"
+    fi
+}
+
 print_uninstall_plan() {
     echo ""
     msg "Uninstall plan"
@@ -429,7 +447,7 @@ print_uninstall_plan() {
     printf '  %-*s %s\n' "$_lw" "Nodes:" "$NODE_0 ($NODE_0_IP), $NODE_1 ($NODE_1_IP)"
     printf '  %-*s %s: %s\n' "$_lw" "DRBD Disks by id:" "$NODE_0" "$DISK_RESOLVED_NODE0"
     printf '  %-*s %s: %s\n' "$_lw" "" "$NODE_1" "$DISK_RESOLVED_NODE1"
-    printf '  %-*s %s\n' "$_lw" "DRBD_VERSION:" "$PREVIOUS_DRBD_VERSION"
+    printf '  %-*s %s\n' "$_lw" "DRBD_VERSION:" "${PREVIOUS_DRBD_VERSION:-unknown}"
     printf '  %-*s %s\n' "$_lw" "DRBD_IMAGE:" "${PREVIOUS_DRBD_IMAGE:-$DRBD_IMAGE}"
     echo ""
 }
@@ -483,8 +501,8 @@ _read_yn_consent() {
     esac
 }
 
-# validate the backing device paths and resolve the disk by-id symlink for DRBD config on that node.
-validate_and_resolve_disks() {
+# validate the backing device paths (install requirements: type, size, SSD, mount, etc.).
+validate_disk() {
     local p0 p1 tree0 tree1 dev0 dev1 size0 size1 bytes0 bytes1
     local ro0 rota0 ro1 rota1 type0 type1 fstype0 fstype1 mount0 mount1
 
@@ -599,6 +617,19 @@ validate_and_resolve_disks() {
     echo "  $NODE_0: $p0  $size0"
     echo "  $NODE_1: $p1  $size1"
     msg "Backing device paths OK."
+}
+
+# Resolve backing paths to /dev/disk/by-id on both nodes (sets DISK_RESOLVED_NODE0/1).
+resolve_disk() {
+    local p0 p1
+
+    if [[ -n "$BACKING_PATH" ]]; then
+        p0="$BACKING_PATH"
+        p1="$BACKING_PATH"
+    else
+        p0="$BACKING_PATH_NODE0"
+        p1="$BACKING_PATH_NODE1"
+    fi
 
     msg "Resolving device paths to /dev/disk/by-id for DRBD config"
     DISK_RESOLVED_NODE0=$(resolve_disk_path_on_node "$NODE_0" "$p0")
@@ -1503,7 +1534,11 @@ print_success() {
     if [[ "$MODE" == "upgrade" ]]; then
         echo "  --> DRBD version upgraded from ${PREVIOUS_DRBD_VERSION} to ${DRBD_VERSION} successfully <--"
     elif [[ "$MODE" == "uninstall" ]]; then
-        echo "  --> DRBD version ${PREVIOUS_DRBD_VERSION} uninstalled; backing devices wiped on both nodes <--"
+        if [[ -n "$PREVIOUS_DRBD_VERSION" ]]; then
+            echo "  --> DRBD version ${PREVIOUS_DRBD_VERSION} uninstalled; backing devices wiped on both nodes <--"
+        else
+            echo "  --> DRBD uninstalled; backing devices wiped on both nodes <--"
+        fi
         echo ""
         return
     else
@@ -1520,7 +1555,8 @@ print_success() {
 
 run_install() {
     resolve_drbd_version # read /drbd.version from DRBD_IMAGE unless DRBD_VERSION is set
-    validate_and_resolve_disks # validate paths and resolve to /dev/disk/by-id
+    validate_disk # validate install requirements for backing paths
+    resolve_disk # resolve paths to /dev/disk/by-id
     print_config # print the configuration
     setup_kmm_operator # setup the KMM operator
     setup_image_registry_operator # setup the image registry operator
@@ -1562,7 +1598,7 @@ run_upgrade() {
 }
 
 run_uninstall() {
-    validate_and_load_drbd_configure_cm # validate output ConfigMap presence and load DRBD disk by-id mapping
+    load_uninstall_disks # ConfigMap when present; else -d/-d0/-d1 for partial-install cleanup
     print_uninstall_plan # show disks and version that will be removed
     ensure_uninstall_prerequisites # require StorageCluster and CephCluster deleted before uninstall
     delete_drbd_autostart_daemonset # delete the DRBD auto-start DaemonSet
