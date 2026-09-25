@@ -820,6 +820,8 @@ func TestCluster_rotateCephxKey(t *testing.T) {
 		}
 	}
 
+	keyring.SetAllowCephxKeyRotationForCluster("ns", true)
+
 	t.Run("empty status and config", func(t *testing.T) {
 		c := newTest(cephv1.CephxConfig{})
 		osdInfo := OSDInfo{
