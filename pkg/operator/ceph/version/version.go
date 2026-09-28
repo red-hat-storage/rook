@@ -47,6 +47,9 @@ var (
 	Squid = CephVersion{19, 0, 0, 0, ""}
 	// Tentacle ceph version
 	Tentacle = CephVersion{20, 0, 0, 0, ""}
+	// TentaclePrometheusTLS is the minimum Ceph version with native mgr/prometheus TLS.
+	// See https://github.com/ceph/ceph/pull/70989
+	TentaclePrometheusTLS = CephVersion{20, 2, 4, 0, ""}
 	// Umbrella ceph version
 	Umbrella = CephVersion{21, 0, 0, 0, ""}
 
