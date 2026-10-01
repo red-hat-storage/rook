@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+set -x
+getconf ARG_MAX
+
 source "../../build/common.sh"
 
 #############
@@ -67,7 +70,18 @@ function generate_csv() {
     rm -rf "../../build/csv/ceph/$PLATFORM/manifests/rook-ceph-operator-config_v1_configmap.yaml"
 
     # Update the "create-external-resources.py" script value in external-cluster-script-configmap
-    "${YQ_CMD_WRITE[@]}" "$EXTERNAL_CLUSTER_SCRIPT_CONFIGMAP" data.script "$(base64 <$CEPH_EXTERNAL_SCRIPT_FILE)"
+    # In CI: `/home/runner/work/rook/rook/.cache/tools/linux_amd64/yq-3.4.1: Argument list too long`
+    # The kernel has run out of stack space for the shell commands somehow.
+    # Use a multi-stage flow using a temp file to avoid sending full base64 script as an argument.
+    base64 <$CEPH_EXTERNAL_SCRIPT_FILE > /tmp/script64 # base64 encode script into temp file
+    # indent the temp file's script 4 spaces
+    sed -i 's/^/    /' /tmp/script64
+    # prepend data.script to turn it into a valid yaml definition of configmap data
+    sed -i '1i\
+data:\
+  script: |-' /tmp/script64
+    # merge the tempfile's data.script onto the CSV to update it
+    "$yq" merge --inplace --overwrite -P "$EXTERNAL_CLUSTER_SCRIPT_CONFIGMAP" /tmp/script64
 
     # This change are just to make the CSV file as it was earlier and as ocs-operator reads.
     # Skipping this change for darwin since `sed -i` doesn't work with darwin properly.
