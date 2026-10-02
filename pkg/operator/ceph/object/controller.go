@@ -31,6 +31,7 @@ import (
 	"github.com/rook/rook/pkg/clusterd"
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
 	"github.com/rook/rook/pkg/operator/ceph/config"
+	"github.com/rook/rook/pkg/operator/ceph/config/keyring"
 	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
 	"github.com/rook/rook/pkg/operator/ceph/reporting"
 	"github.com/rook/rook/pkg/operator/k8sutil"
@@ -301,9 +302,22 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 	// The CR was just created, initializing status fields
 	if cephObjectStore.Status == nil {
 		// The store is not available so let's not build the status Info yet
-		updateStatus(r.opManagerContext, k8sutil.ObservedGenerationNotAvailable, r.client, request.NamespacedName, cephv1.ConditionProgressing, map[string]string{})
+		cephxUninitialized := keyring.UninitializedCephxStatus()
+		err := updateStatus(r.opManagerContext, k8sutil.ObservedGenerationNotAvailable, r.client, request.NamespacedName, cephv1.ConditionProgressing, map[string]string{}, &cephxUninitialized)
+		if err != nil {
+			return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "failed to initialize status and cephx status for cephObjectStore %q", request.NamespacedName)
+		}
+		cephObjectStore.Status = &cephv1.ObjectStoreStatus{
+			Cephx: cephv1.LocalCephxStatus{
+				Daemon: cephxUninitialized,
+			},
+		}
 	} else {
-		updateStatus(r.opManagerContext, k8sutil.ObservedGenerationNotAvailable, r.client, request.NamespacedName, cephv1.ConditionProgressing, buildStatusInfo(cephObjectStore))
+		var nilCephxStatus *cephv1.CephxStatus = nil // leave cephx status as-is
+		err := updateStatus(r.opManagerContext, k8sutil.ObservedGenerationNotAvailable, r.client, request.NamespacedName, cephv1.ConditionProgressing, buildStatusInfo(cephObjectStore), nilCephxStatus)
+		if err != nil {
+			return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "failed to initialize cephx status for cephObjectStore %q", request.NamespacedName)
+		}
 	}
 
 	// Make sure a CephCluster is present otherwise do nothing
@@ -338,7 +352,10 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 
 	// DELETE: the CR was deleted
 	if !cephObjectStore.GetDeletionTimestamp().IsZero() {
-		updateStatus(r.opManagerContext, k8sutil.ObservedGenerationNotAvailable, r.client, request.NamespacedName, cephv1.ConditionDeleting, buildStatusInfo(cephObjectStore))
+		err := updateStatus(r.opManagerContext, k8sutil.ObservedGenerationNotAvailable, r.client, request.NamespacedName, cephv1.ConditionDeleting, buildStatusInfo(cephObjectStore), nil)
+		if err != nil {
+			return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "failed to set deleting status for cephObjectStore %q", request.NamespacedName)
+		}
 
 		// Detect running Ceph version
 		runningCephVersion, err := cephclient.LeastUptodateDaemonVersion(r.context, r.clusterInfo, config.MonType)
@@ -389,6 +406,7 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 		return reconcile.Result{}, *cephObjectStore, nil
 	}
 
+	shouldRotateCephxKeys := false
 	if cephObjectStore.Spec.IsExternal() {
 		// Check the ceph version of the running monitors
 		desiredCephVersion, err := cephclient.LeastUptodateDaemonVersion(r.context, r.clusterInfo, config.MonType)
@@ -426,7 +444,18 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 				*cephObjectStore,
 				opcontroller.ErrorCephUpgradingRequeue(desiredCephVersion, runningCephVersion)
 		}
-		r.clusterInfo.CephVersion = *desiredCephVersion
+		r.clusterInfo.CephVersion = *runningCephVersion
+
+		// daemon key type always takes the default from setDefaultCephxKeyType()
+		shouldRotateCephxKeys, err = keyring.ShouldRotateCephxKeys(
+			cephCluster.Spec.Security.CephX.Daemon, *runningCephVersion, *desiredCephVersion, cephObjectStore.Status.Cephx.Daemon, true,
+		)
+		if err != nil {
+			return reconcile.Result{}, *cephObjectStore, errors.Wrap(err, "failed to determine if cephx keys should be rotated")
+		}
+		if shouldRotateCephxKeys {
+			logger.Infof("cephx keys for CephObjectStore %q will be rotated", request.NamespacedName)
+		}
 	}
 
 	// validate the store settings
@@ -434,8 +463,21 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 		return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "invalid object store %q arguments", cephObjectStore.Name)
 	}
 
+	ownerInfo := k8sutil.NewOwnerInfo(cephObjectStore, r.scheme)
+	cfg := clusterConfig{
+		context:               r.context,
+		clusterInfo:           r.clusterInfo,
+		store:                 cephObjectStore,
+		rookVersion:           r.clusterSpec.CephVersion.Image,
+		clusterSpec:           r.clusterSpec,
+		DataPathMap:           config.NewStatelessDaemonDataPathMap(config.RgwType, cephObjectStore.Name, cephObjectStore.Namespace, r.clusterSpec.DataDirHostPath),
+		client:                r.client,
+		ownerInfo:             ownerInfo,
+		shouldRotateCephxKeys: shouldRotateCephxKeys,
+	}
+
 	// CREATE/UPDATE
-	_, err = r.reconcileCreateObjectStore(cephObjectStore, request.NamespacedName, cephCluster.Spec)
+	_, err = r.reconcileCreateObjectStore(cephObjectStore, request.NamespacedName, cfg)
 	if err != nil && kerrors.IsNotFound(err) {
 		logger.Info(opcontroller.OperatorNotInitializedMessage)
 		return opcontroller.WaitForRequeueIfOperatorNotInitialized, *cephObjectStore, nil
@@ -446,25 +488,19 @@ func (r *ReconcileCephObjectStore) reconcile(request reconcile.Request) (reconci
 
 	// update ObservedGeneration in status at the end of reconcile
 	// Set Progressing status, we are done reconciling, the health check go routine will update the status
-	updateStatus(r.opManagerContext, observedGeneration, r.client, request.NamespacedName, cephv1.ConditionReady, buildStatusInfo(cephObjectStore))
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	cephxStatus := keyring.UpdatedCephxStatus(shouldRotateCephxKeys, cephCluster.Spec.Security.CephX.Daemon, r.clusterInfo.CephVersion, cephObjectStore.Status.Cephx.Daemon, keyType)
+	err = updateStatus(r.opManagerContext, observedGeneration, r.client, request.NamespacedName, cephv1.ConditionReady, buildStatusInfo(cephObjectStore), &cephxStatus)
+	if err != nil {
+		return reconcile.Result{}, *cephObjectStore, errors.Wrapf(err, "failed to set final status for cephObjectStore %q", request.NamespacedName)
+	}
 
 	// Return and do not requeue
 	logger.Debug("done reconciling")
 	return reconcile.Result{}, *cephObjectStore, nil
 }
 
-func (r *ReconcileCephObjectStore) reconcileCreateObjectStore(cephObjectStore *cephv1.CephObjectStore, namespacedName types.NamespacedName, cluster cephv1.ClusterSpec) (reconcile.Result, error) {
-	ownerInfo := k8sutil.NewOwnerInfo(cephObjectStore, r.scheme)
-	cfg := clusterConfig{
-		context:     r.context,
-		clusterInfo: r.clusterInfo,
-		store:       cephObjectStore,
-		rookVersion: r.clusterSpec.CephVersion.Image,
-		clusterSpec: r.clusterSpec,
-		DataPathMap: config.NewStatelessDaemonDataPathMap(config.RgwType, cephObjectStore.Name, cephObjectStore.Namespace, r.clusterSpec.DataDirHostPath),
-		client:      r.client,
-		ownerInfo:   ownerInfo,
-	}
+func (r *ReconcileCephObjectStore) reconcileCreateObjectStore(cephObjectStore *cephv1.CephObjectStore, namespacedName types.NamespacedName, cfg clusterConfig) (reconcile.Result, error) {
 	objContext, err := NewMultisiteContext(r.context, r.clusterInfo, cephObjectStore)
 	if err != nil {
 		return r.setFailedStatus(k8sutil.ObservedGenerationNotAvailable, namespacedName, "failed to setup object store context", err)
