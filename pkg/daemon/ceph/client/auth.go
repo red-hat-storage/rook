@@ -17,10 +17,22 @@ package client
 
 import (
 	"encoding/json"
+	"syscall"
 
 	"github.com/pkg/errors"
 	"github.com/rook/rook/pkg/clusterd"
+	"github.com/rook/rook/pkg/util/exec"
 )
+
+// AuthListOutput contains list of ceph user details contains entries, keys.
+type AuthListOutput struct {
+	AuthDump []AuthListEntry `json:"auth_dump"`
+}
+
+// AuthListEntry contains only entity field for each user.
+type AuthListEntry struct {
+	Entity string `json:"entity"`
+}
 
 // AuthGetOrCreate will either get or create a user with the given capabilities.  The keyring for the
 // user will be written to the given keyring path.
@@ -104,6 +116,37 @@ func AuthGetCaps(context *clusterd.Context, clusterInfo *ClusterInfo, name strin
 	return caps, err
 }
 
+// AuthRotate rotates a daemon's cephx auth key, retaining existing caps.
+func AuthRotate(context *clusterd.Context, clusterInfo *ClusterInfo, name string) (string, error) {
+	logger.Infof("rotating ceph auth key %q", name)
+	args := []string{"auth", "rotate", name}
+	buf, err := NewCephCommand(context, clusterInfo, args).Run()
+	if err != nil {
+		if code, ok := exec.ExitStatus(err); ok && code == int(syscall.EINVAL) {
+			// `ceph auth rotate` is not yet present in all ceph versions. as long as the command
+			// invocation is correct, EINVAL means the ceph version doesn't have the rotate
+			// subcommand added in: https://github.com/ceph/ceph/pull/58121
+			// all version of ceph v20 (tentacle) and higher should have the command present
+			return "", errors.Wrapf(err, "failed auth rotate %s. operator or cluster ceph version does not support ceph auth rotate", name)
+		}
+		return "", errors.Wrapf(err, "failed auth rotate %s", name)
+	}
+
+	var data []map[string]interface{}
+	err = json.Unmarshal(buf, &data)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to unmarshal auth rotate %s response", name)
+	}
+	if len(data) < 1 {
+		return "", errors.Errorf("auth rotate %s returned no results", name)
+	}
+	if len(data) > 1 {
+		logger.Infof("auth rotate %s returned more than 1 result; continuing using the first result", name)
+	}
+
+	return data[0]["key"].(string), nil
+}
+
 // AuthDelete will delete the given user.
 func AuthDelete(context *clusterd.Context, clusterInfo *ClusterInfo, name string) error {
 	logger.Infof("deleting ceph auth %q", name)
@@ -121,4 +164,23 @@ func parseAuthKey(buf []byte) (string, error) {
 		return "", errors.Wrap(err, "failed to unmarshal get/create key response")
 	}
 	return resp["key"].(string), nil
+}
+
+// AuthList will list all the ceph user.
+func AuthList(context *clusterd.Context, clusterInfo *ClusterInfo) (AuthListOutput, error) {
+	authArgs := []string{"auth", "ls"}
+	output, err := NewCephCommand(context, clusterInfo, authArgs).Run()
+	if err != nil {
+		return AuthListOutput{}, errors.Wrap(err, "failed to list ceph auth ls")
+	}
+
+	var auth AuthListOutput
+	err = json.Unmarshal(output, &auth)
+	if err != nil {
+		// insecure trace logging will show the raw response if debugging required
+		logger.Tracef("failed to unmarshal auth ls response: %s", string(output))
+		return auth, errors.Wrap(err, "failed to unmarshal auth ls response")
+	}
+
+	return auth, err
 }

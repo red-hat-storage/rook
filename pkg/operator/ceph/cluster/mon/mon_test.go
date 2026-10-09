@@ -30,10 +30,12 @@ import (
 	"github.com/coreos/pkg/capnslog"
 	"github.com/pkg/errors"
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
+	"github.com/rook/rook/pkg/client/clientset/versioned/scheme"
 	"github.com/rook/rook/pkg/clusterd"
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
 	clienttest "github.com/rook/rook/pkg/daemon/ceph/client/test"
 	"github.com/rook/rook/pkg/operator/ceph/config"
+	"github.com/rook/rook/pkg/operator/ceph/config/keyring"
 	"github.com/rook/rook/pkg/operator/ceph/controller"
 	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
 	cephver "github.com/rook/rook/pkg/operator/ceph/version"
@@ -44,7 +46,9 @@ import (
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 // generate a standard mon config from a mon id w/ default port and IP 2.4.6.{1,2,3,...}
@@ -70,7 +74,8 @@ func testGenMonConfig(monID string) *monConfig {
 		PublicIP:     fmt.Sprintf("2.4.6.%d", index+1),
 		// dataDirHostPath assumed to be /var/lib/rook
 		DataPathMap: config.NewStatefulDaemonDataPathMap(
-			"/var/lib/rook", dataDirRelativeHostPath(monID), config.MonType, monID, "rook-ceph"),
+			"/var/lib/rook", dataDirRelativeHostPath(monID), config.MonType, monID, "rook-ceph",
+		),
 	}
 }
 
@@ -559,6 +564,7 @@ func TestFindAvailableZoneMon(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, "", availableZone)
 }
+
 func TestFindAvailableZoneForStretchedMon(t *testing.T) {
 	c := &Cluster{spec: cephv1.ClusterSpec{
 		Mon: cephv1.MonSpec{
@@ -654,16 +660,24 @@ func TestMonVolumeClaimTemplate(t *testing.T) {
 	}{
 		{"no template", fields{cephv1.ClusterSpec{}}, args{&monConfig{Zone: "z1"}}, nil},
 		{"default template", fields{cephv1.ClusterSpec{Mon: cephv1.MonSpec{VolumeClaimTemplate: defaultTemplate}}}, args{&monConfig{Zone: "z1"}}, defaultTemplate.ToPVC()},
-		{"default template with 3 zones", fields{cephv1.ClusterSpec{Mon: cephv1.MonSpec{
-			VolumeClaimTemplate: defaultTemplate,
-			Zones:               []cephv1.MonZoneSpec{{Name: "z1"}, {Name: "z2"}, {Name: "z3"}}}}},
+		{
+			"default template with 3 zones",
+			fields{cephv1.ClusterSpec{Mon: cephv1.MonSpec{
+				VolumeClaimTemplate: defaultTemplate,
+				Zones:               []cephv1.MonZoneSpec{{Name: "z1"}, {Name: "z2"}, {Name: "z3"}},
+			}}},
 			args{&monConfig{Zone: "z1"}},
-			defaultTemplate.ToPVC()},
-		{"overridden template", fields{cephv1.ClusterSpec{Mon: cephv1.MonSpec{
-			VolumeClaimTemplate: defaultTemplate,
-			Zones:               []cephv1.MonZoneSpec{{Name: "z1", VolumeClaimTemplate: zoneTemplate}, {Name: "z2"}, {Name: "z3"}}}}},
+			defaultTemplate.ToPVC(),
+		},
+		{
+			"overridden template",
+			fields{cephv1.ClusterSpec{Mon: cephv1.MonSpec{
+				VolumeClaimTemplate: defaultTemplate,
+				Zones:               []cephv1.MonZoneSpec{{Name: "z1", VolumeClaimTemplate: zoneTemplate}, {Name: "z2"}, {Name: "z3"}},
+			}}},
 			args{&monConfig{Zone: "z1"}},
-			zoneTemplate.ToPVC()},
+			zoneTemplate.ToPVC(),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -705,7 +719,8 @@ func TestRemoveExtraMonDeployments(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "rook-ceph-mon-b",
 			Labels: map[string]string{"ceph_daemon_id": "b"},
-		}})
+		},
+	})
 	removed = c.checkForExtraMonResources(mons, deployments)
 	assert.Equal(t, "b", removed)
 
@@ -727,12 +742,14 @@ func TestRemoveExtraMonDeployments(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "rook-ceph-mon-c",
 			Labels: map[string]string{"ceph_daemon_id": "c"},
-		}})
+		},
+	})
 	deployments = append(deployments, apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "rook-ceph-mon-d",
 			Labels: map[string]string{"ceph_daemon_id": "d"},
-		}})
+		},
+	})
 	c.spec.Mon.Count = 3
 	removed = c.checkForExtraMonResources(mons, deployments)
 	assert.Equal(t, "", removed)
@@ -757,16 +774,24 @@ func TestStretchMonVolumeClaimTemplate(t *testing.T) {
 	}{
 		{"no template", fields{cephv1.ClusterSpec{}}, args{&monConfig{Zone: "z1"}}, nil},
 		{"default template", fields{cephv1.ClusterSpec{Mon: cephv1.MonSpec{VolumeClaimTemplate: defaultTemplate}}}, args{&monConfig{Zone: "z1"}}, defaultTemplate.ToPVC()},
-		{"default template with 3 zones", fields{cephv1.ClusterSpec{Mon: cephv1.MonSpec{
-			VolumeClaimTemplate: defaultTemplate,
-			StretchCluster:      &cephv1.StretchClusterSpec{Zones: []cephv1.MonZoneSpec{{Name: "z1"}, {Name: "z2"}, {Name: "z3"}}}}}},
+		{
+			"default template with 3 zones",
+			fields{cephv1.ClusterSpec{Mon: cephv1.MonSpec{
+				VolumeClaimTemplate: defaultTemplate,
+				StretchCluster:      &cephv1.StretchClusterSpec{Zones: []cephv1.MonZoneSpec{{Name: "z1"}, {Name: "z2"}, {Name: "z3"}}},
+			}}},
 			args{&monConfig{Zone: "z1"}},
-			defaultTemplate.ToPVC()},
-		{"overridden template", fields{cephv1.ClusterSpec{Mon: cephv1.MonSpec{
-			VolumeClaimTemplate: defaultTemplate,
-			StretchCluster:      &cephv1.StretchClusterSpec{Zones: []cephv1.MonZoneSpec{{Name: "z1", VolumeClaimTemplate: zoneTemplate}, {Name: "z2"}, {Name: "z3"}}}}}},
+			defaultTemplate.ToPVC(),
+		},
+		{
+			"overridden template",
+			fields{cephv1.ClusterSpec{Mon: cephv1.MonSpec{
+				VolumeClaimTemplate: defaultTemplate,
+				StretchCluster:      &cephv1.StretchClusterSpec{Zones: []cephv1.MonZoneSpec{{Name: "z1", VolumeClaimTemplate: zoneTemplate}, {Name: "z2"}, {Name: "z3"}}},
+			}}},
 			args{&monConfig{Zone: "z1"}},
-			zoneTemplate.ToPVC()},
+			zoneTemplate.ToPVC(),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -831,7 +856,6 @@ func TestArbiterPlacement(t *testing.T) {
 }
 
 func TestCheckIfArbiterReady(t *testing.T) {
-
 	c := &Cluster{
 		Namespace: "ns",
 		spec: cephv1.ClusterSpec{
@@ -844,7 +868,8 @@ func TestCheckIfArbiterReady(t *testing.T) {
 					},
 				},
 			},
-		}}
+		},
+	}
 	crushZoneCount := 0
 	balanced := true
 	executor := &exectest.MockExecutor{
@@ -867,7 +892,6 @@ func TestCheckIfArbiterReady(t *testing.T) {
 						 ,{"id": -%d,"name": "zone%d~ssd","type_id": 1,"type_name": "zone","weight": 2056}`, i+5, i, weight, i+6, i)
 				}
 				return fmt.Sprintf(`{"buckets": [%s]}`, crushBuckets), nil
-
 			}
 			return "", fmt.Errorf("unrecognized output file command: %s %v", command, args)
 		},
@@ -919,7 +943,8 @@ func TestSkipReconcile(t *testing.T) {
 				k8sutil.AppAttr: AppName,
 				config.MonType:  "a",
 			},
-		}}
+		},
+	}
 
 	deployment, err := c.context.Clientset.AppsV1().Deployments(c.ClusterInfo.Namespace).Create(c.ClusterInfo.Context, monDeployment, metav1.CreateOptions{})
 	assert.NoError(t, err)
@@ -948,7 +973,8 @@ func TestHasMonPathChanged(t *testing.T) {
 			Labels: map[string]string{
 				"pvc_name": "test-pvc",
 			},
-		}}
+		},
+	}
 
 	pvcTemplate := &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1008,4 +1034,97 @@ func TestIsMonIPUpdateRequiredForHostNetwork(t *testing.T) {
 		monUsingHostNetwork := false
 		assert.True(t, isMonIPUpdateRequiredForHostNetwork("a", monUsingHostNetwork, hostNetwork))
 	})
+}
+
+func TestRotateMonCephxKeys(t *testing.T) {
+	ctx := context.TODO()
+	namespace := "default"
+	context, err := newTestStartCluster(t, namespace)
+	assert.NoError(t, err)
+	c := newCluster(context, namespace, true, v1.ResourceRequirements{})
+
+	uninitializedStatus := keyring.UninitializedCephxStatus()
+	cluster := &cephv1.CephCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      namespace,
+			Namespace: namespace,
+		},
+		Spec: cephv1.ClusterSpec{
+			Security: cephv1.ClusterSecuritySpec{
+				CephX: cephv1.ClusterCephxConfig{
+					Daemon: cephv1.CephxConfig{},
+				},
+			},
+		},
+		Status: cephv1.ClusterStatus{
+			Cephx: cephv1.ClusterCephxStatus{
+				Mon: uninitializedStatus,
+			},
+		},
+	}
+
+	s := scheme.Scheme
+	s.AddKnownTypes(cephv1.SchemeGroupVersion, &cephv1.CephCluster{})
+	s.AddKnownTypes(v1.SchemeGroupVersion, &v1.Secret{})
+
+	object := []runtime.Object{
+		cluster,
+	}
+	cl := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(object...).Build()
+
+	executor := &exectest.MockExecutor{
+		MockExecuteCommandWithOutput: func(command string, args ...string) (string, error) {
+			logger.Infof("%s %v", command, args)
+			if args[0] == "auth" && args[1] == "rotate" {
+				return `[{"key":"myrotatedkey"}]`, nil
+			}
+			return "", errors.New("unknown command")
+		},
+	}
+	c.context = &clusterd.Context{Clientset: test.New(t, 5), Executor: executor, Client: cl}
+	c.ClusterInfo = clienttest.CreateTestClusterInfo(1)
+	c.ClusterInfo.CephVersion = keyring.CephAuthMonRotateSupportedVersion
+
+	// create rook-ceph-mon secret
+	secret := &v1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      AppName,
+			Namespace: namespace,
+		},
+		Data: map[string][]byte{opcontroller.MonSecretNameKey: []byte("bar")},
+	}
+
+	_, err = c.context.Clientset.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	// No key rotation required
+	shouldRotate, err := c.RotateMonCephxKeys(cluster)
+	assert.NoError(t, err)
+	assert.False(t, shouldRotate)
+
+	// verify key is rotated in the secret
+	cluster.Spec.Security.CephX.Daemon.KeyRotationPolicy = cephv1.KeyGenerationCephxKeyRotationPolicy
+	cluster.Spec.Security.CephX.Daemon.KeyGeneration = 2
+	cluster.Status.Cephx.Mon.KeyGeneration = 1
+	cluster.Status.Cephx.Mon.KeyCephVersion = "19.2.3-0"
+	err = c.context.Client.Update(ctx, cluster)
+	assert.NoError(t, err)
+	shouldRotate, err = c.RotateMonCephxKeys(cluster)
+	assert.NoError(t, err)
+	assert.True(t, shouldRotate)
+	secret, err = c.context.Clientset.CoreV1().Secrets(namespace).Get(c.ClusterInfo.Context, AppName, metav1.GetOptions{})
+	assert.NoError(t, err)
+	assert.Equal(t, "myrotatedkey", string(secret.Data[opcontroller.MonSecretNameKey]))
+
+	// verify mon key does not rotate when other daemons rotate
+	cluster.Spec.Security.CephX.Daemon.KeyRotationPolicy = cephv1.KeyGenerationCephxKeyRotationPolicy
+	cluster.Spec.Security.CephX.Daemon.KeyGeneration = 2
+	cluster.Status.Cephx.Mon.KeyGeneration = 1
+	cluster.Status.Cephx.Mon.KeyCephVersion = "19.2.3-0"
+	err = c.context.Client.Update(ctx, cluster)
+	assert.NoError(t, err)
+	c.ClusterInfo.CephVersion = keyring.CephAuthRotateSupportedVersion // but not CephAuthMonRotateSupportedVersion
+	shouldRotate, err = c.RotateMonCephxKeys(cluster)
+	assert.NoError(t, err)
+	assert.False(t, shouldRotate)
 }

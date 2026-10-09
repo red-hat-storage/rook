@@ -95,21 +95,26 @@ func TestKeyringStore(t *testing.T) {
 	}
 
 	// create first key
-	err := k.CreateOrUpdate("test-resource", "qwertyuiop")
+	_, err := k.CreateOrUpdate("test-resource", "qwertyuiop")
 	assert.NoError(t, err)
 	assertKeyringData("test-resource-keyring", "qwertyuiop")
 
 	// create second key
-	err = k.CreateOrUpdate("second-resource", "asdfghjkl")
+	_, err = k.CreateOrUpdate("second-resource", "asdfghjkl")
 	assert.NoError(t, err)
 	assertKeyringData("test-resource-keyring", "qwertyuiop")
 	assertKeyringData("second-resource-keyring", "asdfghjkl")
 
 	// update a key
-	err = k.CreateOrUpdate("second-resource", "lkjhgfdsa")
+	_, err = k.CreateOrUpdate("second-resource", "lkjhgfdsa")
 	assert.NoError(t, err)
 	assertKeyringData("test-resource-keyring", "qwertyuiop")
 	assertKeyringData("second-resource-keyring", "lkjhgfdsa")
+
+	// get key from secret
+	keyring, err := k.GetKeyringFromSecret("test-resource")
+	assert.NoError(t, err)
+	assert.Equal(t, "qwertyuiop", keyring)
 
 	// delete a key
 	err = k.Delete("test-resource")
@@ -125,9 +130,9 @@ func TestResourceVolumeAndMount(t *testing.T) {
 	}
 	ownerInfo := cephclient.NewMinimumOwnerInfoWithOwnerRef()
 	k := GetSecretStore(ctx, &cephclient.ClusterInfo{Namespace: "ns"}, ownerInfo)
-	err := k.CreateOrUpdate("test-resource", "qwertyuiop")
+	_, err := k.CreateOrUpdate("test-resource", "qwertyuiop")
 	assert.NoError(t, err)
-	err = k.CreateOrUpdate("second-resource", "asdfgyhujkl")
+	_, err = k.CreateOrUpdate("second-resource", "asdfgyhujkl")
 	assert.NoError(t, err)
 
 	v := Volume().Resource("test-resource")
