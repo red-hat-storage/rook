@@ -30,6 +30,7 @@ import (
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
 	"github.com/rook/rook/pkg/operator/ceph/cluster/mon"
 	"github.com/rook/rook/pkg/operator/ceph/config"
+	"github.com/rook/rook/pkg/operator/ceph/config/keyring"
 	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
 	"github.com/rook/rook/pkg/operator/ceph/reporting"
 	"github.com/rook/rook/pkg/operator/k8sutil"
@@ -72,15 +73,16 @@ var currentAndDesiredCephVersion = opcontroller.CurrentAndDesiredCephVersion
 
 // ReconcileCephFilesystem reconciles a CephFilesystem object
 type ReconcileCephFilesystem struct {
-	client           client.Client
-	recorder         record.EventRecorder
-	scheme           *runtime.Scheme
-	context          *clusterd.Context
-	cephClusterSpec  *cephv1.ClusterSpec
-	clusterInfo      *cephclient.ClusterInfo
-	fsContexts       map[string]*fsHealth
-	opManagerContext context.Context
-	opConfig         opcontroller.OperatorConfig
+	client                client.Client
+	recorder              record.EventRecorder
+	scheme                *runtime.Scheme
+	context               *clusterd.Context
+	cephClusterSpec       *cephv1.ClusterSpec
+	clusterInfo           *cephclient.ClusterInfo
+	fsContexts            map[string]*fsHealth
+	opManagerContext      context.Context
+	opConfig              opcontroller.OperatorConfig
+	shouldRotateCephxKeys bool
 }
 
 type fsHealth struct {
@@ -221,7 +223,11 @@ func (r *ReconcileCephFilesystem) reconcile(request reconcile.Request) (reconcil
 
 	// The CR was just created, initialize status as 'Progressing'
 	if cephFilesystem.Status == nil {
-		updatedCephFS := r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, cephv1.ConditionProgressing, nil)
+		cephxUninitialized := keyring.UninitializedCephxStatus()
+		updatedCephFS, err := r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, cephv1.ConditionProgressing, nil, &cephxUninitialized)
+		if err != nil {
+			return reconcile.Result{}, *cephFilesystem, errors.Wrapf(err, "failed to initialize cephx status for cephFileSystem %q", request.NamespacedName)
+		}
 		if updatedCephFS == nil || updatedCephFS.Status == nil {
 			return reconcile.Result{}, *cephFilesystem, errors.Errorf("failed to update ceph filesystem status")
 		}
@@ -352,16 +358,52 @@ func (r *ReconcileCephFilesystem) reconcile(request reconcile.Request) (reconcil
 			errors.Wrapf(err, "invalid object filesystem %q arguments", cephFilesystem.Name)
 	}
 
+	// daemon key type always takes the default from setDefaultCephxKeyType()
+	r.shouldRotateCephxKeys, err = keyring.ShouldRotateCephxKeys(cephCluster.Spec.Security.CephX.Daemon, *runningCephVersion,
+		*desiredCephVersion, cephFilesystem.Status.Cephx.Daemon, true, r.clusterInfo.Namespace)
+	if err != nil {
+		return reconcile.Result{}, *cephFilesystem, errors.Wrap(err, "failed to determine if cephx keys should be rotated")
+	}
+	if r.shouldRotateCephxKeys {
+		logger.Infof("cephx keys for CephFileSystem %q will be rotated", request.NamespacedName)
+	}
+
 	// RECONCILE
 	logger.Debug("reconciling ceph filesystem store deployments")
 	reconcileResponse, err = r.reconcileCreateFilesystem(cephFilesystem)
 	if err != nil {
-		r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, cephv1.ConditionFailure, nil)
+		_, err := r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, cephv1.ConditionFailure, nil, nil)
+		if err != nil {
+			return reconcile.Result{}, *cephFilesystem, errors.Wrapf(err, "failed to set failure status on cephFileSystem %q when file system creation failed", request.NamespacedName)
+		}
 		return reconcileResponse, *cephFilesystem, err
 	}
 
-	statusUpdated := false
+	// update Mds cephx status
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	cephxStatus := keyring.UpdatedCephxStatus(r.shouldRotateCephxKeys, cephCluster.Spec.Security.CephX.Daemon, r.clusterInfo.CephVersion, cephFilesystem.Status.Cephx.Daemon, keyType)
 
+	// Attempt to determine the authoritative key type of the MDSes for this filesystem.
+	// If this fails, leave the key type as it would have been.
+	// Note: This code is intended to be best-effort at present. This may pick up other filesystems
+	// if the current FS name is a prefix of another/others. If such FSes have different key types,
+	// it will fall back to less precise reporting. If FSes have the same key type, the
+	// authoritative determination will still be valid for this FS.
+	keyPrefix := fmt.Sprintf("%s-", cephFilesystem.Name)
+	mdsKeyType, err := keyring.DetermineCephxKeyTypesForEntityType(r.context, r.clusterInfo, cephclient.AuthDumpKeysEntityTypeMds, keyPrefix)
+	if err == nil && len(mdsKeyType) == 1 {
+		logger.Debugf("determined authoritative cephx key type for MDSes in namespace %q is %q", clusterInfo.Namespace, mdsKeyType[0])
+		cephxStatus.KeyType = cephv1.CephxKeyType(mdsKeyType[0])
+	} else {
+		logger.Infof("failed to determine authoritative cephx key type for MDSes in namespace %q, having key types [%v]: %v", clusterInfo.Namespace, mdsKeyType, err)
+	}
+
+	_, err = r.updateStatus(observedGeneration, request.NamespacedName, cephv1.ConditionProgressing, nil, &cephxStatus)
+	if err != nil {
+		return reconcile.Result{}, *cephFilesystem, errors.Wrapf(err, "failed to set cephx status for cephFileSystem %q", request.NamespacedName)
+	}
+
+	statusUpdated := false
 	// Enable mirroring if needed
 	if cephFilesystem.Spec.Mirroring != nil {
 		// Disable mirroring on that filesystem if needed
@@ -383,7 +425,10 @@ func (r *ReconcileCephFilesystem) reconcile(request reconcile.Request) (reconcil
 			logger.Info("reconciling create cephfs-mirror peer configuration")
 			reconcileResponse, err = opcontroller.CreateBootstrapPeerSecret(r.context, r.clusterInfo, cephFilesystem, k8sutil.NewOwnerInfo(cephFilesystem, r.scheme))
 			if err != nil {
-				r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, cephv1.ConditionFailure, nil)
+				_, err := r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, cephv1.ConditionFailure, nil, nil)
+				if err != nil {
+					return reconcile.Result{}, *cephFilesystem, errors.Wrapf(err, "failed to set failure status on cephFileSystem %q when peer secret bootstrap failed", request.NamespacedName)
+				}
 				return reconcileResponse, *cephFilesystem,
 					errors.Wrapf(err, "failed to create cephfs-mirror bootstrap peer for filesystem %q.", cephFilesystem.Name)
 			}
@@ -397,9 +442,11 @@ func (r *ReconcileCephFilesystem) reconcile(request reconcile.Request) (reconcil
 
 			// update ObservedGeneration in status at the end of reconcile
 			// Set Ready status, we are done reconciling
-			if r.updateStatus(observedGeneration, request.NamespacedName, cephv1.ConditionReady, opcontroller.GenerateStatusInfo(cephFilesystem)) != nil {
-				statusUpdated = true
+			_, err = r.updateStatus(observedGeneration, request.NamespacedName, cephv1.ConditionReady, opcontroller.GenerateStatusInfo(cephFilesystem), &cephxStatus)
+			if err != nil {
+				return reconcile.Result{}, *cephFilesystem, errors.Wrapf(err, "failed to set ready status for cephFileSystem %q", request.NamespacedName)
 			}
+			statusUpdated = true
 
 			// Run go routine check for mirroring status
 			if !cephFilesystem.Spec.StatusCheck.Mirror.Disabled {
@@ -419,7 +466,10 @@ func (r *ReconcileCephFilesystem) reconcile(request reconcile.Request) (reconcil
 		// update ObservedGeneration in status at the end of reconcile
 		// Set Ready status, we are done reconciling$
 		// TODO: set status to Ready **only** if the filesystem is ready
-		r.updateStatus(observedGeneration, request.NamespacedName, cephv1.ConditionReady, nil)
+		_, err := r.updateStatus(observedGeneration, request.NamespacedName, cephv1.ConditionReady, nil, &cephxStatus)
+		if err != nil {
+			return reconcile.Result{}, *cephFilesystem, errors.Wrapf(err, "failed to set ready status for cephFileSystem %q", request.NamespacedName)
+		}
 	}
 
 	return reconcile.Result{}, *cephFilesystem, nil
@@ -445,7 +495,7 @@ func (r *ReconcileCephFilesystem) reconcileCreateFilesystem(cephFilesystem *ceph
 	}
 
 	ownerInfo := k8sutil.NewOwnerInfo(cephFilesystem, r.scheme)
-	err := createFilesystem(r.context, r.clusterInfo, *cephFilesystem, r.cephClusterSpec, ownerInfo, r.cephClusterSpec.DataDirHostPath)
+	err := createFilesystem(r.context, r.clusterInfo, *cephFilesystem, r.cephClusterSpec, ownerInfo, r.cephClusterSpec.DataDirHostPath, r.shouldRotateCephxKeys)
 	if err != nil {
 		return reconcile.Result{}, errors.Wrapf(err, "failed to create filesystem %q", cephFilesystem.Name)
 	}

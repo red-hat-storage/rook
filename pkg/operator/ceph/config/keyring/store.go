@@ -20,8 +20,11 @@ limitations under the License.
 package keyring
 
 import (
+	"fmt"
+
 	"github.com/coreos/pkg/capnslog"
 	"github.com/pkg/errors"
+	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	"github.com/rook/rook/pkg/clusterd"
 	"github.com/rook/rook/pkg/daemon/ceph/client"
 	"github.com/rook/rook/pkg/operator/k8sutil"
@@ -34,6 +37,9 @@ var logger = capnslog.NewPackageLogger("github.com/rook/rook", "op-cfg-keyring")
 
 const (
 	keyringFileName = "keyring"
+
+	// KeyringAnnotation identifies a Kubernetes Secret as a cephx keyring file
+	KeyringAnnotation = "cephx-keyring"
 )
 
 // SecretStore is a helper to store Ceph daemon keyrings as Kubernetes secrets.
@@ -59,10 +65,13 @@ func keyringSecretName(resourceName string) string {
 // GenerateKey generates a key for a Ceph user with the given access permissions. It returns the key
 // generated on success. Ceph will always return the most up-to-date key for a daemon, and the key
 // usually does not change.
-func (k *SecretStore) GenerateKey(user string, access []string) (string, error) {
+// Note: If the key type passed to this function changes after initial generation, the key will not
+// be rotated. This ensures that Rook manages key rotation explicitly.
+func (k *SecretStore) GenerateKey(user string, keyType cephv1.CephxKeyType, access []string) (string, error) {
 	// get-or-create-key for the user account
-	key, err := client.AuthGetOrCreateKey(k.context, k.clusterInfo, user, access)
+	key, err := client.AuthGetOrCreateKey(k.context, k.clusterInfo, user, string(keyType), access)
 	if err != nil {
+		// This also handles failures due to key type changing after key generation.
 		logger.Infof("Error getting or creating key for %q. "+
 			"Attempting to update capabilities in case the user already exists. %v", user, err)
 		uErr := client.AuthUpdateCaps(k.context, k.clusterInfo, user, access)
@@ -77,13 +86,26 @@ func (k *SecretStore) GenerateKey(user string, access []string) (string, error) 
 	return key, nil
 }
 
+// RotateKey rotates a key for a Ceph user without modifying permissions. It returns the new key on success.
+func (k *SecretStore) RotateKey(user string, keyType cephv1.CephxKeyType) (string, error) {
+	key, err := client.AuthRotate(k.context, k.clusterInfo, user, string(keyType))
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to rotate key for %q", user)
+	}
+	return key, nil
+}
+
 // CreateOrUpdate creates or updates the keyring secret for the resource with the keyring specified.
+// Returns the secret resource version.
 // WARNING: Do not use "rook-ceph-admin" as the resource name; conflicts with the AdminStore.
-func (k *SecretStore) CreateOrUpdate(resourceName string, keyring string) error {
+func (k *SecretStore) CreateOrUpdate(resourceName string, keyring string) (string, error) {
 	secret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      keyringSecretName(resourceName),
 			Namespace: k.clusterInfo.Namespace,
+			Annotations: map[string]string{
+				KeyringAnnotation: "",
+			},
 		},
 		StringData: map[string]string{
 			keyringFileName: keyring,
@@ -92,7 +114,7 @@ func (k *SecretStore) CreateOrUpdate(resourceName string, keyring string) error 
 	}
 	err := k.ownerInfo.SetControllerReference(secret)
 	if err != nil {
-		return errors.Wrapf(err, "failed to set owner reference to keyring secret %q", secret.Name)
+		return "", errors.Wrapf(err, "failed to set owner reference to keyring secret %q", secret.Name)
 	}
 
 	return k.CreateSecret(secret)
@@ -109,24 +131,44 @@ func (k *SecretStore) Delete(resourceName string) error {
 	return nil
 }
 
-// CreateSecret creates or update a kubernetes secret
-func (k *SecretStore) CreateSecret(secret *v1.Secret) error {
+// CreateSecret creates or update a kubernetes secret.
+// Returns the resource version of the secret.
+func (k *SecretStore) CreateSecret(secret *v1.Secret) (string, error) {
 	secretName := secret.ObjectMeta.Name
 	_, err := k.context.Clientset.CoreV1().Secrets(k.clusterInfo.Namespace).Get(k.clusterInfo.Context, secretName, metav1.GetOptions{})
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			logger.Debugf("creating secret for %s", secretName)
-			if _, err := k.context.Clientset.CoreV1().Secrets(k.clusterInfo.Namespace).Create(k.clusterInfo.Context, secret, metav1.CreateOptions{}); err != nil {
-				return errors.Wrapf(err, "failed to create secret for %s", secretName)
+			s, err := k.context.Clientset.CoreV1().Secrets(k.clusterInfo.Namespace).Create(k.clusterInfo.Context, secret, metav1.CreateOptions{})
+			if err != nil {
+				return "", errors.Wrapf(err, "failed to create secret for %s", secretName)
 			}
-			return nil
+			return s.ResourceVersion, nil
 		}
-		return errors.Wrapf(err, "failed to get secret for %s", secretName)
+		return "", errors.Wrapf(err, "failed to get secret for %s", secretName)
 	}
 
 	logger.Debugf("updating secret for %s", secretName)
-	if _, err := k.context.Clientset.CoreV1().Secrets(k.clusterInfo.Namespace).Update(k.clusterInfo.Context, secret, metav1.UpdateOptions{}); err != nil {
-		return errors.Wrapf(err, "failed to update secret for %s", secretName)
+	s, err := k.context.Clientset.CoreV1().Secrets(k.clusterInfo.Namespace).Update(k.clusterInfo.Context, secret, metav1.UpdateOptions{})
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to update secret for %s", secretName)
 	}
-	return nil
+	return s.ResourceVersion, nil
+}
+
+// GetKeyringFromSecret returns the keyring present in a keyring secret
+func (k *SecretStore) GetKeyringFromSecret(resourceName string) (string, error) {
+	secretName := keyringSecretName(resourceName)
+	s, err := k.context.Clientset.CoreV1().Secrets(k.clusterInfo.Namespace).Get(k.clusterInfo.Context, secretName, metav1.GetOptions{})
+	if err != nil {
+		return "", err // do not wrap so that err can be compared to does not exist if needed
+	}
+	if keyring, ok := s.StringData[keyringFileName]; ok { // only available in unit tests
+		return keyring, nil
+	}
+	keyring, ok := s.Data[keyringFileName]
+	if !ok {
+		return "", fmt.Errorf("keyring secret %q does not contain keyring", secretName)
+	}
+	return string(keyring), nil
 }

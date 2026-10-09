@@ -220,6 +220,8 @@ func okToContinueMDSDaemon(context *clusterd.Context, clusterInfo *ClusterInfo, 
 //
 // In the case we will pick: "ceph version 18.2.5 (cbff874f9007f1869bfd3821b7e33b2a6ffd4988) reef (stable)": 2,
 // And eventually return 18.2.5
+//
+// If a daemon has no entries, return a zero version and no error.
 func LeastUptodateDaemonVersion(context *clusterd.Context, clusterInfo *ClusterInfo, daemonType string) (cephver.CephVersion, error) {
 	var r map[string]int
 	var vv cephver.CephVersion
@@ -234,15 +236,27 @@ func LeastUptodateDaemonVersion(context *clusterd.Context, clusterInfo *ClusterI
 	if err != nil {
 		return vv, errors.Wrap(err, "failed to find daemon map entry")
 	}
+
+	if len(r) == 0 {
+		return cephver.CephVersion{}, nil // return zero version if no entries
+	}
+
+	maxInt := 65535
+
+	vv = cephver.CephVersion{Major: maxInt, Minor: maxInt, Extra: maxInt, Build: maxInt, CommitID: ""}
 	for v := range r {
 		version, err := cephver.ExtractCephVersion(v)
 		if err != nil {
-			return vv, errors.Wrap(err, "failed to extract ceph version")
+			return cephver.CephVersion{}, errors.Wrap(err, "failed to extract ceph version")
 		}
-		vv = *version
-		// break right after the first iteration
-		// the first one is always the least up-to-date
-		break
+
+		if cephver.IsInferior(*version, vv) {
+			vv = *version
+		}
+	}
+
+	if vv.Major == maxInt {
+		return cephver.CephVersion{}, errors.New("failed to determine least ceph version")
 	}
 
 	return vv, nil

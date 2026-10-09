@@ -24,6 +24,7 @@ import (
 	"github.com/pkg/errors"
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
+	"github.com/rook/rook/pkg/operator/ceph/config/keyring"
 	"github.com/rook/rook/pkg/operator/k8sutil"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -169,6 +170,13 @@ func (c *updateConfig) updateExistingOSDs(errs *provisionErrors) {
 			continue
 		}
 
+		cephxStatus, err := c.cluster.rotateCephxKey(osdInfo)
+		if err != nil {
+			// user-desired rotation failed, so report an error, but continue to try to update the OSD deployment
+			errs.addError("%v", errors.Wrapf(err, "failed to rotate cephx key for OSD %d", osdID))
+		}
+		osdInfo.CephxStatus = cephxStatus // returned status is always correct
+
 		var updatedDep *appsv1.Deployment
 
 		if c.cluster.spec.Network.MultiClusterService.Enabled {
@@ -187,7 +195,8 @@ func (c *updateConfig) updateExistingOSDs(errs *provisionErrors) {
 					"not updating OSD %d on node %q. node no longer exists in the storage spec. "+
 						"if the user wishes to remove OSDs from the node, they must do so manually. "+
 						"Rook will not remove OSDs from nodes that are removed from the storage spec in order to prevent accidental data loss",
-					osdID, nodeOrPVCName)
+					osdID, nodeOrPVCName,
+				)
 				continue
 			}
 
@@ -389,4 +398,49 @@ func (c *Cluster) getOSDDeployments() (*appsv1.DeploymentList, error) {
 		return nil, errors.Wrap(err, "failed to query existing OSD deployments to check if they need to be updated")
 	}
 	return deps, nil
+}
+
+// if needed, rotate cephx key for the OSD
+// always returns the cephx status that should be applied to the OSD annotation, even in error case
+func (c *Cluster) rotateCephxKey(osdInfo OSDInfo) (cephv1.CephxStatus, error) {
+	// TODO: for rotation WithCephVersionUpdate fix this to have the right runningCephVersion and desiredCephVersion
+	runningCephVersion := c.clusterInfo.CephVersion
+	desiredCephVersion := c.clusterInfo.CephVersion
+	shouldRotate, err := keyring.ShouldRotateCephxKeys(c.spec.Security.CephX.Daemon,
+		runningCephVersion, desiredCephVersion, osdInfo.CephxStatus, true, c.clusterInfo.Namespace) // daemon key type always takes the default from setDefaultCephxKeyType()
+	if err != nil {
+		return osdInfo.CephxStatus, errors.Wrapf(err, "failed to determine if cephx key for OSD %d needs rotated", osdInfo.ID)
+	}
+
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+
+	didRotateCephxStatus := keyring.UpdatedCephxStatus(true, c.spec.Security.CephX.Daemon,
+		c.clusterInfo.CephVersion, osdInfo.CephxStatus, keyType)
+	didNotRotateCephxStatus := keyring.UpdatedCephxStatus(false, c.spec.Security.CephX.Daemon,
+		c.clusterInfo.CephVersion, osdInfo.CephxStatus, keyType)
+
+	if !shouldRotate {
+		return didNotRotateCephxStatus, nil
+	}
+
+	logger.Infof("rotating cephx key of OSD %d for CephCluster in namespace %q", osdInfo.ID, c.clusterInfo.Namespace)
+	user := fmt.Sprintf("osd.%d", osdInfo.ID)
+	// Note: OSD key is not stored in k8s secret; rotated key is picked up by OSD init container
+
+	_, err = cephclient.AuthRotate(c.context, c.clusterInfo, user, string(keyType))
+	if err != nil {
+		return didNotRotateCephxStatus, errors.Wrapf(err, "failed to rotate cephx key for OSD %d", osdInfo.ID)
+	}
+
+	// rotating the `client.osd-lockbox.$OSD_UUID` keys created for luks-encrypted OSDs by ceph-volume
+	if osdInfo.Encrypted {
+		osdLockBoxUser := fmt.Sprintf("client.osd-lockbox.%s", osdInfo.UUID)
+		logger.Infof("rotating osd-lockbox cephx key of encrypted OSD %d for CephCluster in namespace %q", osdInfo.ID, c.clusterInfo.Namespace)
+		_, err = cephclient.AuthRotate(c.context, c.clusterInfo, osdLockBoxUser, string(keyType))
+		if err != nil {
+			return didNotRotateCephxStatus, errors.Wrapf(err, "failed to rotate osd-lockbox cephx key for the encrypted OSD %d", osdInfo.ID)
+		}
+	}
+
+	return didRotateCephxStatus, nil
 }
