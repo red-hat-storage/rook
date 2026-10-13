@@ -1573,6 +1573,15 @@ spec:
                 properties:
                   cephx:
                     properties:
+                      allowedCiphers:
+                        items:
+                          maxLength: 7
+                          minLength: 3
+                          type: string
+                        maxItems: 2
+                        minItems: 1
+                        type: array
+                        x-kubernetes-list-type: set
                       csi:
                         properties:
                           keepPriorKeyCountMax:
@@ -1580,7 +1589,7 @@ spec:
                             minimum: 0
                             type: integer
                           keyGeneration:
-                            format: int32
+                            format: int64
                             maximum: 4294967295
                             minimum: 0
                             type: integer
@@ -1593,11 +1602,21 @@ spec:
                             - Disabled
                             - KeyGeneration
                             type: string
+                          keyType:
+                            enum:
+                            - aes
+                            - aes256k
+                            maxLength: 7
+                            minLength: 3
+                            type: string
                         type: object
+                        x-kubernetes-validations:
+                        - message: keyGeneration cannot be removed once set
+                          rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                       daemon:
                         properties:
                           keyGeneration:
-                            format: int32
+                            format: int64
                             maximum: 4294967295
                             minimum: 0
                             type: integer
@@ -1610,11 +1629,21 @@ spec:
                             - Disabled
                             - KeyGeneration
                             type: string
+                          keyType:
+                            enum:
+                            - aes
+                            - aes256k
+                            maxLength: 7
+                            minLength: 3
+                            type: string
                         type: object
+                        x-kubernetes-validations:
+                        - message: keyGeneration cannot be removed once set
+                          rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                       rbdMirrorPeer:
                         properties:
                           keyGeneration:
-                            format: int32
+                            format: int64
                             maximum: 4294967295
                             minimum: 0
                             type: integer
@@ -1627,7 +1656,17 @@ spec:
                             - Disabled
                             - KeyGeneration
                             type: string
+                          keyType:
+                            enum:
+                            - aes
+                            - aes256k
+                            maxLength: 7
+                            minLength: 3
+                            type: string
                         type: object
+                        x-kubernetes-validations:
+                        - message: keyGeneration cannot be removed once set
+                          rule: '!has(oldSelf.keyGeneration) || has(self.keyGeneration)'
                     type: object
                   keyRotation:
                     nullable: true
@@ -3319,6 +3358,10 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        maxLength: 7
+                        minLength: 3
+                        type: string
                     type: object
                   cephExporter:
                     properties:
@@ -3327,6 +3370,10 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        maxLength: 7
+                        minLength: 3
+                        type: string
                     type: object
                   crashCollector:
                     properties:
@@ -3335,6 +3382,10 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        maxLength: 7
+                        minLength: 3
+                        type: string
                     type: object
                   csi:
                     properties:
@@ -3343,6 +3394,10 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        maxLength: 7
+                        minLength: 3
+                        type: string
                       priorKeyCount:
                         type: integer
                     type: object
@@ -3353,6 +3408,10 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        maxLength: 7
+                        minLength: 3
+                        type: string
                     type: object
                   mon:
                     properties:
@@ -3361,6 +3420,10 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        maxLength: 7
+                        minLength: 3
+                        type: string
                     type: object
                   osd:
                     properties:
@@ -3369,6 +3432,10 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        maxLength: 7
+                        minLength: 3
+                        type: string
                     type: object
                   rbdMirrorPeer:
                     properties:
@@ -3377,6 +3444,10 @@ spec:
                       keyGeneration:
                         format: int32
                         type: integer
+                      keyType:
+                        maxLength: 7
+                        minLength: 3
+                        type: string
                     type: object
                 type: object
               conditions:
