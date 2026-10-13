@@ -29,6 +29,7 @@ import (
 	"github.com/pkg/errors"
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	"github.com/rook/rook/pkg/operator/ceph/config"
+	"github.com/rook/rook/pkg/operator/ceph/config/keyring"
 	"github.com/rook/rook/pkg/operator/k8sutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -149,9 +150,16 @@ func objectChanged(oldObj, newObj runtime.Object, objectName string) (bool, erro
 
 	// Do not leak details of diff if the object contains sensitive data (e.g., it is a Secret)
 	isSensitive := false
-	if _, ok := new.(*corev1.Secret); ok {
+	if s, ok := new.(*corev1.Secret); ok {
 		logger.Debugf("object %q diff is [redacted for Secrets]", objectName)
 		isSensitive = true
+
+		// keyring secrets are a special case. rook updates these during reconciliation as needed,
+		// and daemon pods automatically get updated keys with no need for another reconcile
+		if _, ok := s.ObjectMeta.Annotations[keyring.KeyringAnnotation]; ok {
+			logger.Debugf("not reconciling update to cephx keyring secret %q", objectName)
+			return false, nil
+		}
 	} else {
 		logger.Debugf("object %q diff is %s", objectName, diff.String())
 		isSensitive = false
@@ -478,4 +486,37 @@ func GetSpec(obj client.Object) interface{} {
 	}
 
 	return spec.Interface()
+}
+
+func WatchPeerTokenSecretPredicate[T *corev1.Secret]() predicate.TypedFuncs[T] {
+	return predicate.TypedFuncs[T]{
+		CreateFunc: func(e event.TypedCreateEvent[T]) bool {
+			newSecret := (*corev1.Secret)(e.Object)
+			// reconcile when secret is created
+			if strings.Contains(newSecret.GetName(), clusterMirrorBootstrapPeerSecretName) {
+				logger.Debugf("peer token create event for secret %q in the namespace %q", newSecret.GetName(), newSecret.GetNamespace())
+				return true
+			}
+			return false
+		},
+		UpdateFunc: func(e event.TypedUpdateEvent[T]) bool {
+			newSecret := (*corev1.Secret)(e.ObjectNew)
+			oldSecret := (*corev1.Secret)(e.ObjectOld)
+			if !strings.Contains(newSecret.GetName(), clusterMirrorBootstrapPeerSecretName) {
+				return false
+			}
+			// reconcile if the peer token data has changed
+			newData := newSecret.Data["token"]
+			oldData := oldSecret.Data["token"]
+			if string(newData) != string(oldData) {
+				logger.Debugf("peer token update event for secret %q in the namespace %q", newSecret.GetName(), newSecret.GetNamespace())
+				return true
+			}
+			return false
+		},
+		DeleteFunc: func(e event.TypedDeleteEvent[T]) bool {
+			// Do not reconcile when secret is deleted
+			return false
+		},
+	}
 }

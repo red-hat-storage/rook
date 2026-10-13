@@ -58,6 +58,7 @@ spec:
                       nullable: true
                       type: string
                     enableCrushUpdates:
+                      nullable: true
                       type: boolean
                     enableRBDStats:
                       type: boolean
@@ -196,6 +197,7 @@ spec:
                     nullable: true
                     type: string
                   enableCrushUpdates:
+                    nullable: true
                     type: boolean
                   enableRBDStats:
                     type: boolean
@@ -1116,6 +1118,21 @@ spec:
             type: object
           status:
             properties:
+              cephx:
+                properties:
+                  daemon:
+                    properties:
+                      keyCephVersion:
+                        type: string
+                      keyGeneration:
+                        format: int32
+                        type: integer
+                      keyType:
+                        maxLength: 7
+                        minLength: 3
+                        type: string
+                    type: object
+                type: object
               conditions:
                 items:
                   properties:

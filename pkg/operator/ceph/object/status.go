@@ -32,12 +32,15 @@ import (
 )
 
 func (r *ReconcileCephObjectStore) setFailedStatus(observedGeneration int64, name types.NamespacedName, errMessage string, err error) (reconcile.Result, error) {
-	updateStatus(r.opManagerContext, observedGeneration, r.client, name, cephv1.ConditionFailure, map[string]string{})
+	statusErr := updateStatus(r.opManagerContext, observedGeneration, r.client, name, cephv1.ConditionFailure, map[string]string{}, nil)
+	if statusErr != nil {
+		return reconcile.Result{}, errors.Wrapf(statusErr, "failed to set failed status for object store %q", name)
+	}
 	return reconcile.Result{}, errors.Wrapf(err, "%s", errMessage)
 }
 
 // updateStatus updates an object with a given status
-func updateStatus(ctx context.Context, observedGeneration int64, client client.Client, namespacedName types.NamespacedName, status cephv1.ConditionType, info map[string]string) {
+func updateStatus(ctx context.Context, observedGeneration int64, client client.Client, namespacedName types.NamespacedName, status cephv1.ConditionType, info map[string]string, cephx *cephv1.CephxStatus) error {
 	// Updating the status is important to users, but we can still keep operating if there is a
 	// failure. Retry a few times to give it our best effort attempt.
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -78,16 +81,21 @@ func updateStatus(ctx context.Context, observedGeneration int64, client client.C
 			objectStore.Status.Endpoints.Secure = getAllDNSEndpoints(objectStore, securePort, true)
 		}
 
+		if cephx != nil {
+			objectStore.Status.Cephx.Daemon = *cephx
+		}
+
 		if err := reporting.UpdateStatus(client, objectStore); err != nil {
 			return errors.Wrapf(err, "failed to set object store %q status to %q", namespacedName.String(), status)
 		}
 		return nil
 	})
 	if err != nil {
-		logger.Error(err)
+		return err
 	}
 
 	logger.Debugf("object store %q status updated to %q", namespacedName.String(), status)
+	return nil
 }
 
 func buildStatusInfo(cephObjectStore *cephv1.CephObjectStore) map[string]string {

@@ -626,6 +626,20 @@ map[string]string
 <td>
 </td>
 </tr>
+<tr>
+<td>
+<code>security</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.ClientSecuritySpec">
+ClientSecuritySpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Security represents security settings</p>
+</td>
+</tr>
 </table>
 </td>
 </tr>
@@ -1024,8 +1038,8 @@ CephClusterHealthCheckSpec
 <td>
 <code>security</code><br/>
 <em>
-<a href="#ceph.rook.io/v1.SecuritySpec">
-SecuritySpec
+<a href="#ceph.rook.io/v1.ClusterSecuritySpec">
+ClusterSecuritySpec
 </a>
 </em>
 </td>
@@ -1659,8 +1673,8 @@ NFSSecuritySpec
 <td>
 <code>status</code><br/>
 <em>
-<a href="#ceph.rook.io/v1.Status">
-Status
+<a href="#ceph.rook.io/v1.NFSStatus">
+NFSStatus
 </a>
 </em>
 </td>
@@ -2558,8 +2572,8 @@ string
 <td>
 <code>status</code><br/>
 <em>
-<a href="#ceph.rook.io/v1.Status">
-Status
+<a href="#ceph.rook.io/v1.RBDMirrorStatus">
+RBDMirrorStatus
 </a>
 </em>
 </td>
@@ -3447,6 +3461,19 @@ ConditionType
 </tr>
 <tr>
 <td>
+<code>cephx</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.PeerTokenCephxStatus">
+PeerTokenCephxStatus
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+</td>
+</tr>
+<tr>
+<td>
 <code>mirroringStatus</code><br/>
 <em>
 <a href="#ceph.rook.io/v1.MirroringStatusSpec">
@@ -3666,6 +3693,19 @@ int64
 <td>
 <em>(Optional)</em>
 <p>ObservedGeneration is the latest generation observed by the controller.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>cephx</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
 </td>
 </tr>
 </tbody>
@@ -3935,6 +3975,18 @@ map[string]string
 <td>
 <em>(Optional)</em>
 <p>Use only info and put mirroringStatus in it?</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>cephx</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.LocalCephxStatus">
+LocalCephxStatus
+</a>
+</em>
+</td>
+<td>
 </td>
 </tr>
 <tr>
@@ -4438,6 +4490,276 @@ One of Always, Never, IfNotPresent.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="ceph.rook.io/v1.CephXConfigWithPriorCount">CephXConfigWithPriorCount
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ClusterCephxConfig">ClusterCephxConfig</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>CephxConfig</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxConfig">
+CephxConfig
+</a>
+</em>
+</td>
+<td>
+<p>
+(Members of <code>CephxConfig</code> are embedded into this type.)
+</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>keepPriorKeyCountMax</code><br/>
+<em>
+byte
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>KeepPriorKeyCountMax tells Rook how many prior keys to keep active.
+Generally, this would be set to 1 to allow for a migration period for applications.
+If desired, set this to 0 to delete prior keys after migration.
+This config only applies to prior keys that already exist.
+If PriorKeyCount is set to 2 while only a single key currently exists, only a single prior key will be kept,
+and the reported status will only indicate the actual number of prior keys,
+not necessarily a reflection of PriorKeyCount config here.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ceph.rook.io/v1.CephxConfig">CephxConfig
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephXConfigWithPriorCount">CephXConfigWithPriorCount</a>, <a href="#ceph.rook.io/v1.ClientSecuritySpec">ClientSecuritySpec</a>, <a href="#ceph.rook.io/v1.ClusterCephxConfig">ClusterCephxConfig</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>keyRotationPolicy</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxKeyRotationPolicy">
+CephxKeyRotationPolicy
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>KeyRotationPolicy controls if and when CephX keys are rotated after initial creation.
+One of Disabled, or KeyGeneration. Default Disabled.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>keyGeneration</code><br/>
+<em>
+uint32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>KeyGeneration specifies the desired CephX key generation. This is used when KeyRotationPolicy
+is KeyGeneration and ignored for other policies. If this is set to greater than the current
+key generation, relevant keys will be rotated, and the generation value will be updated to
+this new value (generation values are not necessarily incremental, though that is the
+intended use case). If this is set to less than or equal to the current key generation, keys
+are not rotated.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>keyType</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxKeyType">
+CephxKeyType
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>KeyType specifies the desired CephX key cipher type.
+If unspecified, Ceph&rsquo;s default will be used.
+If KeyRotationPolicy is Disabled or unspecified (default), modifying this value will never
+initiate key rotation.
+If KeyRotationPolicy is set to an enabled value (any other value), modifying this may
+initiate key rotation.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ceph.rook.io/v1.CephxKeyRotationPolicy">CephxKeyRotationPolicy
+(<code>string</code> alias)</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephxConfig">CephxConfig</a>)
+</p>
+<div>
+<p>A CephX key rotation policy controls if and when CephX keys are rotated after initial creation.
+Supported values: Disabled, KeyGeneration. Default: Disabled.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;Disabled&#34;</p></td>
+<td></td>
+</tr><tr><td><p>&#34;KeyGeneration&#34;</p></td>
+<td></td>
+</tr></tbody>
+</table>
+<h3 id="ceph.rook.io/v1.CephxKeyType">CephxKeyType
+(<code>string</code> alias)</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephxConfig">CephxConfig</a>, <a href="#ceph.rook.io/v1.CephxStatus">CephxStatus</a>, <a href="#ceph.rook.io/v1.ClusterCephxConfig">ClusterCephxConfig</a>)
+</p>
+<div>
+<p>A CephX key type represents a cipher type for CephX keys.
+Supported values: aes, aes256k.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;aes&#34;</p></td>
+<td></td>
+</tr><tr><td><p>&#34;aes256k&#34;</p></td>
+<td></td>
+</tr><tr><td><p>&#34;&#34;</p></td>
+<td></td>
+</tr></tbody>
+</table>
+<h3 id="ceph.rook.io/v1.CephxStatus">CephxStatus
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephClientStatus">CephClientStatus</a>, <a href="#ceph.rook.io/v1.CephxStatusWithKeyCount">CephxStatusWithKeyCount</a>, <a href="#ceph.rook.io/v1.ClusterCephxStatus">ClusterCephxStatus</a>, <a href="#ceph.rook.io/v1.LocalCephxStatus">LocalCephxStatus</a>, <a href="#ceph.rook.io/v1.PeerTokenCephxStatus">PeerTokenCephxStatus</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>keyGeneration</code><br/>
+<em>
+uint32
+</em>
+</td>
+<td>
+<p>KeyGeneration represents the CephX key generation for the last successful reconcile.
+For all newly-created resources, this field is set to <code>1</code>.
+When keys are rotated due to any rotation policy, the generation is incremented or updated to
+the configured policy generation.
+Generation <code>0</code> indicates that keys existed prior to the implementation of key tracking.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>keyCephVersion</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>KeyCephVersion reports the Ceph version that created the current generation&rsquo;s keys. This is
+same string format as reported by <code>CephCluster.status.version.version</code> to allow them to be
+compared. E.g., <code>20.2.0-0</code>.
+For all newly-created resources, this field set to the version of Ceph that created the key.
+The special value &ldquo;Uninitialized&rdquo; indicates that keys are being created for the first time.
+An empty string indicates that the version is unknown, as expected in brownfield deployments.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>keyType</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxKeyType">
+CephxKeyType
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>KeyType identifies the CephX key type for the current generation&rsquo;s keys, if known.
+If unknown, the value will be empty.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ceph.rook.io/v1.CephxStatusWithKeyCount">CephxStatusWithKeyCount
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ClusterCephxStatus">ClusterCephxStatus</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>CephxStatus</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<p>
+(Members of <code>CephxStatus</code> are embedded into this type.)
+</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>priorKeyCount</code><br/>
+<em>
+byte
+</em>
+</td>
+<td>
+<p>PriorKeyCount reports the number of prior-generation CephX keys that remain active for the related component</p>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="ceph.rook.io/v1.CleanupConfirmationProperty">CleanupConfirmationProperty
 (<code>string</code> alias)</h3>
 <p>
@@ -4516,6 +4838,38 @@ bool
 </tr>
 </tbody>
 </table>
+<h3 id="ceph.rook.io/v1.ClientSecuritySpec">ClientSecuritySpec
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ClientSpec">ClientSpec</a>)
+</p>
+<div>
+<p>ClinetSecuritySpec represents security settings for a Ceph Client</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>cephx</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxConfig">
+CephxConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CephX configures CephX key settings. More: <a href="https://docs.ceph.com/en/latest/dev/cephx/">https://docs.ceph.com/en/latest/dev/cephx/</a></p>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="ceph.rook.io/v1.ClientSpec">ClientSpec
 </h3>
 <p>
@@ -4577,6 +4931,283 @@ map[string]string
 </em>
 </td>
 <td>
+</td>
+</tr>
+<tr>
+<td>
+<code>security</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.ClientSecuritySpec">
+ClientSecuritySpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Security represents security settings</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ceph.rook.io/v1.ClusterCephxConfig">ClusterCephxConfig
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ClusterSecuritySpec">ClusterSecuritySpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>allowedCiphers</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxKeyType">
+[]CephxKeyType
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AllowedCiphers is an advanced configuration that can disrupt cluster availability!
+Review Rook documentation carefully before setting this in a production cluster!</p>
+<p>AllowedCiphers sets the Ceph config <code>auth_allowed_ciphers</code> to the list given.
+If the list is empty, Rook will enable support for all ciphers.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>daemon</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxConfig">
+CephxConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Daemon configures CephX key settings for local Ceph daemons managed by Rook and part of the
+Ceph cluster. Daemon CephX keys can be rotated without affecting client connections.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>rbdMirrorPeer</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxConfig">
+CephxConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RBDMirrorPeer configures CephX key settings of the <code>rbd-mirror-peer</code> user that is used for creating
+bootstrap peer token used connect peer clusters. Rotating the <code>rbd-mirror-peer</code> user key will update
+the mirror peer token.
+Rotation will affect any existing peers connected to this cluster, so take care when exercising this option.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>csi</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephXConfigWithPriorCount">
+CephXConfigWithPriorCount
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CSI configures CephX key rotation settings for the Ceph-CSI daemons in the current Kubernetes cluster.
+CSI key rotation can affect existing PV connections, so take care when exercising this option.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ceph.rook.io/v1.ClusterCephxStatus">ClusterCephxStatus
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ClusterStatus">ClusterStatus</a>)
+</p>
+<div>
+<p>ClusterCephxStatus defines the cephx key rotation status of various daemons on the cephCluster resource</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>admin</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<p>Admin shows the CephX key status for the client.admin key</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>mon</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<p>Mon represents the CephX key status of the Monitor daemons</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>mgr</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<p>Mgr represents the cephx key rotation status of the ceph manager daemon</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>osd</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<p>OSD shows the CephX key status of of OSDs</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>csi</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatusWithKeyCount">
+CephxStatusWithKeyCount
+</a>
+</em>
+</td>
+<td>
+<p>CSI shows the CephX key status for Ceph-CSI components.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>rbdMirrorPeer</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<p>RBDMirrorPeer represents the cephx key rotation status of the <code>rbd-mirror-peer</code> user</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>crashCollector</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<p>Crash Collector represents the cephx key rotation status of the crash collector daemon</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>cephExporter</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<p>Ceph Exporter represents the cephx key rotation status of the ceph exporter daemon</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ceph.rook.io/v1.ClusterSecuritySpec">ClusterSecuritySpec
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ClusterSpec">ClusterSpec</a>)
+</p>
+<div>
+<p>ClusterSecuritySpec is the CephCluster security spec to include various security items such as kms</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>kms</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.KeyManagementServiceSpec">
+KeyManagementServiceSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>KeyManagementService is the main Key Management option</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>keyRotation</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.KeyRotationSpec">
+KeyRotationSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>KeyRotation defines options for rotation of OSD disk encryption keys.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>cephx</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.ClusterCephxConfig">
+ClusterCephxConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CephX configures CephX key settings. More: <a href="https://docs.ceph.com/en/latest/dev/cephx/">https://docs.ceph.com/en/latest/dev/cephx/</a></p>
 </td>
 </tr>
 </tbody>
@@ -4919,8 +5550,8 @@ CephClusterHealthCheckSpec
 <td>
 <code>security</code><br/>
 <em>
-<a href="#ceph.rook.io/v1.SecuritySpec">
-SecuritySpec
+<a href="#ceph.rook.io/v1.ClusterSecuritySpec">
+ClusterSecuritySpec
 </a>
 </em>
 </td>
@@ -5074,6 +5705,18 @@ string
 <em>
 <a href="#ceph.rook.io/v1.CephStatus">
 CephStatus
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>cephx</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.ClusterCephxStatus">
+ClusterCephxStatus
 </a>
 </em>
 </td>
@@ -7796,7 +8439,7 @@ securely add the file via annotations on the CephNFS spec (passed to the NFS ser
 <h3 id="ceph.rook.io/v1.KeyManagementServiceSpec">KeyManagementServiceSpec
 </h3>
 <p>
-(<em>Appears on:</em><a href="#ceph.rook.io/v1.ObjectStoreSecuritySpec">ObjectStoreSecuritySpec</a>, <a href="#ceph.rook.io/v1.SecuritySpec">SecuritySpec</a>)
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ClusterSecuritySpec">ClusterSecuritySpec</a>, <a href="#ceph.rook.io/v1.ObjectStoreSecuritySpec">ObjectStoreSecuritySpec</a>, <a href="#ceph.rook.io/v1.SecuritySpec">SecuritySpec</a>)
 </p>
 <div>
 <p>KeyManagementServiceSpec represent various details of the KMS server</p>
@@ -7838,7 +8481,7 @@ string
 <h3 id="ceph.rook.io/v1.KeyRotationSpec">KeyRotationSpec
 </h3>
 <p>
-(<em>Appears on:</em><a href="#ceph.rook.io/v1.SecuritySpec">SecuritySpec</a>)
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ClusterSecuritySpec">ClusterSecuritySpec</a>, <a href="#ceph.rook.io/v1.SecuritySpec">SecuritySpec</a>)
 </p>
 <div>
 <p>KeyRotationSpec represents the settings for Key Rotation.</p>
@@ -8026,6 +8669,36 @@ int
 <div>
 <p>LabelsSpec is the main spec label for all daemons</p>
 </div>
+<h3 id="ceph.rook.io/v1.LocalCephxStatus">LocalCephxStatus
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephFilesystemStatus">CephFilesystemStatus</a>, <a href="#ceph.rook.io/v1.NFSStatus">NFSStatus</a>, <a href="#ceph.rook.io/v1.ObjectStoreStatus">ObjectStoreStatus</a>, <a href="#ceph.rook.io/v1.RBDMirrorStatus">RBDMirrorStatus</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>daemon</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<p>Daemon shows the CephX key status for local Ceph daemons associated with this resources.</p>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="ceph.rook.io/v1.LogCollectorSpec">LogCollectorSpec
 </h3>
 <p>
@@ -9306,6 +9979,51 @@ KerberosSpec
 </tr>
 </tbody>
 </table>
+<h3 id="ceph.rook.io/v1.NFSStatus">NFSStatus
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephNFS">CephNFS</a>)
+</p>
+<div>
+<p>NFSStatus represents the status of Ceph NFS</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>Status</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.Status">
+Status
+</a>
+</em>
+</td>
+<td>
+<p>
+(Members of <code>Status</code> are embedded into this type.)
+</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>cephx</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.LocalCephxStatus">
+LocalCephxStatus
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="ceph.rook.io/v1.NamedBlockPoolSpec">NamedBlockPoolSpec
 </h3>
 <p>
@@ -10472,6 +11190,18 @@ map[string]string
 </tr>
 <tr>
 <td>
+<code>cephx</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.LocalCephxStatus">
+LocalCephxStatus
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
 <code>conditions</code><br/>
 <em>
 <a href="#ceph.rook.io/v1.Condition">
@@ -11225,6 +11955,37 @@ int
 </tr>
 </tbody>
 </table>
+<h3 id="ceph.rook.io/v1.PeerTokenCephxStatus">PeerTokenCephxStatus
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephBlockPoolStatus">CephBlockPoolStatus</a>)
+</p>
+<div>
+<p>PeerTokenCephxStatus represents the cephx key rotation status for peer tokens</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>peerToken</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.CephxStatus">
+CephxStatus
+</a>
+</em>
+</td>
+<td>
+<p>PeerToken shows the rotation status of the peer token associated with the <code>rbd-mirror-peer</code> user.</p>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="ceph.rook.io/v1.PeersSpec">PeersSpec
 </h3>
 <p>
@@ -11913,6 +12674,51 @@ uint64
 <td>
 <em>(Optional)</em>
 <p>MaxObjects represents the quota in objects</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ceph.rook.io/v1.RBDMirrorStatus">RBDMirrorStatus
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephRBDMirror">CephRBDMirror</a>)
+</p>
+<div>
+<p>RBDMirrorStatus represents the status of the RBD mirror resource</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>Status</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.Status">
+Status
+</a>
+</em>
+</td>
+<td>
+<p>
+(Members of <code>Status</code> are embedded into this type.)
+</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>cephx</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.LocalCephxStatus">
+LocalCephxStatus
+</a>
+</em>
+</td>
+<td>
 </td>
 </tr>
 </tbody>
@@ -12675,7 +13481,7 @@ string
 <h3 id="ceph.rook.io/v1.SecuritySpec">SecuritySpec
 </h3>
 <p>
-(<em>Appears on:</em><a href="#ceph.rook.io/v1.ClusterSpec">ClusterSpec</a>, <a href="#ceph.rook.io/v1.ObjectStoreSecuritySpec">ObjectStoreSecuritySpec</a>)
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ObjectStoreSecuritySpec">ObjectStoreSecuritySpec</a>)
 </p>
 <div>
 <p>SecuritySpec is security spec to include various security items such as kms</p>
@@ -13178,7 +13984,7 @@ int
 <h3 id="ceph.rook.io/v1.Status">Status
 </h3>
 <p>
-(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephBucketNotification">CephBucketNotification</a>, <a href="#ceph.rook.io/v1.CephFilesystemMirror">CephFilesystemMirror</a>, <a href="#ceph.rook.io/v1.CephNFS">CephNFS</a>, <a href="#ceph.rook.io/v1.CephObjectRealm">CephObjectRealm</a>, <a href="#ceph.rook.io/v1.CephObjectZone">CephObjectZone</a>, <a href="#ceph.rook.io/v1.CephObjectZoneGroup">CephObjectZoneGroup</a>, <a href="#ceph.rook.io/v1.CephRBDMirror">CephRBDMirror</a>)
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.CephBucketNotification">CephBucketNotification</a>, <a href="#ceph.rook.io/v1.CephFilesystemMirror">CephFilesystemMirror</a>, <a href="#ceph.rook.io/v1.CephObjectRealm">CephObjectRealm</a>, <a href="#ceph.rook.io/v1.CephObjectZone">CephObjectZone</a>, <a href="#ceph.rook.io/v1.CephObjectZoneGroup">CephObjectZoneGroup</a>, <a href="#ceph.rook.io/v1.NFSStatus">NFSStatus</a>, <a href="#ceph.rook.io/v1.RBDMirrorStatus">RBDMirrorStatus</a>)
 </p>
 <div>
 <p>Status represents the status of an object</p>

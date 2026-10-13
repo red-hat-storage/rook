@@ -20,8 +20,8 @@ package osd
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,6 +32,7 @@ import (
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
 	osdconfig "github.com/rook/rook/pkg/operator/ceph/cluster/osd/config"
 	"github.com/rook/rook/pkg/operator/ceph/cluster/osd/topology"
+	"github.com/rook/rook/pkg/operator/ceph/config/keyring"
 	"github.com/rook/rook/pkg/operator/ceph/controller"
 	"github.com/rook/rook/pkg/operator/ceph/reporting"
 	cephver "github.com/rook/rook/pkg/operator/ceph/version"
@@ -46,6 +47,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 )
 
 var (
@@ -75,6 +77,9 @@ const (
 	osdStore                       = "osd-store"
 	deviceType                     = "device-type"
 	encrypted                      = "encrypted"
+
+	// CephxStatus is applied to each OSD deployment as value of this annotation key
+	cephxStatusAnnotationKey = "cephx-status"
 )
 
 // Cluster keeps track of the OSDs
@@ -119,12 +124,13 @@ type OSDInfo struct {
 	CVMode        string `json:"lv-mode"`
 	Store         string `json:"store"`
 	// Ensure the OSD daemon has affinity with the same topology from the OSD prepare pod
-	TopologyAffinity string `json:"topologyAffinity"`
-	Encrypted        bool   `json:"encrypted"`
-	ExportService    bool   `json:"exportService"`
-	NodeName         string `json:"nodeName"`
-	PVCName          string `json:"pvcName"`
-	DeviceType       string `json:"device-type"`
+	TopologyAffinity string             `json:"topologyAffinity"`
+	Encrypted        bool               `json:"encrypted"`
+	ExportService    bool               `json:"exportService"`
+	NodeName         string             `json:"nodeName"`
+	PVCName          string             `json:"pvcName"`
+	DeviceType       string             `json:"device-type"`
+	CephxStatus      cephv1.CephxStatus `json:"cephxStatus"`
 }
 
 // OrchestrationStatus represents the status of an OSD orchestration
@@ -296,13 +302,25 @@ func (c *Cluster) Start() error {
 		return errors.Wrap(err, "failed post reconcile of osd properties")
 	}
 
-	err = c.updateCephStorageStatus()
+	err = c.updateCephOsdStorageStatus()
 	if err != nil {
 		return errors.Wrapf(err, "failed to update ceph storage status")
 	}
 
+	// remove the osdBootstrapKey as the osds are running
+	c.deleteOsdBootstrapKeyring()
+
 	logger.Infof("finished running OSDs in namespace %q", namespace)
 	return nil
+}
+
+func (c *Cluster) deleteOsdBootstrapKeyring() {
+	err := cephclient.AuthDelete(c.context, c.clusterInfo, "client.bootstrap-osd")
+	if err != nil {
+		logger.Debugf("failed to delete client.bootstrap-osd bootstrap key in the namespace %q. Error: %v", c.clusterInfo.Namespace, err)
+	} else {
+		logger.Debugf("successfully deleted client.bootstrap-osd bootstrap key in the namespace %q", c.clusterInfo.Namespace)
+	}
 }
 
 func (c *Cluster) startOSDMigration() (*migrationConfig, error) {
@@ -724,6 +742,15 @@ func (c *Cluster) getOSDInfo(d *appsv1.Deployment) (OSDInfo, error) {
 		osd.PVCName = d.Labels[OSDOverPVCLabelKey]
 	}
 
+	cephxStatus := cephv1.CephxStatus{}
+	cephxRaw, ok := d.Spec.Template.Annotations[cephxStatusAnnotationKey]
+	if ok {
+		if err := json.Unmarshal([]byte(cephxRaw), &cephxStatus); err != nil {
+			return OSDInfo{}, errors.Wrapf(err, "failed to unmarshal cephx status %q for deployment %q", cephxRaw, d.Name)
+		}
+	}
+	osd.CephxStatus = cephxStatus
+
 	return osd, nil
 }
 
@@ -974,8 +1001,7 @@ func (c *Cluster) waitForHealthyPGs() (bool, error) {
 	return true, nil
 }
 
-func (c *Cluster) updateCephStorageStatus() error {
-	cephCluster := cephv1.CephCluster{}
+func (c *Cluster) updateCephOsdStorageStatus() error {
 	cephClusterStorage := cephv1.CephStorage{}
 
 	deviceClasses, err := cephclient.GetDeviceClasses(c.context, c.clusterInfo)
@@ -987,7 +1013,7 @@ func (c *Cluster) updateCephStorageStatus() error {
 		cephClusterStorage.DeviceClasses = append(cephClusterStorage.DeviceClasses, cephv1.DeviceClasses{Name: deviceClass})
 	}
 
-	osdStore, err := c.getOSDStoreStatus()
+	osdStore, cephx, err := c.getOSDStoreStatus()
 	if err != nil {
 		return errors.Wrapf(err, "failed to get osd store status")
 	}
@@ -1006,44 +1032,86 @@ func (c *Cluster) updateCephStorageStatus() error {
 		cephClusterStorage.OSD.MigrationStatus.Pending = len(migrationConfig.osds)
 	}
 
-	err = c.context.Client.Get(c.clusterInfo.Context, c.clusterInfo.NamespacedName(), &cephCluster)
-	if err != nil {
-		if kerrors.IsNotFound(err) {
-			logger.Debug("CephCluster resource not found. Ignoring since object must be deleted.")
-			return nil
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		cephCluster := cephv1.CephCluster{}
+		err := c.context.Client.Get(c.clusterInfo.Context, c.clusterInfo.NamespacedName(), &cephCluster)
+		if err != nil {
+			if kerrors.IsNotFound(err) {
+				logger.Debug("CephCluster resource not found. Ignoring since object must be deleted.")
+				return nil
+			}
+			return errors.Wrapf(err, "failed to retrieve ceph cluster %q to update ceph Storage", c.clusterInfo.NamespacedName().Name)
 		}
-		return errors.Wrapf(err, "failed to retrieve ceph cluster %q to update ceph Storage", c.clusterInfo.NamespacedName().Name)
-	}
-	if !reflect.DeepEqual(cephCluster.Status.CephStorage, cephClusterStorage) {
+
 		cephCluster.Status.CephStorage = &cephClusterStorage
-		if err := reporting.UpdateStatus(c.context.Client, &cephCluster); err != nil {
-			return errors.Wrapf(err, "failed to update cluster %q Storage.", c.clusterInfo.NamespacedName().Name)
+
+		if cephx != nil {
+			// Attempt to determine the authoritative key type of the OSDs.
+			// If this fails, leave the key type as it would have been.
+			osdKeyType, err := keyring.DetermineCephxKeyTypesForEntityType(c.context, c.clusterInfo, cephclient.AuthDumpKeysEntityTypeOsd, "")
+			if err == nil && len(osdKeyType) == 1 {
+				logger.Debugf("determined authoritative cephx key type for OSDs in namespace %q is %q", c.clusterInfo.Namespace, osdKeyType[0])
+				cephx.KeyType = cephv1.CephxKeyType(osdKeyType[0])
+			} else {
+				logger.Debugf("failed to determine authoritative cephx key type for OSDs in namespace %q, having key types [%v]: %v", c.clusterInfo.Namespace, osdKeyType, err)
+			}
+
+			cephCluster.Status.Cephx.OSD = *cephx
 		}
+
+		if err := reporting.UpdateStatus(c.context.Client, &cephCluster); err != nil {
+			return errors.Wrapf(err, "failed to update cluster %q status", c.clusterInfo.NamespacedName().Name)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (c *Cluster) getOSDStoreStatus() (*cephv1.OSDStatus, error) {
+func (c *Cluster) getOSDStoreStatus() (*cephv1.OSDStatus, *cephv1.CephxStatus, error) {
 	label := fmt.Sprintf("%s=%s", k8sutil.AppAttr, AppName)
 	osdDeployments, err := k8sutil.GetDeployments(c.clusterInfo.Context, c.context.Clientset, c.clusterInfo.Namespace, label)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, errors.Wrap(err, "failed to get osd deployments")
+		return nil, nil, errors.Wrap(err, "failed to get osd deployments")
 	}
 
 	storeType := map[string]int{}
+	var minCephxStatus *cephv1.CephxStatus = nil
 	for i := range osdDeployments.Items {
-		if osdStore, ok := osdDeployments.Items[i].Labels[osdStore]; ok {
+		d := osdDeployments.Items[i]
+
+		if osdStore, ok := d.Labels[osdStore]; ok {
 			storeType[osdStore]++
+		}
+
+		// determine min cephx status on daemons
+		var cephxStatus cephv1.CephxStatus
+		cephxRaw, ok := d.Spec.Template.Annotations[cephxStatusAnnotationKey]
+		if !ok || cephxRaw == "" {
+			cephxStatus = cephv1.CephxStatus{} // no annotation or empty annotation means empty status
+		} else {
+			err := json.Unmarshal([]byte(cephxRaw), &cephxStatus)
+			if err != nil {
+				return nil, nil, errors.Wrapf(err, "failed to unmarshal cephx status %q for deployment %q", cephxRaw, d.Name)
+			}
+		}
+		if minCephxStatus == nil || cephxStatus.KeyGeneration < minCephxStatus.KeyGeneration {
+			// assume that min key generation will also give the right min ceph version
+			// may not be true in extreme corner cases, but it should be true almost all the time
+			minCephxStatus = &cephxStatus
 		}
 	}
 
 	return &cephv1.OSDStatus{
 		StoreType: storeType,
-	}, nil
+	}, minCephxStatus, nil
 }
 
 func getOSDLocationFromArgs(args []string) (string, bool) {
