@@ -320,6 +320,8 @@ var mockExecutor = &exectest.MockExecutor{
 	},
 }
 
+// THIS TEST FAILS?!
+
 func TestSinglePeerMappings(t *testing.T) {
 	clusterInfo := cephclient.AdminTestClusterInfo(ns)
 	fakeContext := &clusterd.Context{
@@ -343,6 +345,8 @@ func TestSinglePeerMappings(t *testing.T) {
 	assert.Equal(t, ns, mappings[0].ClusterIDMapping["peer1"])
 	assert.Equal(t, "1", mappings[0].RBDPoolIDMapping[0]["2"])
 }
+
+// THIS TEST FAILS?!
 
 func TestMultiPeerMappings(t *testing.T) {
 	clusterInfo := cephclient.AdminTestClusterInfo(ns)
