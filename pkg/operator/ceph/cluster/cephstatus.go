@@ -30,6 +30,7 @@ import (
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	"github.com/rook/rook/pkg/clusterd"
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
+	"github.com/rook/rook/pkg/operator/ceph/config"
 	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
 	"github.com/rook/rook/pkg/operator/ceph/reporting"
 	cephver "github.com/rook/rook/pkg/operator/ceph/version"
@@ -171,13 +172,8 @@ func (c *cephStatusChecker) configureHealthSettings(status cephclient.CephStatus
 	// disable the insecure global id if there are no old clients
 	if _, ok := status.Health.Checks["AUTH_INSECURE_GLOBAL_ID_RECLAIM_ALLOWED"]; ok {
 		if _, ok := status.Health.Checks["AUTH_INSECURE_GLOBAL_ID_RECLAIM"]; !ok {
-			policy, userConfigured := muteHealthWarnings["AUTH_INSECURE_GLOBAL_ID_RECLAIM"]
-			if userConfigured && policy == "unmute" {
-				log.NamespacedDebug(c.clusterInfo.Namespace, logger, "not muting AUTH_INSECURE_GLOBAL_ID_RECLAIM because user has overridden it in healthCheck.muteHealthWarning configs")
-			} else {
-				log.NamespacedDebug(c.clusterInfo.Namespace, logger, "Disabling the insecure global ID as no legacy clients are currently connected. If you still require the insecure connections, see the CVE to suppress the health warning and re-enable the insecure connections. https://docs.ceph.com/en/latest/security/CVE-2021-20288/")
-				muteHealthWarnings["AUTH_INSECURE_GLOBAL_ID_RECLAIM"] = "mute"
-			}
+			log.NamespacedDebug(c.clusterInfo.Namespace, logger, "Disabling the insecure global ID as no legacy clients are currently connected. If you still require the insecure connections, see the CVE to suppress the health warning and re-enable the insecure connections. https://docs.ceph.com/en/latest/security/CVE-2021-20288/")
+			config.DisableInsecureGlobalID(c.context, c.clusterInfo)
 		} else {
 			log.NamespacedWarning(c.clusterInfo.Namespace, logger, "insecure clients are connected to the cluster, to resolve the AUTH_INSECURE_GLOBAL_ID_RECLAIM health warning please refer to the upgrade guide to ensure all Ceph daemons are updated.")
 		}
