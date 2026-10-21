@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+set -x
+getconf ARG_MAX
+
 source "../../build/common.sh"
 
 #############
@@ -49,8 +52,25 @@ function generate_csv() {
     "${YQ_CMD_DELETE[@]}" "$CSV_FILE_NAME" 'spec.keywords[0]'
     "${YQ_CMD_DELETE[@]}" "$CSV_FILE_NAME" 'spec.maintainers[0]'
 
+    # Update the "create-external-resources.py" script value in annotation and configmap
+    # In CI: `/home/runner/work/rook/rook/.cache/tools/linux_amd64/yq-3.4.1: Argument list too long`
+    # The kernel has run out of stack space for the shell commands somehow.
+    # Use a multi-stage flow using a temp file to avoid sending full base64 script as an argument.
+    base64 <$CEPH_EXTERNAL_SCRIPT_FILE > /tmp/script64 # base64 encode script into temp file
+
+    # set up temp file for annotation
+    cp /tmp/script64 /tmp/annotation64
+    # indent the temp file's script 6 spaces
+    sed -i 's/^/      /' /tmp/annotation64
+    # prepend metadata.annotations.externalClusterScript to turn it into a valid yaml definition of annotation
+    sed -i '1i\
+metadata:\
+  annotations:\
+    externalClusterScript: |-' /tmp/annotation64
+
     "${YQ_CMD_MERGE_OVERWRITE[@]}" "$CSV_FILE_NAME" "$ASSEMBLE_FILE_COMMON"
-    "${YQ_CMD_WRITE[@]}" "$CSV_FILE_NAME" metadata.annotations.externalClusterScript "$(base64 <$CEPH_EXTERNAL_SCRIPT_FILE)"
+    # merge the tempfile's metadata.annotations.externalClusterScript onto the CSV to update it
+    "$yq" merge --inplace --overwrite -P "$CSV_FILE_NAME" /tmp/annotation64
     "${YQ_CMD_WRITE[@]}" "$CSV_FILE_NAME" metadata.name "rook-ceph-operator.v${CSV_VERSION}"
 
     if [[ -n $SKIP_RANGE ]]; then

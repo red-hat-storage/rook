@@ -21,6 +21,7 @@ import (
 
 	"path"
 
+	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	"github.com/rook/rook/pkg/clusterd"
 	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
 )
@@ -38,5 +39,6 @@ func createOSDBootstrapKeyring(context *clusterd.Context, clusterInfo *cephclien
 		return fmt.Sprintf(bootstrapOSDKeyringTemplate, key)
 	}
 
-	return cephclient.CreateKeyring(context, clusterInfo, username, keyringPath, access, keyringEval)
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	return cephclient.CreateKeyring(context, clusterInfo, username, keyringPath, string(keyType), access, keyringEval)
 }
