@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+set -x
+getconf ARG_MAX
+
 source "../../build/common.sh"
 
 #############
@@ -50,8 +53,25 @@ function generate_csv() {
     "${YQ_CMD_DELETE[@]}" "$CSV_FILE_NAME" 'spec.keywords[0]'
     "${YQ_CMD_DELETE[@]}" "$CSV_FILE_NAME" 'spec.maintainers[0]'
 
+    # Update the "create-external-resources.py" script value in annotation and configmap
+    # In CI: `/home/runner/work/rook/rook/.cache/tools/linux_amd64/yq-3.4.1: Argument list too long`
+    # The kernel has run out of stack space for the shell commands somehow.
+    # Use a multi-stage flow using a temp file to avoid sending full base64 script as an argument.
+    base64 <$CEPH_EXTERNAL_SCRIPT_FILE > /tmp/script64 # base64 encode script into temp file
+
+    # set up temp file for annotation
+    cp /tmp/script64 /tmp/annotation64
+    # indent the temp file's script 6 spaces
+    sed -i 's/^/      /' /tmp/annotation64
+    # prepend metadata.annotations.externalClusterScript to turn it into a valid yaml definition of annotation
+    sed -i '1i\
+metadata:\
+  annotations:\
+    externalClusterScript: |-' /tmp/annotation64
+
     "${YQ_CMD_MERGE_OVERWRITE[@]}" "$CSV_FILE_NAME" "$ASSEMBLE_FILE_COMMON"
-    "${YQ_CMD_WRITE[@]}" "$CSV_FILE_NAME" metadata.annotations.externalClusterScript "$(base64 <$CEPH_EXTERNAL_SCRIPT_FILE)"
+    # merge the tempfile's metadata.annotations.externalClusterScript onto the CSV to update it
+    "$yq" merge --inplace --overwrite -P "$CSV_FILE_NAME" /tmp/annotation64
     "${YQ_CMD_WRITE[@]}" "$CSV_FILE_NAME" metadata.name "rook-ceph-operator.v${CSV_VERSION}"
 
     if [[ -n $SKIP_RANGE ]]; then
@@ -67,8 +87,16 @@ function generate_csv() {
     # We don't need to include these files in csv as ocs-operator creates its own.
     rm -rf "../../build/csv/ceph/$PLATFORM/manifests/rook-ceph-operator-config_v1_configmap.yaml"
 
-    # Update the "create-external-resources.py" script value in external-cluster-script-configmap
-    "${YQ_CMD_WRITE[@]}" "$EXTERNAL_CLUSTER_SCRIPT_CONFIGMAP" data.script "$(base64 <$CEPH_EXTERNAL_SCRIPT_FILE)"
+    # set up temp file for configmap
+    cp /tmp/script64 /tmp/configmap64
+    # indent the temp file's script 4 spaces
+    sed -i 's/^/    /' /tmp/configmap64
+    # prepend data.script to turn it into a valid yaml definition of configmap data
+    sed -i '1i\
+data:\
+  script: |-' /tmp/configmap64
+    # merge the tempfile's data.script onto the CSV to update it
+    "$yq" merge --inplace --overwrite -P "$EXTERNAL_CLUSTER_SCRIPT_CONFIGMAP" /tmp/configmap64
 
     # This change are just to make the CSV file as it was earlier and as ocs-operator reads.
     # Skipping this change for darwin since `sed -i` doesn't work with darwin properly.

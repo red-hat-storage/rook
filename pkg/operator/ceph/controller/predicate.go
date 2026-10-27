@@ -31,6 +31,7 @@ import (
 	"github.com/pkg/errors"
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	"github.com/rook/rook/pkg/operator/ceph/config"
+	"github.com/rook/rook/pkg/operator/ceph/config/keyring"
 	"github.com/rook/rook/pkg/operator/k8sutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -506,9 +507,16 @@ func objectChanged(oldObj, newObj runtime.Object, objectName string) (bool, erro
 
 	// Do not leak details of diff if the object contains sensitive data (e.g., it is a Secret)
 	isSensitive := false
-	if _, ok := new.(*corev1.Secret); ok {
+	if s, ok := new.(*corev1.Secret); ok {
 		logger.Debugf("object %q diff is [redacted for Secrets]", objectName)
 		isSensitive = true
+
+		// keyring secrets are a special case. rook updates these during reconciliation as needed,
+		// and daemon pods automatically get updated keys with no need for another reconcile
+		if _, ok := s.ObjectMeta.Annotations[keyring.KeyringAnnotation]; ok {
+			logger.Debugf("not reconciling update to cephx keyring secret %q", objectName)
+			return false, nil
+		}
 	} else {
 		logger.Debugf("object %q diff is %s", objectName, diff.String())
 		isSensitive = false
@@ -854,4 +862,51 @@ func DuplicateCephClusters(ctx context.Context, c client.Client, object client.O
 	}
 
 	return false
+}
+
+func WatchPeerTokenSecretPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			newSecret, ok := e.Object.(*corev1.Secret)
+			if !ok {
+				logger.Errorf("expected type Secret but found %T", newSecret)
+				return false
+			}
+
+			// reconcile when secret is created
+			if strings.Contains(newSecret.GetName(), clusterMirrorBootstrapPeerSecretName) {
+				logger.Debugf("peer token create event for secret %q in the namespace %q", newSecret.GetName(), newSecret.GetNamespace())
+				return true
+			}
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			newSecret, ok := e.ObjectNew.(*corev1.Secret)
+			if !ok {
+				logger.Errorf("expected type Secret but found (new) %T", newSecret)
+				return false
+			}
+			oldSecret, ok := e.ObjectOld.(*corev1.Secret)
+			if !ok {
+				logger.Errorf("expected type Secret but found (old) %T", newSecret)
+				return false
+			}
+
+			if !strings.Contains(newSecret.GetName(), clusterMirrorBootstrapPeerSecretName) {
+				return false
+			}
+			// reconcile if the peer token data has changed
+			newData := newSecret.Data["token"]
+			oldData := oldSecret.Data["token"]
+			if string(newData) != string(oldData) {
+				logger.Debugf("peer token update event for secret %q in the namespace %q", newSecret.GetName(), newSecret.GetNamespace())
+				return true
+			}
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			// Do not reconcile when secret is deleted
+			return false
+		},
+	}
 }
