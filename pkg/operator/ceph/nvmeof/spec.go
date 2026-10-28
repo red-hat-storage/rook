@@ -510,6 +510,10 @@ func (r *ReconcileCephNVMeOFGateway) getNVMeOFImage(nvmeof *cephv1.CephNVMeOFGat
 		return nvmeof.Spec.Image, nil
 	}
 
+	if envImage := nvmeofImageFromEnvVar(); envImage != "" {
+		return envImage, nil
+	}
+
 	monStore := cephconfig.GetMonStore(r.context, r.clusterInfo)
 	image, err := monStore.Get("mgr", "mgr/cephadm/container_image_nvmeof")
 	if err != nil {
