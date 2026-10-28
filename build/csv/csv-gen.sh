@@ -36,6 +36,7 @@ ROOK_CSI_PROVISIONER_IMAGE=${ROOK_CSI_PROVISIONER_IMAGE:-${LATEST_ROOK_CSI_PROVI
 ROOK_CSI_SNAPSHOTTER_IMAGE=${ROOK_CSI_SNAPSHOTTER_IMAGE:-${LATEST_ROOK_CSI_SNAPSHOTTER_IMAGE}}
 ROOK_CSI_ATTACHER_IMAGE=${ROOK_CSI_ATTACHER_IMAGE:-${LATEST_ROOK_CSI_ATTACHER_IMAGE}}
 ROOK_CSIADDONS_IMAGE=${ROOK_CSIADDONS_IMAGE:-${LATEST_ROOK_CSIADDONS_IMAGE}}
+ROOK_CEPH_NVMEOF_IMAGE=${ROOK_CEPH_NVMEOF_IMAGE:-""}
 
 #############
 # FUNCTIONS #
@@ -144,6 +145,13 @@ function generate_csv() {
     sed -i'.bak' -e "s|$LATEST_ROOK_CSI_SNAPSHOTTER_IMAGE|$ROOK_CSI_SNAPSHOTTER_IMAGE|g" "$CSV_FILE_NAME"
     sed -i'.bak' -e "s|$LATEST_ROOK_CSI_ATTACHER_IMAGE|$ROOK_CSI_ATTACHER_IMAGE|g" "$CSV_FILE_NAME"
     sed -i'.bak' -e "s|$LATEST_ROOK_CSIADDONS_IMAGE|$ROOK_CSIADDONS_IMAGE|g" "$CSV_FILE_NAME"
+
+    # Inject the NVMe-oF gateway image env var into the operator deployment in the CSV.
+    # This variable is strictly required downstream with no fallback to ceph config;
+    # the reconcile will fail if neither this env var nor CR spec.image is set.
+    if [[ -n "$ROOK_CEPH_NVMEOF_IMAGE" ]]; then
+        $yq '(.spec.install.spec.deployments[0].spec.template.spec.containers[] | select(.name == "rook-ceph-operator").env) += [{"name": "ROOK_CEPH_NVMEOF_IMAGE", "value": "'"$ROOK_CEPH_NVMEOF_IMAGE"'"}]' --inplace "$CSV_FILE_NAME"
+    fi
 
     rm "$CSV_FILE_NAME.bak"
 
