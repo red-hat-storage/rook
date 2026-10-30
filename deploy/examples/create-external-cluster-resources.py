@@ -325,10 +325,6 @@ class RadosJSON:
         common_group.add_argument(
             "--v2-port-enable",
             action="store_true",
-<<<<<<< HEAD
-            default=True,  # default is True to enable v2 mon port in downstream
-            help="Enable v2 mon port(3300) for mons",
-=======
             default=False,
             help="(Deprecated) v2 port is now selected by default. This flag is ignored.",
         )
@@ -338,7 +334,6 @@ class RadosJSON:
             action="store_true",
             default=False,
             help="Use v1 mon port(6789) instead of the default v2 port(3300)",
->>>>>>> upstream
         )
 
         output_group = argP.add_argument_group("output")
