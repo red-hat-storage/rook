@@ -35,7 +35,7 @@ import (
 )
 
 func TestCreateClusterSecrets(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	clientset := test.New(t, 1)
 	configDir := "ns"
 	err := os.MkdirAll(configDir, 0o755)
@@ -145,6 +145,16 @@ func TestCreateClusterSecrets(t *testing.T) {
 	assert.Equal(t, "testid", info.CephCred.Username)
 	assert.Equal(t, "testkey", info.CephCred.Secret)
 	assert.Equal(t, "", info.CSIDriverSpec.CephFS.KernelMountOptions)
+
+	// Require msgr2 and verify the csi settings default to prefer-crc if the network is not encrypted
+	cephClusterSpec.Network = cephv1.NetworkSpec{
+		Connections: &cephv1.ConnectionsSpec{
+			RequireMsgr2: true,
+		},
+	}
+	info, _, _, err = CreateOrLoadClusterInfo(context, ctx, namespace, ownerInfo, cephVer, cephClusterSpec)
+	assert.NoError(t, err)
+	assert.Equal(t, "ms_mode=prefer-crc", info.CSIDriverSpec.CephFS.KernelMountOptions)
 
 	// Verify the csi settings default to secure if the network is encrypted
 	cephClusterSpec.Network = cephv1.NetworkSpec{

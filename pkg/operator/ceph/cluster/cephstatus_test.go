@@ -18,7 +18,6 @@ limitations under the License.
 package cluster
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"testing"
@@ -177,13 +176,14 @@ func TestConfigureHealthSettings(t *testing.T) {
 				},
 			}),
 			Executor: &exectest.MockExecutor{
-				MockExecuteCommandWithOutput: func(command string, args ...string) (string, error) {
+				MockExecuteCommandWithTimeout: func(timeout time.Duration, command string, args ...string) (string, error) {
 					logger.Infof("Command: %s %v", command, args)
-					if args[0] == "health" && args[1] == "mute" && args[2] == "AUTH_INSECURE_GLOBAL_ID_RECLAIM" {
+					if args[0] == "config" && args[1] == "set" && args[2] == "mon" &&
+						args[3] == "auth_allow_insecure_global_id_reclaim" && args[4] == "false" {
 						setGlobalIDReclaim = true
 						return "", nil
 					}
-					return "", errors.New("mock error to simulate failure of health mute")
+					return "", errors.New("mock error to simulate failure of disabling insecure global id reclaim")
 				},
 			},
 		},
@@ -255,7 +255,7 @@ func TestConfigureHealthSettings(t *testing.T) {
 }
 
 func TestForceDeleteStuckRookPodsOnNotReadyNodes(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	clientset := optest.New(t, 1)
 	clusterInfo := cephclient.NewClusterInfo("test", "test")
 	clusterName := clusterInfo.NamespacedName()
@@ -326,7 +326,7 @@ func TestForceDeleteStuckRookPodsOnNotReadyNodes(t *testing.T) {
 }
 
 func TestGetRookPodsOnNode(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	clientset := optest.New(t, 1)
 	clusterInfo := cephclient.NewClusterInfo("test", "test")
 	clusterName := clusterInfo.NamespacedName()

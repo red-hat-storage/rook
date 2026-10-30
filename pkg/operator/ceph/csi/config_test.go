@@ -17,7 +17,6 @@ limitations under the License.
 package csi
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -28,6 +27,7 @@ import (
 	"github.com/rook/rook/pkg/operator/k8sutil"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -70,17 +70,17 @@ func TestCreateUpdateClientProfile(t *testing.T) {
 
 	// Create a fake client to mock API calls.
 	cl := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(object...).Build()
-	err := CreateUpdateClientProfileRadosNamespace(context.TODO(), cl, c, cephBlockPoolRadosNamespacedName.Name, cephBlockPoolRadosNamespacedName.Name)
+	err := CreateUpdateClientProfileRadosNamespace(t.Context(), cl, c, cephBlockPoolRadosNamespacedName.Name, cephBlockPoolRadosNamespacedName.Name)
 	assert.NoError(t, err)
 
-	err = CreateUpdateClientProfileSubVolumeGroup(context.TODO(), cl, c, cephSubVolGrpNamespacedName.Name, cephSubVolGrpNamespacedName.Name, cephSubVolGrpRadosNamespaceNamespacedName.Name)
+	err = CreateUpdateClientProfileSubVolumeGroup(t.Context(), cl, c, cephSubVolGrpNamespacedName.Name, cephSubVolGrpNamespacedName.Name, cephSubVolGrpRadosNamespaceNamespacedName.Name)
 	assert.NoError(t, err)
 
-	err = cl.Get(context.TODO(), cephBlockPoolRadosNamespacedName, csiOpClientProfile)
+	err = cl.Get(t.Context(), cephBlockPoolRadosNamespacedName, csiOpClientProfile)
 	assert.NoError(t, err)
 	assert.Equal(t, csiOpClientProfile.Spec.Rbd.RadosNamespace, cephBlockPoolRadosNamespacedName.Name)
 
-	err = cl.Get(context.TODO(), cephSubVolGrpNamespacedName, csiOpClientProfile)
+	err = cl.Get(t.Context(), cephSubVolGrpNamespacedName, csiOpClientProfile)
 	assert.NoError(t, err)
 	assert.Equal(t, csiOpClientProfile.Spec.CephFs.SubVolumeGroup, cephSubVolGrpNamespacedName.Name)
 	assert.Equal(t, csiOpClientProfile.Spec.CephFs.KernelMountOptions["ms_mode"], kernelMountKeyVal[1])
@@ -104,7 +104,7 @@ func TestGetSecretNameByAnnotation(t *testing.T) {
 		}
 		cl := fake.NewClientBuilder().WithObjects(secret).Build()
 
-		name, err := getSecretNameByAnnotation(cl, context.TODO(), ns, annotationKey, defaultName)
+		name, err := getSecretNameByAnnotation(cl, t.Context(), ns, annotationKey, defaultName)
 		assert.NoError(t, err)
 		assert.Equal(t, "custom-rbd-secret", name)
 	})
@@ -118,7 +118,7 @@ func TestGetSecretNameByAnnotation(t *testing.T) {
 		}
 		cl := fake.NewClientBuilder().WithObjects(secret).Build()
 
-		name, err := getSecretNameByAnnotation(cl, context.TODO(), ns, annotationKey, defaultName)
+		name, err := getSecretNameByAnnotation(cl, t.Context(), ns, annotationKey, defaultName)
 		assert.NoError(t, err)
 		assert.Equal(t, defaultName, name)
 	})
@@ -135,7 +135,7 @@ func TestGetSecretNameByAnnotation(t *testing.T) {
 		}
 		cl := fake.NewClientBuilder().WithObjects(secret).Build()
 
-		name, err := getSecretNameByAnnotation(cl, context.TODO(), ns, annotationKey, defaultName)
+		name, err := getSecretNameByAnnotation(cl, t.Context(), ns, annotationKey, defaultName)
 		assert.NoError(t, err)
 		assert.Equal(t, defaultName, name)
 	})
@@ -143,7 +143,7 @@ func TestGetSecretNameByAnnotation(t *testing.T) {
 	t.Run("return default name when no secrets exist", func(t *testing.T) {
 		cl := fake.NewClientBuilder().Build()
 
-		name, err := getSecretNameByAnnotation(cl, context.TODO(), ns, annotationKey, defaultName)
+		name, err := getSecretNameByAnnotation(cl, t.Context(), ns, annotationKey, defaultName)
 		assert.NoError(t, err)
 		assert.Equal(t, defaultName, name)
 	})
@@ -169,9 +169,44 @@ func TestGetSecretNameByAnnotation(t *testing.T) {
 		}
 		cl := fake.NewClientBuilder().WithObjects(secret1, secret2).Build()
 
-		name, err := getSecretNameByAnnotation(cl, context.TODO(), ns, annotationKey, defaultName)
+		name, err := getSecretNameByAnnotation(cl, t.Context(), ns, annotationKey, defaultName)
 		assert.NoError(t, err)
 		assert.Contains(t, []string{"first-secret", "second-secret"}, name)
+	})
+}
+
+func TestDeleteCSIOperatorResources(t *testing.T) {
+	ns := "test"
+	c := clienttest.CreateTestClusterInfo(1)
+	c.Namespace = ns
+	t.Setenv(k8sutil.PodNamespaceEnvVar, ns)
+
+	s := scheme.Scheme
+	s.AddKnownTypes(cephv1.SchemeGroupVersion, &csiopv1.CephConnection{}, &csiopv1.ClientProfile{})
+
+	t.Run("deletes existing CRs", func(t *testing.T) {
+		conn := &csiopv1.CephConnection{
+			ObjectMeta: metav1.ObjectMeta{Name: ns, Namespace: ns},
+		}
+		profile := &csiopv1.ClientProfile{
+			ObjectMeta: metav1.ObjectMeta{Name: ns, Namespace: ns},
+		}
+		cl := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(conn, profile).Build()
+
+		err := DeleteCSIOperatorResources(cl, c)
+		assert.NoError(t, err)
+
+		err = cl.Get(t.Context(), types.NamespacedName{Name: ns, Namespace: ns}, conn)
+		assert.True(t, apierrors.IsNotFound(err), "CephConnection should be deleted")
+
+		err = cl.Get(t.Context(), types.NamespacedName{Name: ns, Namespace: ns}, profile)
+		assert.True(t, apierrors.IsNotFound(err), "ClientProfile should be deleted")
+	})
+
+	t.Run("no error when CRs do not exist", func(t *testing.T) {
+		cl := fake.NewClientBuilder().WithScheme(s).Build()
+		err := DeleteCSIOperatorResources(cl, c)
+		assert.NoError(t, err)
 	})
 }
 

@@ -53,6 +53,7 @@ If this value is empty, each pod will get an ephemeral directory to store their 
     * `externalMgrPrometheusPort`: external prometheus manager module port. See [external cluster configuration](./external-cluster/external-cluster.md) for more details.
     * `port`: The internal prometheus manager module port where the prometheus mgr module listens. The port may need to be configured when host networking is enabled.
     * `interval`: The interval for the prometheus module to scrape targets.
+    * `scrapeTimeoutSeconds`: The timeout of a prometheus scrape, in seconds. Must not be greater than `interval`. Defaults to the Prometheus global scrape timeout when unset.
     * `exporter`: Ceph exporter metrics config.
         * `perfCountersPrioLimit`: Specifies which performance counters are exported. Corresponds to `--prio-limit` Ceph exporter flag. `0` - all counters are exported, default is `5`.
         * `statsPeriodSeconds`: Time to wait before sending requests again to exporter server (seconds). Corresponds to `--stats-period` Ceph exporter flag. Default is `5`.
@@ -249,6 +250,9 @@ Configure the network that will be enabled for the cluster and services.
             set "mounter: rbd-nbd" in the rbd storage class, or "mounter: fuse" in the cephfs storage class.
             The nbd and fuse drivers are **not** recommended in production since restarting the csi driver pod will disconnect the volumes.
             If this setting is enabled, CephFS volumes also require setting `CSI_CEPHFS_KERNEL_MOUNT_OPTIONS` to `"ms_mode=secure"` in operator.yaml.
+            **WARNING**: When encryption is enabled, the mons only accept `secure` connections.
+            If any mons are still listening on the v1 port (6789), or any clients are still connected over msgr v1,
+            those connections and their volumes will be disconnected immediately.
     * `compression`:
         * `enabled`: Whether to compress the data in transit across the wire. The default is false.
             See the kernel requirements above for encryption.
@@ -441,7 +445,7 @@ A Placement configuration is specified (according to the kubernetes PodSpec) as:
 
 If you use `labelSelector` for `osd` pods, you must write two rules both for `rook-ceph-osd` and `rook-ceph-osd-prepare` like [the example configuration](https://github.com/rook/rook/blob/master/deploy/examples/cluster-on-pvc.yaml#L68). It comes from the design that there are these two pods for an OSD. For more detail, see the [osd design doc](https://github.com/rook/rook/blob/master/design/ceph/dedicated-osd-pod.md) and [the related issue](https://github.com/rook/rook/issues/4582).
 
-The Rook Ceph operator creates a Job called `rook-ceph-detect-version` to detect the full Ceph version used by the given `cephVersion.image`. The placement from the `mon` section is used for the Job except for the `PodAntiAffinity` field.
+The Rook Ceph operator creates a Job called `rook-ceph-detect-version` to detect the full Ceph version used by the given `cephVersion.image`. The placement from the `mon` section is used for the Job except for the `PodAntiAffinity` field. The `mon` priority class name is also used for the Job.
 
 #### Placement Example
 
@@ -591,7 +595,7 @@ You can set priority class names for Rook components for the list of key value p
 
 * `all`: Set priority class names for MGRs, Mons, OSDs, and crashcollectors.
 * `mgr`: Set priority class names for MGRs. Examples default to system-cluster-critical.
-* `mon`: Set priority class names for Mons. Examples default to system-node-critical.
+* `mon`: Set priority class names for Mons and the Ceph version detection Jobs. Examples default to system-node-critical.
 * `osd`: Set priority class names for OSDs. Examples default to system-node-critical.
 * `crashcollector`: Set priority class names for crashcollectors.
 * `exporter`: Set priority class names for exporters.
