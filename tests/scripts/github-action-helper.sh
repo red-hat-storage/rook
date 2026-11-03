@@ -709,6 +709,31 @@ function check_ownerreferences() {
   ./kubectl-check-ownerreferences -n rook-ceph
 }
 
+function use_host_network() {
+  yq w -i -d0 "${REPO_DIR}/deploy/examples/cluster-test.yaml" spec.network.provider host
+}
+
+# check_host_network fails if any Ceph daemon or OSD prepare pod is not on the host network. The
+# test manifests otherwise all run on the pod network, where a pod left off the host network by
+# mistake usually still works, so this check is the only thing that would catch it.
+function check_host_network() {
+  local apps="rook-ceph-mon rook-ceph-mgr rook-ceph-osd rook-ceph-osd-prepare"
+  local failed=0
+  for app in $apps; do
+    pods="$(kubectl --namespace rook-ceph get pod --selector "app=${app}" --no-headers \
+      --output custom-columns=NAME:.metadata.name,HOSTNETWORK:.spec.hostNetwork)"
+    echo "$pods"
+    if [[ -z "$pods" ]]; then
+      echo "no ${app} pods found" >&2
+      failed=1
+    elif echo "$pods" | awk '$2 != "true" {bad=1} END {exit !bad}'; then
+      echo "${app} pods are not all on the host network" >&2
+      failed=1
+    fi
+  done
+  return "$failed"
+}
+
 function create_LV_on_disk() {
   DEVICE=$1
   VG=test-rook-vg
@@ -1171,9 +1196,9 @@ EOF
 
   kubectl create -f storageclass.yaml
   kubectl create -f pvc.yaml
-  if ! kubectl wait pvc/nvmeof-external-volume --for=jsonpath='{.status.phase}'=Bound --timeout=300s; then
-    echo "PVC nvmeof-external-volume did not reach Bound; collecting diagnostics..."
-    kubectl describe pvc nvmeof-external-volume || true
+  if ! kubectl wait pvc/nvmeof-volume --for=jsonpath='{.status.phase}'=Bound --timeout=300s; then
+    echo "PVC nvmeof-volume did not reach Bound; collecting diagnostics..."
+    kubectl describe pvc nvmeof-volume || true
     kubectl get events -n default --sort-by=.metadata.creationTimestamp | tail -n 50 || true
     kubectl -n rook-ceph logs -l "app.kubernetes.io/part-of=rook-ceph.nvmeof.csi.ceph.com" --tail=200 || true
     return 1

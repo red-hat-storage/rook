@@ -54,6 +54,8 @@ spec:
               instances:
                 minimum: 1
                 type: integer
+              interruptMode:
+                type: boolean
               labels:
                 additionalProperties:
                   type: string
@@ -761,6 +763,10 @@ spec:
                       type: string
                   type: object
                 type: array
+              message:
+                maxLength: 500
+                minLength: 1
+                type: string
               observedGeneration:
                 format: int64
                 type: integer

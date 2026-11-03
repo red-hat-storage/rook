@@ -191,7 +191,7 @@ func (r *ReconcileCephNFS) reconcile(request reconcile.Request) (reconcile.Resul
 	// The CR was just created, initializing status fields
 	if cephNFS.Status == nil {
 		cephxUninitialized := keyring.UninitializedCephxStatus()
-		err := r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, &cephxUninitialized, k8sutil.EmptyStatus)
+		err := r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, &cephxUninitialized, k8sutil.EmptyStatus, "Initializing NFS")
 		if err != nil {
 			return opcontroller.ImmediateRetryResult, *cephNFS, errors.Wrapf(err, "failed set empty status to the cephNFS %q", request.NamespacedName)
 		}
@@ -318,10 +318,14 @@ func (r *ReconcileCephNFS) reconcile(request reconcile.Request) (reconcile.Resul
 		log.NamedInfo(request.NamespacedName, logger, "cephx keys for CephNFS will be rotated")
 	}
 
-	// Check for the existence of the .nfs pool
-	err = r.configureNFSPool(cephNFS)
+	// Check for the existence of the .nfs pool, which must be created via a CephBlockPool CR
+	poolExists, err := r.nfsPoolExists(cephNFS)
 	if err != nil {
-		return reconcile.Result{}, *cephNFS, errors.Wrapf(err, "failed to configure nfs pool %q", cephNFS.Spec.RADOS.Pool)
+		return reconcile.Result{}, *cephNFS, errors.Wrapf(err, "failed to check for nfs pool %q", cephNFS.Spec.RADOS.Pool)
+	}
+	if !poolExists {
+		log.NamedInfo(request.NamespacedName, logger, "waiting for pool %q to be created via a CephBlockPool CR before proceeding with NFS reconciliation", cephNFS.Spec.RADOS.Pool)
+		return opcontroller.WaitForRequeueIfCephClusterNotReady, *cephNFS, nil
 	}
 
 	// CREATE/UPDATE
@@ -337,7 +341,7 @@ func (r *ReconcileCephNFS) reconcile(request reconcile.Request) (reconcile.Resul
 
 	// update ObservedGeneration in status at the end of reconcile
 	// Set Ready status, we are done reconciling
-	err = r.updateStatus(observedGeneration, request.NamespacedName, &cephxStatus, k8sutil.ReadyStatus)
+	err = r.updateStatus(observedGeneration, request.NamespacedName, &cephxStatus, k8sutil.ReadyStatus, "NFS configured successfully")
 	if err != nil {
 		return opcontroller.ImmediateRetryResult, *cephNFS, errors.Wrapf(err, "failed to update cephx status to the cephNFS %q", request.NamespacedName)
 	}
@@ -391,7 +395,7 @@ func (r *ReconcileCephNFS) reconcileCreateCephNFS(cephNFS *cephv1.CephNFS) (reco
 }
 
 // updateStatus updates an object with a given status
-func (r *ReconcileCephNFS) updateStatus(observedGeneration int64, namespacedName types.NamespacedName, cephxStatus *cephv1.CephxStatus, status string) error {
+func (r *ReconcileCephNFS) updateStatus(observedGeneration int64, namespacedName types.NamespacedName, cephxStatus *cephv1.CephxStatus, status string, message string) error {
 	nfs := &cephv1.CephNFS{}
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		err := r.client.Get(r.opManagerContext, namespacedName, nfs)
@@ -407,6 +411,7 @@ func (r *ReconcileCephNFS) updateStatus(observedGeneration int64, namespacedName
 		}
 
 		nfs.Status.Phase = status
+		nfs.Status.Message = message
 		if observedGeneration != k8sutil.ObservedGenerationNotAvailable {
 			nfs.Status.ObservedGeneration = observedGeneration
 		}

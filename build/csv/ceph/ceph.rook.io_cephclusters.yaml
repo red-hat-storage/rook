@@ -1023,7 +1023,16 @@ spec:
                     maximum: 65535
                     minimum: 0
                     type: integer
+                  scrapeTimeoutSeconds:
+                    format: int64
+                    minimum: 1
+                    type: integer
                 type: object
+                x-kubernetes-validations:
+                - message: scrapeTimeoutSeconds must not be greater than interval,
+                    which defaults to 10s
+                  rule: '!has(self.scrapeTimeoutSeconds) || (has(self.interval) ?
+                    duration(self.interval).getSeconds() : 10) >= self.scrapeTimeoutSeconds'
               network:
                 nullable: true
                 properties:

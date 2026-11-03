@@ -56,6 +56,16 @@ toolbox:
   # -- Set the priority class for the toolbox if desired
   priorityClassName:
 
+  # -- Add additional volumes to the toolbox pod.
+  # Note that this is subject to the SCC defined in ./templates/securityContextConstraints.yaml on OpenShift.
+  additionalVolumes: []
+  # -- Add additional volume mounts to the toolbox pod
+  additionalVolumeMounts: []
+  # -- Add additional environment variables to the toolbox pod
+  additionalEnv: []
+  # -- Add additional environment variable sources to the toolbox pod
+  additionalEnvFrom: []
+
 monitoring:
   # -- Enable Prometheus integration, will also create necessary RBAC rules to allow Operator to create ServiceMonitors.
   # Monitoring requires Prometheus to be pre-installed
@@ -81,6 +91,8 @@ monitoring:
   # externalMgrPrometheusPort: <port>
   # Scrape interval for prometheus
   # interval: 10s
+  # Scrape timeout for prometheus, in seconds. Must not be greater than the interval.
+  # scrapeTimeoutSeconds: 5
   # Enable native HTTPS on the Ceph mgr prometheus endpoint (Ceph v20.2+).
   # Rook mounts the TLS Secret and configures the prometheus module; it does not create certificates.
   # metricsTLS:
@@ -216,7 +228,7 @@ cephClusterSpec:
       # Whether to require communication over msgr2. If true, the msgr v1 port (6789) will be disabled
       # and clients will be required to connect to the Ceph cluster with the v2 port (3300).
       # Requires a kernel that supports msgr v2 (kernel 5.11 or CentOS 8.4 or newer).
-      requireMsgr2: false
+      requireMsgr2: true
   #   # enable host networking
   #   provider: host
   #   # EXPERIMENTAL: enable the Multus network provider

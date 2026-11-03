@@ -254,6 +254,52 @@ spec:
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
                 type: object
+              secretTemplate:
+                minProperties: 1
+                properties:
+                  annotations:
+                    additionalProperties:
+                      maxLength: 262144
+                      type: string
+                      x-kubernetes-validations:
+                      - message: annotation values must be at most 256 KiB
+                        rule: size(bytes(self)) <= 262144
+                    maxProperties: 32
+                    minProperties: 1
+                    type: object
+                    x-kubernetes-validations:
+                    - message: annotation keys must be valid Kubernetes annotation
+                        keys
+                      rule: self.all(k, !format.qualifiedName().validate(k.lowerAscii()).hasValue())
+                    - message: annotation key cephx-keyring is reserved by Rook
+                      rule: self.all(k, k != 'cephx-keyring')
+                    - message: annotation keys with a rook.io prefix are reserved
+                        by Rook
+                      rule: self.all(k, !k.matches('^([^/]*[.])?rook[.]io/'))
+                    - message: annotations must total at most 256 KiB
+                      rule: self.map(k, size(bytes(k)) + size(bytes(self[k]))).sum()
+                        <= 262144
+                  labels:
+                    additionalProperties:
+                      maxLength: 63
+                      pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
+                      type: string
+                    maxProperties: 32
+                    minProperties: 1
+                    type: object
+                    x-kubernetes-validations:
+                    - message: label keys must be valid Kubernetes label keys
+                      rule: self.all(k, !format.qualifiedName().validate(k).hasValue())
+                    - message: label key do_not_reconcile is reserved by Rook
+                      rule: self.all(k, k != 'do_not_reconcile')
+                    - message: label keys with a rook.io prefix are reserved by Rook
+                      rule: self.all(k, !k.matches('^([^/]*[.])?rook[.]io/'))
+                type: object
+                x-kubernetes-validations:
+                - message: label keys app, user, rook_cluster and rook_object_store
+                    are reserved by Rook
+                  rule: '!has(self.labels) || self.labels.all(k, !(k in [''app'',
+                    ''user'', ''rook_cluster'', ''rook_object_store'']))'
               store:
                 type: string
             type: object

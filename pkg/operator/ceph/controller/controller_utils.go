@@ -61,12 +61,28 @@ const (
 
 	revisionHistoryLimitSettingName string = "ROOK_REVISION_HISTORY_LIMIT"
 
+	// csiOperatorResourcesSettingName controls whether Rook creates the CephConnection and
+	// ClientProfile CRs consumed by the ceph-csi-operator. Clusters that use no CSI driver,
+	// such as object store only clusters, can disable this and skip installing the
+	// ceph-csi-operator and its CRDs entirely.
+	csiOperatorResourcesSettingName  string = "ROOK_CREATE_CSI_OPERATOR_RESOURCES"
+	csiOperatorResourcesDefaultValue string = "true"
+
 	// UninitializedCephConfigError refers to the error message printed by the Ceph CLI when there is no ceph configuration file
 	// This typically is raised when the operator has not finished initializing
 	UninitializedCephConfigError = "error calling conf_read_file"
 
 	// OperatorNotInitializedMessage is the message we print when the Operator is not ready to reconcile, typically the ceph.conf has not been generated yet
 	OperatorNotInitializedMessage = "skipping reconcile since operator is still initializing"
+
+	// RaiseNofileLimitAnnotationKey is annotation key to raise the nofile soft limit to the hard limit on startup.
+	// This is an experimental feature. This API may be changed or removed without notice.
+	RaiseNofileLimitAnnotationKey = "ceph.rook.io/raise-nofile-limit"
+
+	// RaiseNofileLimitScript is the bash script that raises the nofile soft limit to the hard limit.
+	// Uses && to fail fast if ulimit commands fail.
+	// The trailing space is required to separate it from the daemon command that follows.
+	RaiseNofileLimitScript = `pod_hard_limit="$(ulimit -Hn)" && ulimit -n "$pod_hard_limit" && `
 )
 
 var (
@@ -98,6 +114,13 @@ var (
 
 func DiscoveryDaemonEnabled() bool {
 	return k8sutil.GetOperatorSetting("ROOK_ENABLE_DISCOVERY_DAEMON", "false") == "true"
+}
+
+// CSIOperatorResourcesEnabled returns true if Rook should create and update the CephConnection
+// and ClientProfile CRs consumed by the ceph-csi-operator. Clusters that use no CSI driver can
+// disable this so the ceph-csi-operator and its CRDs are not required.
+func CSIOperatorResourcesEnabled() bool {
+	return k8sutil.GetOperatorSetting(csiOperatorResourcesSettingName, csiOperatorResourcesDefaultValue) == "true"
 }
 
 // SetCephCommandsTimeout sets the timeout value of Ceph commands which are executed from Rook
@@ -293,4 +316,22 @@ func RecoverAndLogException() {
 
 func NsName(namespace, name string) types.NamespacedName {
 	return types.NamespacedName{Namespace: namespace, Name: name}
+}
+
+// ShouldRaiseNofileLimit reports whether to raise the nofile limit based on the CR
+// annotation. Defaults to false.
+func ShouldRaiseNofileLimit(annotations map[string]string) bool {
+	if annotations == nil {
+		return false
+	}
+	raw, ok := annotations[RaiseNofileLimitAnnotationKey]
+	if !ok {
+		return false
+	}
+	raise, err := strconv.ParseBool(raw)
+	if err != nil {
+		logger.Warningf("invalid value %q for annotation %q. Not raising the nofile limit", raw, RaiseNofileLimitAnnotationKey)
+		return false
+	}
+	return raise
 }
