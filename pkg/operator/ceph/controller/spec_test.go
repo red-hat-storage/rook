@@ -366,7 +366,7 @@ func TestConfigureExternalMetricsEndpoint(t *testing.T) {
 
 		currentEndpoints, err := ctx.Clientset.CoreV1().Endpoints(namespace).Get(context.TODO(), "rook-ceph-mgr-external", metav1.GetOptions{})
 		assert.NoError(t, err)
-		assert.Equal(t, "172.17.0.12", currentEndpoints.Subsets[0].Addresses[0].IP, currentEndpoints)
+		assert.Equal(t, "172.17.0.12", currentEndpoints.Endpoints[0].Addresses[0], currentEndpoints)
 	})
 
 	t.Run("spec and current active mgr endpoint identical with existing endpoint object", func(t *testing.T) {
