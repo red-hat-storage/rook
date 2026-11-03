@@ -882,7 +882,7 @@ func createExternalMetricsEndpoints(namespace string, monitoringSpec cephv1.Moni
 		},
 	}
 
-	err = ownerInfo.SetControllerReference(endpoints)
+	err := ownerInfo.SetControllerReference(endpoints)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to set owner reference to metric endpoints %q", endpoints.Name)
 	}

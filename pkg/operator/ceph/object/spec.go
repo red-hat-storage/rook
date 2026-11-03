@@ -725,7 +725,7 @@ func (c *clusterConfig) generateService(cephObjectStore *cephv1.CephObjectStore)
 	return svc
 }
 
-func (c *clusterConfig) generateEndpoint(cephObjectStore *cephv1.CephObjectStore) *v1.Endpoints {
+func (c *clusterConfig) generateEndpoint(cephObjectStore *cephv1.CephObjectStore) (*v1.Endpoints, error) {
 	labels := getLabels(cephObjectStore.Name, cephObjectStore.Namespace, true)
 
 	k8sEndpointAddrs := []v1.EndpointAddress{}
