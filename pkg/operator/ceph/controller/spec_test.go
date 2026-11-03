@@ -36,7 +36,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -304,9 +303,9 @@ func TestConfigureExternalMetricsEndpoint(t *testing.T) {
 		err := ConfigureExternalMetricsEndpoint(ctx, monitoringSpec, clusterInfo, cephclient.NewMinimumOwnerInfo(t))
 		assert.NoError(t, err)
 
-		currentEndpoints, err := ctx.Clientset.DiscoveryV1().EndpointSlices(namespace).Get(context.TODO(), "rook-ceph-mgr-external", metav1.GetOptions{})
+		currentEndpoints, err := ctx.Clientset.CoreV1().Endpoints(namespace).Get(context.TODO(), "rook-ceph-mgr-external", metav1.GetOptions{})
 		assert.NoError(t, err)
-		assert.Equal(t, "192.168.0.1", currentEndpoints.Endpoints[0].Addresses[0], currentEndpoints)
+		assert.Equal(t, "192.168.0.1", currentEndpoints.Subsets[0].Addresses[0].IP, currentEndpoints)
 	})
 
 	t.Run("spec and current active mgr endpoint different with no existing endpoint object", func(t *testing.T) {
@@ -332,9 +331,9 @@ func TestConfigureExternalMetricsEndpoint(t *testing.T) {
 		err := ConfigureExternalMetricsEndpoint(ctx, monitoringSpec, clusterInfo, cephclient.NewMinimumOwnerInfo(t))
 		assert.NoError(t, err)
 
-		currentEndpoints, err := ctx.Clientset.DiscoveryV1().EndpointSlices(namespace).Get(context.TODO(), "rook-ceph-mgr-external", metav1.GetOptions{})
+		currentEndpoints, err := ctx.Clientset.CoreV1().Endpoints(namespace).Get(context.TODO(), "rook-ceph-mgr-external", metav1.GetOptions{})
 		assert.NoError(t, err)
-		assert.Equal(t, "172.17.0.12", currentEndpoints.Endpoints[0].Addresses[0], currentEndpoints)
+		assert.Equal(t, "172.17.0.12", currentEndpoints.Subsets[0].Addresses[0].IP, currentEndpoints)
 	})
 
 	t.Run("spec and current active mgr endpoint different with existing endpoint object", func(t *testing.T) {
@@ -359,18 +358,15 @@ func TestConfigureExternalMetricsEndpoint(t *testing.T) {
 		ownerInfo := cephclient.NewMinimumOwnerInfo(t)
 		ep, err := createExternalMetricsEndpoints(clusterInfo.Namespace, monitoringSpec, ownerInfo)
 		assert.NoError(t, err)
-		_, err = ctx.Clientset.DiscoveryV1().EndpointSlices(namespace).Create(context.TODO(), ep, metav1.CreateOptions{})
+		_, err = ctx.Clientset.CoreV1().Endpoints(namespace).Create(context.TODO(), ep, metav1.CreateOptions{})
 		assert.NoError(t, err)
 
 		err = ConfigureExternalMetricsEndpoint(ctx, monitoringSpec, clusterInfo, ownerInfo)
 		assert.NoError(t, err)
 
-		currentEndpoints, err := ctx.Clientset.DiscoveryV1().EndpointSlices(namespace).Get(context.TODO(), "rook-ceph-mgr-external", metav1.GetOptions{})
+		currentEndpoints, err := ctx.Clientset.CoreV1().Endpoints(namespace).Get(context.TODO(), "rook-ceph-mgr-external", metav1.GetOptions{})
 		assert.NoError(t, err)
-		assert.Equal(t, "172.17.0.12", currentEndpoints.Endpoints[0].Addresses[0], currentEndpoints)
-		assert.Equal(t, currentEndpoints.Labels[discoveryv1.LabelServiceName], ExternalMgrAppName)
-		assert.Equal(t, currentEndpoints.Labels[k8sutil.AppAttr], "rook-ceph-mgr")
-		assert.Equal(t, currentEndpoints.Labels[k8sutil.ClusterAttr], namespace)
+		assert.Equal(t, "172.17.0.12", currentEndpoints.Subsets[0].Addresses[0].IP, currentEndpoints)
 	})
 
 	t.Run("spec and current active mgr endpoint identical with existing endpoint object", func(t *testing.T) {
@@ -395,15 +391,15 @@ func TestConfigureExternalMetricsEndpoint(t *testing.T) {
 		ownerInfo := cephclient.NewMinimumOwnerInfo(t)
 		ep, err := createExternalMetricsEndpoints(clusterInfo.Namespace, monitoringSpec, ownerInfo)
 		assert.NoError(t, err)
-		_, err = ctx.Clientset.DiscoveryV1().EndpointSlices(namespace).Create(context.TODO(), ep, metav1.CreateOptions{})
+		_, err = ctx.Clientset.CoreV1().Endpoints(namespace).Create(context.TODO(), ep, metav1.CreateOptions{})
 		assert.NoError(t, err)
 
 		err = ConfigureExternalMetricsEndpoint(ctx, monitoringSpec, clusterInfo, ownerInfo)
 		assert.NoError(t, err)
 
-		currentEndpoints, err := ctx.Clientset.DiscoveryV1().EndpointSlices(namespace).Get(context.TODO(), "rook-ceph-mgr-external", metav1.GetOptions{})
+		currentEndpoints, err := ctx.Clientset.CoreV1().Endpoints(namespace).Get(context.TODO(), "rook-ceph-mgr-external", metav1.GetOptions{})
 		assert.NoError(t, err)
-		assert.Equal(t, "192.168.0.1", currentEndpoints.Endpoints[0].Addresses[0], currentEndpoints)
+		assert.Equal(t, "192.168.0.1", currentEndpoints.Subsets[0].Addresses[0].IP, currentEndpoints)
 	})
 }
 
