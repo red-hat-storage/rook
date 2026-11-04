@@ -122,6 +122,11 @@ cephClusterSpec:
   # The default wait timeout is 10 minutes.
   waitTimeoutForHealthyOSDInMinutes: 10
 
+  security:
+    cephx:
+      csi:
+        keyType: aes # required when Kubernetes nodes don't run Linux kernel 7.0+
+
   mon:
     # Set the number of mons to be started. Generally recommended to be 3.
     # For highest availability, an odd number of mons should be specified.
@@ -419,8 +424,7 @@ cephClusterSpec:
 
 ingress:
   # -- Enable an ingress for the ceph-dashboard
-  dashboard:
-    {}
+  dashboard: {}
     # annotations:
     #   external-dns.alpha.kubernetes.io/hostname: dashboard.example.com
     #   nginx.ingress.kubernetes.io/rewrite-target: /ceph-dashboard/$2

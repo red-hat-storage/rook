@@ -10,7 +10,7 @@ defaults:
 
 jobs:
   canary-arm64:
-    runs-on: [self-hosted, ubuntu-20.04-arm64, ARM64]
+    runs-on: [self-hosted, ubuntu-22.04-arm64, ARM64]
     if: github.repository == 'rook/rook'
     env:
       BLOCK: /dev/sdb
@@ -116,7 +116,7 @@ jobs:
 
   smoke-suite-quincy-devel:
     if: github.repository == 'rook/rook'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -156,7 +156,7 @@ jobs:
 
   smoke-suite-reef-devel:
     if: github.repository == 'rook/rook'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -196,7 +196,7 @@ jobs:
 
   smoke-suite-ceph-main:
     if: github.repository == 'rook/rook'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -236,7 +236,7 @@ jobs:
 
   object-suite-quincy-devel:
     if: github.repository == 'rook/rook'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -276,7 +276,7 @@ jobs:
 
   object-suite-ceph-main:
     if: github.repository == 'rook/rook'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -316,7 +316,7 @@ jobs:
 
   upgrade-from-reef-stable-to-reef-devel:
     if: github.repository == 'rook/rook'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -356,7 +356,7 @@ jobs:
 
   upgrade-from-quincy-stable-to-quincy-devel:
     if: github.repository == 'rook/rook'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -396,11 +396,10 @@ jobs:
 
   rgw-multisite-test-with-ceph-devel:
     if: github.repository == 'rook/rook'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
-        ceph-image-tag:
-          ["latest-main-devel", "latest-quincy-devel", "latest-reef-devel"]
+        ceph-image-tag: ["latest-main-devel", "latest-quincy-devel", "latest-reef-devel"]
 
     steps:
       - uses: actions/checkout@v4
@@ -427,7 +426,7 @@ jobs:
 
   encryption-pvc-kms-ibm-kp:
     if: github.repository == 'rook/rook'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
