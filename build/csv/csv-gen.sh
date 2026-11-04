@@ -10,8 +10,7 @@ source "../../build/common.sh"
 yq="${YQ:-yq}"
 PLATFORM=$(go env GOARCH)
 OS=$(go env GOOS)
-# Not updating to latest version as new field `createdAt` is being added to newer versions of operator-sdk.
-OPERATOR_SDK_VERSION="v1.25.0"
+OPERATOR_SDK_VERSION="v1.42.3"
 
 CSV_FILE_NAME="../../build/csv/ceph/$PLATFORM/manifests/rook-ceph-operator.clusterserviceversion.yaml"
 EXTERNAL_CLUSTER_SCRIPT_CONFIGMAP="../../build/csv/ceph/$PLATFORM/manifests/rook-ceph-external-cluster-script-config_v1_configmap.yaml"
