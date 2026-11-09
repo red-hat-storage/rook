@@ -60,7 +60,7 @@ func TestCanIgnoreHealthErrStatusInReconcile(t *testing.T) {
 			Message:  "TEST_ANOTHER",
 		},
 	})
-	assert.True(t, canIgnoreHealthErrStatusInReconcile(cluster, "controller"))
+	assert.True(t, CanIgnoreHealthErrStatusInReconcile(cluster, "controller"))
 
 	cluster = CreateTestClusterFromStatusDetails(map[string]cephv1.CephHealthMessage{
 		"MGR_MODULE_ERROR": {
@@ -68,7 +68,7 @@ func TestCanIgnoreHealthErrStatusInReconcile(t *testing.T) {
 			Message:  "mgr module error",
 		},
 	})
-	assert.True(t, canIgnoreHealthErrStatusInReconcile(cluster, "controller"))
+	assert.True(t, CanIgnoreHealthErrStatusInReconcile(cluster, "controller"))
 
 	cluster = CreateTestClusterFromStatusDetails(map[string]cephv1.CephHealthMessage{
 		"MGR_MODULE_ERROR_FALSE": {
@@ -76,7 +76,7 @@ func TestCanIgnoreHealthErrStatusInReconcile(t *testing.T) {
 			Message:  "mgr module error",
 		},
 	})
-	assert.False(t, canIgnoreHealthErrStatusInReconcile(cluster, "controller"))
+	assert.False(t, CanIgnoreHealthErrStatusInReconcile(cluster, "controller"))
 
 	cluster = CreateTestClusterFromStatusDetails(map[string]cephv1.CephHealthMessage{
 		"MDS_ALL_DOWN": {
@@ -88,7 +88,7 @@ func TestCanIgnoreHealthErrStatusInReconcile(t *testing.T) {
 			Message:  "TEST_UNIGNORABLE",
 		},
 	})
-	assert.False(t, canIgnoreHealthErrStatusInReconcile(cluster, "controller"))
+	assert.False(t, CanIgnoreHealthErrStatusInReconcile(cluster, "controller"))
 
 	cluster = CreateTestClusterFromStatusDetails(map[string]cephv1.CephHealthMessage{
 		"TEST_UNIGNORABLE": {
@@ -96,11 +96,11 @@ func TestCanIgnoreHealthErrStatusInReconcile(t *testing.T) {
 			Message:  "TEST_UNIGNORABLE",
 		},
 	})
-	assert.False(t, canIgnoreHealthErrStatusInReconcile(cluster, "controller"))
+	assert.False(t, CanIgnoreHealthErrStatusInReconcile(cluster, "controller"))
 
 	// The empty status should return false
 	cluster = CreateTestClusterFromStatusDetails(map[string]cephv1.CephHealthMessage{})
-	assert.False(t, canIgnoreHealthErrStatusInReconcile(cluster, "controller"))
+	assert.False(t, CanIgnoreHealthErrStatusInReconcile(cluster, "controller"))
 }
 
 func TestSetCephCommandsTimeout(t *testing.T) {
