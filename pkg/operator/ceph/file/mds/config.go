@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"github.com/pkg/errors"
+	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	"github.com/rook/rook/pkg/operator/ceph/config"
 	"github.com/rook/rook/pkg/operator/ceph/config/keyring"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -44,9 +45,20 @@ func (c *Cluster) generateKeyring(m *mdsConfig) (string, error) {
 	// At present
 	s := keyring.GetSecretStore(c.context, c.clusterInfo, c.ownerInfo)
 
-	key, err := s.GenerateKey(user, access)
+	keyType := cephv1.CephxKeyTypeUndefined // daemon key type always takes the default from setDefaultCephxKeyType()
+	key, err := s.GenerateKey(user, keyType, access)
 	if err != nil {
 		return "", err
+	}
+
+	if c.shouldRotateCephxKeys {
+		logger.Infof("rotating cephx key for CephFileSystem %q", m.ResourceName)
+		newKey, err := s.RotateKey(user, keyType)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to rotate cephx key for CephFileSystem %q", m.ResourceName)
+		} else {
+			key = newKey
+		}
 	}
 
 	// Delete legacy key store for upgrade from Rook v0.9.x to v1.0.x
@@ -60,7 +72,7 @@ func (c *Cluster) generateKeyring(m *mdsConfig) (string, error) {
 	}
 
 	keyring := fmt.Sprintf(keyringTemplate, m.DaemonID, key)
-	return keyring, s.CreateOrUpdate(m.ResourceName, keyring)
+	return s.CreateOrUpdate(m.ResourceName, keyring)
 }
 
 func (c *Cluster) setDefaultFlagsMonConfigStore(mdsID string) error {

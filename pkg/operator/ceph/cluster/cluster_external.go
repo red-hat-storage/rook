@@ -30,6 +30,7 @@ import (
 	"github.com/rook/rook/pkg/operator/ceph/cluster/mon"
 	"github.com/rook/rook/pkg/operator/ceph/cluster/nodedaemon"
 	"github.com/rook/rook/pkg/operator/ceph/config"
+	"github.com/rook/rook/pkg/operator/ceph/config/keyring"
 	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
 	"github.com/rook/rook/pkg/operator/ceph/csi"
 	"github.com/rook/rook/pkg/operator/k8sutil"
@@ -47,6 +48,10 @@ func (c *ClusterController) configureExternalCephCluster(cluster *cluster) error
 	}
 
 	opcontroller.UpdateCondition(c.OpManagerCtx, c.context, c.namespacedName, k8sutil.ObservedGenerationNotAvailable, cephv1.ConditionConnecting, v1.ConditionTrue, cephv1.ClusterConnectingReason, "Attempting to connect to an external Ceph cluster")
+
+	// Rook needs a workaround for internal clusters when Ceph is updated while OSD keys are also
+	// rotated. This doesn't apply to external clusters, so always allow rotation for those.
+	keyring.SetAllowCephxKeyRotationForCluster(cluster.Namespace, true)
 
 	// loop until we find the secret necessary to connect to the external cluster
 	// then populate clusterInfo
@@ -102,7 +107,7 @@ func (c *ClusterController) configureExternalCephCluster(cluster *cluster) error
 
 	// Create CSI Secrets only if the user has provided the admin key
 	if cluster.ClusterInfo.CephCred.Username == client.AdminUsername {
-		err = csi.CreateCSISecrets(c.context, cluster.ClusterInfo)
+		err = csi.CreateCSISecrets(c.context, cluster.ClusterInfo, c.namespacedName)
 		if err != nil {
 			return errors.Wrap(err, "failed to create csi kubernetes secrets")
 		}
