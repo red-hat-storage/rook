@@ -1255,10 +1255,6 @@ func (c *Cluster) saveMonConfig() error {
 		return errors.Wrap(err, "failed to write connection config for new mons")
 	}
 
-	if !controller.CSIOperatorResourcesEnabled() {
-		return csi.DeleteCSIOperatorResources(c.context.Client, c.ClusterInfo)
-	}
-
 	if len(c.ClusterInfo.AllMonitors()) > 0 && !strings.Contains(os.Getenv(k8sutil.PodNamespaceEnvVar), "openshift") {
 		// This is a hack to prevent the creation of cephConnection and default client profile in OpenShift
 		// because these resources are created by other components in OpenShift.

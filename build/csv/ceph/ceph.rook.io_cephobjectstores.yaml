@@ -1234,6 +1234,12 @@ spec:
                         additionalProperties:
                           type: string
                         type: object
+                      trafficDistribution:
+                        enum:
+                        - PreferClose
+                        - PreferSameZone
+                        - PreferSameNode
+                        type: string
                     type: object
                   sslCertificateRef:
                     nullable: true
@@ -1851,6 +1857,8 @@ spec:
                 nullable: true
                 type: object
               message:
+                maxLength: 500
+                minLength: 1
                 type: string
               observedGeneration:
                 format: int64
