@@ -36,6 +36,7 @@ must not collide with std-lib package names (no `io`, no `http`).
 | `bucket/owner` | `object/bucket` | OBC `bucketOwner` handling |
 | `bucket/policy` | `object/bucket` | OBC bucketPolicy management |
 | `bucket/quota` | `object/bucket` | OBC maxObjects user quota + bucketMaxObjects/bucketMaxSize bucket quota |
+| `bucket/relink` | `object/bucket` | OBC refused an existing bucket owned by another user |
 | `bucket/rw` | `object/bucket` | OBC S3 read/write/delete + OBC-stays-Bound |
 | `cosi` | `object/cosi` | CephCOSIDriver + COSI bucket provisioning |
 | `dependents` | `object` | CephObjectStore deletion blocked by dependents |
@@ -45,6 +46,7 @@ must not collide with std-lib package names (no `io`, no `http`).
 | `user/keys` | `object/user` | explicit S3 key management |
 | `user/opmask` | `object/user` | user op_mask |
 | `user/placement` | `object/user` | user defaultPlacement, including its unmanaged-on-removal semantics |
+| `user/secrettemplate` | `object/user` | user secretTemplate labels and annotations on the generated Secret |
 | `user/storageclass` | `object/user` | user defaultStorageClass, verified on a bucket the user creates |
 | `zonepools` | `object` | zone.json pool fields covered by Rook's shared-pool mapping |
 

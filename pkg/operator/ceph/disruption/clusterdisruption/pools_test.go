@@ -17,7 +17,6 @@ limitations under the License.
 package clusterdisruption
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,6 +46,12 @@ func TestGetMinimumFailureDomain(t *testing.T) {
 	}
 
 	assert.Equal(t, "host", getMinimumFailureDomain(poolList))
+
+	poolList = []cephv1.PoolSpec{
+		{FailureDomain: "region"},
+	}
+
+	assert.Equal(t, "region", getMinimumFailureDomain(poolList))
 
 	// test default
 	poolList = []cephv1.PoolSpec{
@@ -78,7 +83,7 @@ func TestReconcileCephObjectStorePDB(t *testing.T) {
 		r := &ReconcileClusterDisruption{
 			client:  client,
 			scheme:  s,
-			context: &controllerconfig.Context{OpManagerContext: context.TODO()},
+			context: &controllerconfig.Context{OpManagerContext: t.Context()},
 		}
 
 		objectStoreList := &cephv1.CephObjectStoreList{
@@ -94,7 +99,7 @@ func TestReconcileCephObjectStorePDB(t *testing.T) {
 		assert.NoError(t, err)
 
 		pdb := &policyv1.PodDisruptionBudget{}
-		err = client.Get(context.TODO(), types.NamespacedName{Name: pdbName, Namespace: ns}, pdb)
+		err = client.Get(t.Context(), types.NamespacedName{Name: pdbName, Namespace: ns}, pdb)
 		assert.Error(t, err, "PDB should be deleted")
 	})
 
@@ -103,7 +108,7 @@ func TestReconcileCephObjectStorePDB(t *testing.T) {
 		r := &ReconcileClusterDisruption{
 			client:  client,
 			scheme:  s,
-			context: &controllerconfig.Context{OpManagerContext: context.TODO()},
+			context: &controllerconfig.Context{OpManagerContext: t.Context()},
 		}
 
 		objectStoreList := &cephv1.CephObjectStoreList{
@@ -124,7 +129,7 @@ func TestReconcileCephObjectStorePDB(t *testing.T) {
 		r := &ReconcileClusterDisruption{
 			client:  client,
 			scheme:  s,
-			context: &controllerconfig.Context{OpManagerContext: context.TODO()},
+			context: &controllerconfig.Context{OpManagerContext: t.Context()},
 		}
 
 		objectStoreList := &cephv1.CephObjectStoreList{
@@ -140,7 +145,7 @@ func TestReconcileCephObjectStorePDB(t *testing.T) {
 		assert.NoError(t, err)
 
 		pdb := &policyv1.PodDisruptionBudget{}
-		err = client.Get(context.TODO(), types.NamespacedName{Name: pdbName, Namespace: ns}, pdb)
+		err = client.Get(t.Context(), types.NamespacedName{Name: pdbName, Namespace: ns}, pdb)
 		assert.NoError(t, err)
 		assert.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
 	})
@@ -166,7 +171,7 @@ func TestReconcileCephFilesystemPDB(t *testing.T) {
 		r := &ReconcileClusterDisruption{
 			client:  client,
 			scheme:  s,
-			context: &controllerconfig.Context{OpManagerContext: context.TODO()},
+			context: &controllerconfig.Context{OpManagerContext: t.Context()},
 		}
 
 		fsList := &cephv1.CephFilesystemList{
@@ -184,7 +189,7 @@ func TestReconcileCephFilesystemPDB(t *testing.T) {
 		assert.NoError(t, err)
 
 		pdb := &policyv1.PodDisruptionBudget{}
-		err = client.Get(context.TODO(), types.NamespacedName{Name: pdbName, Namespace: ns}, pdb)
+		err = client.Get(t.Context(), types.NamespacedName{Name: pdbName, Namespace: ns}, pdb)
 		assert.Error(t, err, "PDB should be deleted")
 	})
 
@@ -193,7 +198,7 @@ func TestReconcileCephFilesystemPDB(t *testing.T) {
 		r := &ReconcileClusterDisruption{
 			client:  client,
 			scheme:  s,
-			context: &controllerconfig.Context{OpManagerContext: context.TODO()},
+			context: &controllerconfig.Context{OpManagerContext: t.Context()},
 		}
 
 		fsList := &cephv1.CephFilesystemList{
@@ -216,7 +221,7 @@ func TestReconcileCephFilesystemPDB(t *testing.T) {
 		r := &ReconcileClusterDisruption{
 			client:  client,
 			scheme:  s,
-			context: &controllerconfig.Context{OpManagerContext: context.TODO()},
+			context: &controllerconfig.Context{OpManagerContext: t.Context()},
 		}
 
 		fsList := &cephv1.CephFilesystemList{
@@ -234,7 +239,7 @@ func TestReconcileCephFilesystemPDB(t *testing.T) {
 		assert.NoError(t, err)
 
 		pdb := &policyv1.PodDisruptionBudget{}
-		err = client.Get(context.TODO(), types.NamespacedName{Name: pdbName, Namespace: ns}, pdb)
+		err = client.Get(t.Context(), types.NamespacedName{Name: pdbName, Namespace: ns}, pdb)
 		assert.NoError(t, err)
 		assert.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
 	})

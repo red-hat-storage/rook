@@ -237,9 +237,21 @@ The gateway settings correspond to the RGW daemon settings.
 * `priorityClassName`: Set priority class name for the Gateway Pod(s)
 * `additionalVolumeMounts`: additional volumes to be mounted to the RGW pod. The root directory for
     each additional volume mount is `/var/rgw`. Each volume mount has a `subPath` that defines the
-    subdirectory where that volumes files will be mounted. Rook supports several standard Kubernetes
-    volume types. Example: for an additional mount at subPath `ldap`, mounted from a secret that has
-    key `bindpass.secret`, the file would reside at `/var/rgw/ldap/bindpass.secret`.
+    subdirectory where that volume's files will be mounted. A `subPath` must not contain a `..` path
+    element. Rook supports several standard Kubernetes volume types. Example: for an additional
+    mount at subPath `ldap`, mounted from a secret that has key `bindpass.secret`, the file would
+    reside at `/var/rgw/ldap/bindpass.secret`.
+
+    !!! warning
+        `additionalVolumeMounts` accepts `hostPath`, `secret`, `configMap`, `projected`, `emptyDir`
+        and `persistentVolumeClaim` sources, including a `hostPath` of any path on the node, which
+        is mounted writable, and any Secret in the CephObjectStore's namespace, such as the Ceph
+        admin credentials in `rook-ceph-admin-keyring`. The same CephObjectStore sets the options of
+        the `radosgw` process those volumes are mounted into, through `rgwConfig`,
+        `rgwConfigFromSecret` and `rgwCommandFlags`. Treat permission to create or edit a
+        CephObjectStore as equivalent to root access on the node and to read access to every Secret
+        in that namespace, and grant it only to principals trusted with that access.
+
 * `service`: The annotations to set on to the Kubernetes Service of RGW. The [service serving cert](https://docs.okd.io/latest/security/certificates/service-serving-certificate.html) feature supported in Openshift is enabled by the following example:
 
     ```yaml
@@ -414,7 +426,6 @@ security:
     connectionDetails:
       KMS_PROVIDER: vault
       VAULT_ADDR: http://vault.default.svc.cluster.local:8200
-      VAULT_BACKEND_PATH: rgw
       VAULT_SECRET_ENGINE: transit
     # name of the k8s secret containing the kms authentication token
     tokenSecretName: rgw-vault-s3-token
@@ -423,6 +434,7 @@ security:
 For RGW, please note the following:
 
 * `VAULT_SECRET_ENGINE`: the secret engine which Vault should use. Currently supports [kv](https://www.vaultproject.io/docs/secrets/kv) and [transit](https://www.vaultproject.io/docs/secrets/transit). AWS-SSE:KMS supports `transit` engine and `kv` engine version 2. AWS-SSE:S3 only supports `transit` engine.
+* `VAULT_TRANSIT_BACKEND_PATH`: for AWS-SSE:S3 only, the path where the `transit` engine is mounted in Vault. It defaults to `transit` and is only needed when the engine is mounted elsewhere. `VAULT_BACKEND_PATH` is not used by AWS-SSE:S3.
 * The Storage administrator needs to create a secret in the Vault server so that S3 clients use that key for encryption for AWS-SSE:KMS
 
 ```console

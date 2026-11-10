@@ -17,7 +17,6 @@ limitations under the License.
 package object
 
 import (
-	"context"
 	_ "embed"
 	"fmt"
 	"reflect"
@@ -32,6 +31,7 @@ import (
 	"github.com/rook/rook/pkg/daemon/ceph/client"
 	clienttest "github.com/rook/rook/pkg/daemon/ceph/client/test"
 	cephconfig "github.com/rook/rook/pkg/operator/ceph/config"
+	"github.com/rook/rook/pkg/operator/ceph/controller"
 	cephtest "github.com/rook/rook/pkg/operator/ceph/test"
 	cephver "github.com/rook/rook/pkg/operator/ceph/version"
 	"github.com/rook/rook/pkg/operator/test"
@@ -49,6 +49,32 @@ func configureSSEWithVaultAgent(c *clusterConfig) {
 	c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails["KMS_PROVIDER"] = "vault"
 	c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails["VAULT_ADDR"] = "http://127.0.0.1:8100"
 	c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails["VAULT_AUTH_METHOD"] = "agent"
+}
+
+func TestVaultPrefixRGWSSES3(t *testing.T) {
+	tests := []struct {
+		name    string
+		details map[string]string
+		want    string
+	}{
+		{"transit mounted at the default path", map[string]string{"VAULT_SECRET_ENGINE": "transit"}, "/v1/transit"},
+		{"transit mounted at a custom path", map[string]string{"VAULT_SECRET_ENGINE": "transit", "VAULT_TRANSIT_BACKEND_PATH": "rgw-transit"}, "/v1/rgw-transit"},
+		{"empty transit path falls back to the default", map[string]string{"VAULT_SECRET_ENGINE": "transit", "VAULT_TRANSIT_BACKEND_PATH": ""}, "/v1/transit"},
+		{"transit path with spaces and slashes", map[string]string{"VAULT_SECRET_ENGINE": "transit", "VAULT_TRANSIT_BACKEND_PATH": " /rgw/transit/ "}, "/v1/rgw/transit"},
+		{"blank transit path falls back to the default", map[string]string{"VAULT_SECRET_ENGINE": "transit", "VAULT_TRANSIT_BACKEND_PATH": "  "}, "/v1/transit"},
+		{"existing VAULT_BACKEND_PATH is still ignored", map[string]string{"VAULT_SECRET_ENGINE": "transit", "VAULT_BACKEND_PATH": "rook"}, "/v1/transit"},
+		{"transit path wins over VAULT_BACKEND_PATH", map[string]string{"VAULT_SECRET_ENGINE": "transit", "VAULT_BACKEND_PATH": "rook", "VAULT_TRANSIT_BACKEND_PATH": "rgw-transit"}, "/v1/rgw-transit"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &clusterConfig{store: &cephv1.CephObjectStore{Spec: cephv1.ObjectStoreSpec{Security: &cephv1.ObjectStoreSecuritySpec{
+				ServerSideEncryptionS3: cephv1.KeyManagementServiceSpec{ConnectionDetails: tt.details},
+			}}}}
+			assert.Equal(t, tt.want, c.vaultPrefixRGWSSES3())
+			assert.Contains(t, c.sseS3VaultTokenOptions(true), cephconfig.NewFlag("rgw crypt sse s3 vault prefix", tt.want))
+			assert.Contains(t, c.sseS3VaultAgentOptions(true), cephconfig.NewFlag("rgw crypt sse s3 vault prefix", tt.want))
+		})
+	}
 }
 
 func configureSSE(t *testing.T, c *clusterConfig, kms bool, s3 bool) {
@@ -162,7 +188,7 @@ func TestPodSpecs(t *testing.T) {
 }
 
 func TestSSLPodSpec(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	// Placeholder
 	context := &clusterd.Context{Clientset: test.New(t, 3)}
 
@@ -404,6 +430,18 @@ func TestValidateSpec(t *testing.T) {
 	}
 	err = r.validateStore(s)
 	assert.Nil(t, err)
+	s.Spec.Gateway.ExternalRgwEndpoints = nil
+
+	// additional volume mounts must stay inside /var/rgw
+	ldapConfig := &cephv1.ConfigFileVolumeSource{
+		ConfigMap: &v1.ConfigMapVolumeSource{LocalObjectReference: v1.LocalObjectReference{Name: "rgw-ldap"}},
+	}
+	s.Spec.Gateway.AdditionalVolumeMounts = cephv1.AdditionalVolumeMounts{{SubPath: "ldap", VolumeSource: ldapConfig}}
+	err = r.validateStore(s)
+	assert.NoError(t, err)
+	s.Spec.Gateway.AdditionalVolumeMounts = cephv1.AdditionalVolumeMounts{{SubPath: "../../usr/local/bin", VolumeSource: ldapConfig}}
+	err = r.validateStore(s)
+	assert.ErrorContains(t, err, `"../../usr/local/bin"`)
 }
 
 func TestDefaultProbes(t *testing.T) {
@@ -509,7 +547,7 @@ func TestDefaultProbes(t *testing.T) {
 }
 
 func TestCheckRGWKMS(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	setupTest := func() *clusterConfig {
 		context := &clusterd.Context{Clientset: test.New(t, 3)}
 		store := simpleStore()
@@ -586,7 +624,7 @@ func TestCheckRGWKMS(t *testing.T) {
 				Namespace: c.store.Namespace,
 			},
 		}
-		_, err := c.context.Clientset.CoreV1().Secrets(c.store.Namespace).Create(context.TODO(), tlsSecret, metav1.CreateOptions{})
+		_, err := c.context.Clientset.CoreV1().Secrets(c.store.Namespace).Create(t.Context(), tlsSecret, metav1.CreateOptions{})
 		assert.NoError(t, err)
 		b, err := c.CheckRGWKMS()
 		assert.False(t, b)
@@ -606,7 +644,7 @@ func TestCheckRGWKMS(t *testing.T) {
 			},
 		}
 		tlsSecret.Data = map[string][]byte{"cert": []byte("envnrevbnbvsbjkrtn")}
-		_, err := c.context.Clientset.CoreV1().Secrets(c.store.Namespace).Create(context.TODO(), tlsSecret, metav1.CreateOptions{})
+		_, err := c.context.Clientset.CoreV1().Secrets(c.store.Namespace).Create(t.Context(), tlsSecret, metav1.CreateOptions{})
 		assert.NoError(t, err)
 		b, err := c.CheckRGWKMS()
 		assert.True(t, b)
@@ -615,7 +653,7 @@ func TestCheckRGWKMS(t *testing.T) {
 }
 
 func TestCheckRGWSSES3Enabled(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	setupTest := func() *clusterConfig {
 		context := &clusterd.Context{Clientset: test.New(t, 3)}
 		store := simpleStore()
@@ -696,7 +734,7 @@ func TestCheckRGWSSES3Enabled(t *testing.T) {
 				Namespace: c.store.Namespace,
 			},
 		}
-		_, err := c.context.Clientset.CoreV1().Secrets(c.store.Namespace).Create(context.TODO(), tlsSecret, metav1.CreateOptions{})
+		_, err := c.context.Clientset.CoreV1().Secrets(c.store.Namespace).Create(t.Context(), tlsSecret, metav1.CreateOptions{})
 		assert.NoError(t, err)
 		b, err := c.CheckRGWSSES3Enabled()
 		assert.False(t, b)
@@ -716,7 +754,7 @@ func TestCheckRGWSSES3Enabled(t *testing.T) {
 			},
 		}
 		tlsSecret.Data = map[string][]byte{"cert": []byte("envnrevbnbvsbjkrtn")}
-		_, err := c.context.Clientset.CoreV1().Secrets(c.store.Namespace).Create(context.TODO(), tlsSecret, metav1.CreateOptions{})
+		_, err := c.context.Clientset.CoreV1().Secrets(c.store.Namespace).Create(t.Context(), tlsSecret, metav1.CreateOptions{})
 		assert.NoError(t, err)
 		b, err := c.CheckRGWSSES3Enabled()
 		assert.True(t, b)
@@ -822,7 +860,7 @@ func TestMakeRGWPodSpec(t *testing.T) {
 }
 
 func TestAWSServerSideEncryption(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	// Placeholder
 	context := &clusterd.Context{Clientset: test.New(t, 3)}
 
@@ -1072,6 +1110,9 @@ func TestRgwCommandFlags(t *testing.T) {
 	assert.NoError(t, err)
 	baseArgs := rgwContainer.Args // args without rgwCommandFlags set
 
+	// by default radosgw is launched directly without the opt-in nofile soft-limit bump.
+	assert.Equal(t, []string{"radosgw"}, rgwContainer.Command)
+
 	t.Run("empty map adds no flags", func(t *testing.T) {
 		c.store.Spec.Gateway.RgwCommandFlags = map[string]string{}
 		rgwContainer, err := c.makeDaemonContainer(rgwConfig)
@@ -1111,12 +1152,94 @@ func TestRgwCommandFlags(t *testing.T) {
 		}
 		rgwContainer, err := c.makeDaemonContainer(rgwConfig)
 		assert.NoError(t, err)
-		// ordering of additional args amongst themselves doesn't matter (and is random b/c of
-		// underlying map data type), but it is still important that the additional args are always
-		// after the args Rook normally applies
+		// the additional args must always be after the args Rook normally applies, and they must be
+		// emitted in a deterministic (sorted-by-key) order so that an operator restart does not roll
+		// the RGW pods when the spec is unchanged (see issue #18585)
 		l := len(rgwContainer.Args)
 		addedArgs := rgwContainer.Args[l-3:]
-		assert.ElementsMatch(t, []string{"--rgw-option=val spaced", "--rgw-option=val-dashed", "--rgw-option=val_underscored"}, addedArgs)
+		// keys sorted: "rgw option" < "rgw-option" < "rgw_option"
+		assert.Equal(t, []string{"--rgw-option=val spaced", "--rgw-option=val-dashed", "--rgw-option=val_underscored"}, addedArgs)
+
+		// the same spec must always produce the same args across reconciles
+		for i := 0; i < 5; i++ {
+			again, err := c.makeDaemonContainer(rgwConfig)
+			assert.NoError(t, err)
+			assert.Equal(t, rgwContainer.Args, again.Args)
+		}
+	})
+}
+
+func TestRgwShouldRaiseNofileLimit(t *testing.T) {
+	context := &clusterd.Context{Clientset: test.New(t, 3)}
+	store := simpleStore()
+	info := clienttest.CreateTestClusterInfo(1)
+	info.CephVersion = cephver.CephVersion{Major: 18, Minor: 2, Extra: 0}
+	info.Namespace = store.Namespace
+	data := cephconfig.NewStatelessDaemonDataPathMap(cephconfig.RgwType, "default", "rook-ceph", "/var/lib/rook/")
+	executorFunc := func(command string, args ...string) (string, error) {
+		return `{"id":"test-id"}`, nil
+	}
+	executorFuncTimeout := func(timeout time.Duration, command string, args ...string) (string, error) {
+		return `{"id":"test-id"}`, nil
+	}
+	context.Executor = &exectest.MockExecutor{
+		MockExecuteCommandWithOutput:         executorFunc,
+		MockExecuteCommandWithCombinedOutput: executorFunc,
+		MockExecuteCommandWithTimeout:        executorFuncTimeout,
+	}
+	c := &clusterConfig{
+		clusterInfo: info,
+		store:       store,
+		context:     context,
+		rookVersion: "rook/rook:myversion",
+		clusterSpec: &cephv1.ClusterSpec{
+			CephVersion: cephv1.CephVersionSpec{Image: "quay.io/ceph/ceph:v19.3"},
+		},
+		DataPathMap: data,
+	}
+	rgwConfig := &rgwConfig{
+		ResourceName: fmt.Sprintf("%s-%s", AppName, c.store.Name),
+		DaemonID:     "default",
+	}
+
+	directCommand := []string{"radosgw"}
+	wrappedCommand := []string{"bash", "-c", `pod_hard_limit="$(ulimit -Hn)" && ulimit -n "$pod_hard_limit" && exec radosgw "$0" "$@"`}
+
+	t.Run("disabled by default", func(t *testing.T) {
+		container, err := c.makeDaemonContainer(rgwConfig)
+		assert.NoError(t, err)
+		assert.Equal(t, directCommand, container.Command)
+	})
+
+	t.Run("enabled when annotation is true", func(t *testing.T) {
+		c.store.ObjectMeta.Annotations = map[string]string{controller.RaiseNofileLimitAnnotationKey: "true"}
+		container, err := c.makeDaemonContainer(rgwConfig)
+		assert.NoError(t, err)
+		assert.Equal(t, wrappedCommand, container.Command)
+	})
+
+	t.Run("disabled when annotation is false", func(t *testing.T) {
+		c.store.ObjectMeta.Annotations = map[string]string{controller.RaiseNofileLimitAnnotationKey: "false"}
+		container, err := c.makeDaemonContainer(rgwConfig)
+		assert.NoError(t, err)
+		assert.Equal(t, directCommand, container.Command)
+	})
+
+	t.Run("invalid annotation value falls back to disabled", func(t *testing.T) {
+		c.store.ObjectMeta.Annotations = map[string]string{controller.RaiseNofileLimitAnnotationKey: "notabool"}
+		container, err := c.makeDaemonContainer(rgwConfig)
+		assert.NoError(t, err)
+		assert.Equal(t, directCommand, container.Command)
+	})
+
+	t.Run("enabled with localized read affinity", func(t *testing.T) {
+		c.store.ObjectMeta.Annotations = map[string]string{controller.RaiseNofileLimitAnnotationKey: "true"}
+		c.clusterInfo.CephVersion = cephver.CephVersion{Major: 20}
+		c.store.Spec.Gateway.ReadAffinity = &cephv1.RgwReadAffinity{Type: "localize"}
+		container, err := c.makeDaemonContainer(rgwConfig)
+		assert.NoError(t, err)
+		expected := []string{"bash", "-x", "-c", `pod_hard_limit="$(ulimit -Hn)" && ulimit -n "$pod_hard_limit" && exec radosgw --crush-location="host=${NODE_NAME//./-}" "$0" "$@"`}
+		assert.Equal(t, expected, container.Command)
 	})
 }
 
@@ -1142,7 +1265,7 @@ func TestAddDNSNamesToRGWPodSpec(t *testing.T) {
 			if len(customEndpoints) > 0 {
 				zone.Spec.CustomEndpoints = customEndpoints
 			}
-			_, err := ctx.RookClientset.CephV1().CephObjectZones(store.Namespace).Create(context.TODO(), zone, metav1.CreateOptions{})
+			_, err := ctx.RookClientset.CephV1().CephObjectZones(store.Namespace).Create(t.Context(), zone, metav1.CreateOptions{})
 			assert.NoError(t, err)
 		}
 		return &clusterConfig{
@@ -1735,7 +1858,7 @@ func TestRgwReadAffinity(t *testing.T) {
 			container, err := c.makeDaemonContainer(rgwConfig)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.isReadAffinityArgSet, slices.Contains(container.Args, fmt.Sprintf("--rados-replica-read-policy=%s", tt.readAffinity)))
-			assert.Equal(t, tt.isCrushLocationArgSet, slices.Contains(container.Command, `exec radosgw --crush-location="host=${NODE_NAME//./-}" "$@"`))
+			assert.Equal(t, tt.isCrushLocationArgSet, slices.Contains(container.Command, `exec radosgw --crush-location="host=${NODE_NAME//./-}" "$0" "$@"`))
 		})
 	}
 }
@@ -1756,6 +1879,32 @@ func TestGenerateServiceLabels(t *testing.T) {
 	assert.Equal(t, "my-value", svc.ObjectMeta.Labels["my-label"])
 	// Verify default labels are still present
 	assert.Equal(t, "rook-ceph-rgw", svc.ObjectMeta.Labels["app"])
+}
+
+func TestGenerateServiceTrafficDistribution(t *testing.T) {
+	store := simpleStore()
+	c := &clusterConfig{
+		clusterInfo: clienttest.CreateTestClusterInfo(1),
+		store:       store,
+		clusterSpec: &cephv1.ClusterSpec{},
+	}
+
+	t.Run("unset", func(t *testing.T) {
+		svc := c.generateService(store)
+		assert.Nil(t, svc.Spec.TrafficDistribution)
+	})
+
+	t.Run("set", func(t *testing.T) {
+		store.Spec.Gateway.Service = &cephv1.RGWServiceSpec{
+			TrafficDistribution: v1.ServiceTrafficDistributionPreferSameNode,
+		}
+		svc := c.generateService(store)
+		if assert.NotNil(t, svc.Spec.TrafficDistribution) {
+			assert.Equal(t, v1.ServiceTrafficDistributionPreferSameNode, *svc.Spec.TrafficDistribution)
+		}
+		// the selector must survive alongside the traffic distribution
+		assert.Equal(t, "rook-ceph-rgw", svc.Spec.Selector["app"])
+	})
 }
 
 func TestServiceUniqueIDSupported(t *testing.T) {

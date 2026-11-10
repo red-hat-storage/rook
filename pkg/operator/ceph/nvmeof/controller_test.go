@@ -52,7 +52,7 @@ var (
 )
 
 func TestCephNVMeOFGatewayController(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	// Set DEBUG logging
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
 	os.Setenv("ROOK_LOG_LEVEL", "DEBUG")
@@ -386,6 +386,30 @@ func TestCephNVMeOFGatewayController(t *testing.T) {
 		assert.ElementsMatch(t, names, svcNames)
 	}
 
+	assertDeploymentsExist := func(t *testing.T, cCtx *clusterd.Context, names ...string) {
+		t.Helper()
+
+		depNames := []string{}
+		deps, err := cCtx.Clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+		assert.NoError(t, err)
+		for _, dep := range deps.Items {
+			depNames = append(depNames, dep.Name)
+		}
+		assert.ElementsMatch(t, names, depNames)
+	}
+
+	assertServicesExist := func(t *testing.T, cCtx *clusterd.Context, names ...string) {
+		t.Helper()
+
+		svcNames := []string{}
+		svcs, err := cCtx.Clientset.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
+		assert.NoError(t, err)
+		for _, svc := range svcs.Items {
+			svcNames = append(svcNames, svc.Name)
+		}
+		assert.ElementsMatch(t, names, svcNames)
+	}
+
 	t.Run("run one nvmeof gateway", func(t *testing.T) {
 		cCtx := newContext(successExecutor(t))
 		cl := newControllerClient(baseCephNVMeOFGateway(), cephClusterReady(cCtx))
@@ -456,7 +480,9 @@ func TestCephNVMeOFGatewayController(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, res.RequeueAfter, time.Duration(0))
 			assertCephNVMeOFGatewayReady(t, r)
-			assertResourcesExist(t, cCtx, "rook-ceph-nvmeof-my-nvmeof-a", "rook-ceph-nvmeof-my-nvmeof-b")
+			// Deployments should be scaled down, but Services are preserved to keep stable ClusterIPs
+			assertDeploymentsExist(t, cCtx, "rook-ceph-nvmeof-my-nvmeof-a", "rook-ceph-nvmeof-my-nvmeof-b")
+			assertServicesExist(t, cCtx, "rook-ceph-nvmeof-my-nvmeof-a", "rook-ceph-nvmeof-my-nvmeof-b", "rook-ceph-nvmeof-my-nvmeof-c")
 		})
 
 		t.Run("scale from 3 to 1 gateway", func(t *testing.T) {
@@ -482,7 +508,63 @@ func TestCephNVMeOFGatewayController(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, res.RequeueAfter, time.Duration(0))
 			assertCephNVMeOFGatewayReady(t, r)
-			assertResourcesExist(t, cCtx, "rook-ceph-nvmeof-my-nvmeof-a")
+			// Deployments should be scaled down, but Services are preserved to keep stable ClusterIPs
+			assertDeploymentsExist(t, cCtx, "rook-ceph-nvmeof-my-nvmeof-a")
+			assertServicesExist(t, cCtx, "rook-ceph-nvmeof-my-nvmeof-a", "rook-ceph-nvmeof-my-nvmeof-b", "rook-ceph-nvmeof-my-nvmeof-c")
+		})
+
+		t.Run("scale down then back up preserves service", func(t *testing.T) {
+			cCtx := newContext(successExecutor(t))
+			nvmeof := baseCephNVMeOFGateway()
+			nvmeof.Spec.Instances = 2
+			cl := newControllerClient(nvmeof, cephClusterReady(cCtx))
+			r := newReconcile(cCtx, cl)
+
+			// Initial: create 2 gateways
+			res, err := r.Reconcile(ctx, req)
+			assert.NoError(t, err)
+			assert.Equal(t, res.RequeueAfter, time.Duration(0))
+			assertResourcesExist(t, cCtx, "rook-ceph-nvmeof-my-nvmeof-a", "rook-ceph-nvmeof-my-nvmeof-b")
+
+			// Record the service UID before scale-down to verify it persists
+			svcBefore, getErr := cCtx.Clientset.CoreV1().Services(namespace).Get(ctx, "rook-ceph-nvmeof-my-nvmeof-b", metav1.GetOptions{})
+			assert.NoError(t, getErr)
+			svcUIDBefore := svcBefore.UID
+
+			// Scale down to 1
+			err = cl.Get(ctx, client.ObjectKeyFromObject(nvmeof), nvmeof)
+			assert.NoError(t, err)
+			nvmeof.Spec.Instances = 1
+			err = cl.Update(ctx, nvmeof, &client.UpdateOptions{})
+			assert.NoError(t, err)
+
+			res, err = r.Reconcile(ctx, req)
+			assert.NoError(t, err)
+			assert.Equal(t, res.RequeueAfter, time.Duration(0))
+			assertDeploymentsExist(t, cCtx, "rook-ceph-nvmeof-my-nvmeof-a")
+			assertServicesExist(t, cCtx, "rook-ceph-nvmeof-my-nvmeof-a", "rook-ceph-nvmeof-my-nvmeof-b")
+
+			// Verify Service "b" still exists with same UID (was not deleted and recreated)
+			svcDuring, getErr := cCtx.Clientset.CoreV1().Services(namespace).Get(ctx, "rook-ceph-nvmeof-my-nvmeof-b", metav1.GetOptions{})
+			assert.NoError(t, getErr)
+			assert.Equal(t, svcUIDBefore, svcDuring.UID, "Service should not be recreated on scale-down")
+
+			// Scale back up to 2
+			err = cl.Get(ctx, client.ObjectKeyFromObject(nvmeof), nvmeof)
+			assert.NoError(t, err)
+			nvmeof.Spec.Instances = 2
+			err = cl.Update(ctx, nvmeof, &client.UpdateOptions{})
+			assert.NoError(t, err)
+
+			res, err = r.Reconcile(ctx, req)
+			assert.NoError(t, err)
+			assert.Equal(t, res.RequeueAfter, time.Duration(0))
+			assertResourcesExist(t, cCtx, "rook-ceph-nvmeof-my-nvmeof-a", "rook-ceph-nvmeof-my-nvmeof-b")
+
+			// Verify Service "b" still has same UID after scale-up (reused, not recreated)
+			svcAfter, getErr := cCtx.Clientset.CoreV1().Services(namespace).Get(ctx, "rook-ceph-nvmeof-my-nvmeof-b", metav1.GetOptions{})
+			assert.NoError(t, getErr)
+			assert.Equal(t, svcUIDBefore, svcAfter.UID, "Service should be reused after scale-up, not recreated")
 		})
 	})
 
@@ -535,8 +617,13 @@ func TestCephNVMeOFGatewayController(t *testing.T) {
 			assert.Equal(t, res.RequeueAfter, time.Duration(0))
 
 			assertCephNVMeOFGatewayReady(t, r, "my-nvmeof", "nvmeof2")
-			assertResourcesExist(t, cCtx,
+			// Deployments should be scaled down, but Services are preserved to keep stable ClusterIPs
+			assertDeploymentsExist(t, cCtx,
 				"rook-ceph-nvmeof-my-nvmeof-a",
+				"rook-ceph-nvmeof-nvmeof2-a", "rook-ceph-nvmeof-nvmeof2-b",
+			)
+			assertServicesExist(t, cCtx,
+				"rook-ceph-nvmeof-my-nvmeof-a", "rook-ceph-nvmeof-my-nvmeof-b", "rook-ceph-nvmeof-my-nvmeof-c",
 				"rook-ceph-nvmeof-nvmeof2-a", "rook-ceph-nvmeof-nvmeof2-b",
 			)
 		})
@@ -544,7 +631,7 @@ func TestCephNVMeOFGatewayController(t *testing.T) {
 }
 
 func TestNVMeOFKeyRotation(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	var (
 		name      = "my-nvmeof"
 		namespace = "rook-ceph"
@@ -757,8 +844,8 @@ func TestNVMeOFKeyRotation(t *testing.T) {
 }
 
 func TestNVMeOFConfigGeneration(t *testing.T) {
-	t.Run("defaults", func(t *testing.T) {
-		config, err := getNVMeOFGatewayConfig("pool-a", "pod-a", "10.0.0.1", "ana-a", false, nil)
+	t.Run("defaults with interrupt mode", func(t *testing.T) {
+		config, err := getNVMeOFGatewayConfig("pool-a", "pod-a", "10.0.0.1", "ana-a", false, true, nil)
 		assert.NoError(t, err)
 
 		cfg, err := ini.Load([]byte(config))
@@ -772,12 +859,22 @@ func TestNVMeOFConfigGeneration(t *testing.T) {
 		assert.Equal(t, "admin", cfg.Section("ceph").Key("id").String())
 		assert.Equal(t, "pool-a", cfg.Section("ceph").Key("pool").String())
 		assert.Equal(t, "4096", cfg.Section("spdk").Key("mem_size").String())
+		assert.Equal(t, "--interrupt-mode", cfg.Section("spdk").Key("tgt_cmd_extra_args").String())
 		assert.Equal(t, "5499", cfg.Section("monitor").Key("port").String())
 		assert.Equal(t, "", cfg.Section("gateway").Key("override_hostname").String())
 	})
 
+	t.Run("poll mode disables interrupt mode", func(t *testing.T) {
+		config, err := getNVMeOFGatewayConfig("pool-a", "pod-a", "10.0.0.1", "ana-a", false, false, nil)
+		assert.NoError(t, err)
+
+		cfg, err := ini.Load([]byte(config))
+		assert.NoError(t, err)
+		assert.Equal(t, "", cfg.Section("spdk").Key("tgt_cmd_extra_args").String())
+	})
+
 	t.Run("hostNetwork sets override_hostname", func(t *testing.T) {
-		config, err := getNVMeOFGatewayConfig("pool-a", "pod-a", "10.0.0.1", "ana-a", true, nil)
+		config, err := getNVMeOFGatewayConfig("pool-a", "pod-a", "10.0.0.1", "ana-a", true, true, nil)
 		assert.NoError(t, err)
 
 		cfg, err := ini.Load([]byte(config))
@@ -798,7 +895,7 @@ func TestNVMeOFConfigGeneration(t *testing.T) {
 				"foo": "bar",
 			},
 		}
-		config, err := getNVMeOFGatewayConfig("pool-a", "pod-a", "10.0.0.1", "ana-a", false, userConfig)
+		config, err := getNVMeOFGatewayConfig("pool-a", "pod-a", "10.0.0.1", "ana-a", false, true, userConfig)
 		assert.NoError(t, err)
 
 		cfg, err := ini.Load([]byte(config))
@@ -807,6 +904,20 @@ func TestNVMeOFConfigGeneration(t *testing.T) {
 		assert.Equal(t, "True", cfg.Section("gateway").Key("enable_auth").String())
 		assert.Equal(t, "pool-b", cfg.Section("ceph").Key("pool").String())
 		assert.Equal(t, "bar", cfg.Section("custom").Key("foo").String())
+	})
+
+	t.Run("user can extend tgt_cmd_extra_args in interrupt mode", func(t *testing.T) {
+		userConfig := map[string]map[string]string{
+			"spdk": {
+				"tgt_cmd_extra_args": `--interrupt-mode --env-context="--no-huge -m1024"`,
+			},
+		}
+		config, err := getNVMeOFGatewayConfig("pool-a", "pod-a", "10.0.0.1", "ana-a", false, true, userConfig)
+		assert.NoError(t, err)
+
+		cfg, err := ini.Load([]byte(config))
+		assert.NoError(t, err)
+		assert.Equal(t, `--interrupt-mode --env-context="--no-huge -m1024"`, cfg.Section("spdk").Key("tgt_cmd_extra_args").String())
 	})
 }
 
@@ -844,4 +955,33 @@ func TestNVMeOFConfigMapGeneration(t *testing.T) {
 	assert.Equal(t, "group-a", cfg.Section("gateway").Key("group").String())
 	assert.Equal(t, "5511", cfg.Section("gateway").Key("port").String())
 	assert.Equal(t, nvmeofPoolName, cfg.Section("ceph").Key("pool").String())
+	// InterruptMode is nil, should default to interrupt mode enabled
+	assert.Equal(t, "--interrupt-mode", cfg.Section("spdk").Key("tgt_cmd_extra_args").String())
+}
+
+func TestNVMeOFConfigMapGenerationPollMode(t *testing.T) {
+	pollMode := false
+	nvmeof := &cephv1.CephNVMeOFGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-nvmeof",
+			Namespace: "rook-ceph",
+		},
+		Spec: cephv1.NVMeOFGatewaySpec{
+			Group:         "group-a",
+			Instances:     1,
+			InterruptMode: &pollMode,
+		},
+		TypeMeta: controllerTypeMeta,
+	}
+
+	r := &ReconcileCephNVMeOFGateway{
+		cephClusterSpec: &cephv1.ClusterSpec{},
+	}
+	configMap, err := r.generateConfigMap(nvmeof, "a")
+	assert.NoError(t, err)
+
+	cfg, err := ini.Load([]byte(configMap.Data["config"]))
+	assert.NoError(t, err)
+	// interruptMode=false should not set tgt_cmd_extra_args
+	assert.Equal(t, "", cfg.Section("spdk").Key("tgt_cmd_extra_args").String())
 }

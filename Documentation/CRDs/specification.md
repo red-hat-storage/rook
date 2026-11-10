@@ -223,7 +223,13 @@ string
 </td>
 <td>
 <em>(Optional)</em>
-<p>List of events that should trigger the notification</p>
+<p>List of events that should trigger the notification. The S3 API requires a
+non-empty list, so when this is unset or empty Rook sends s3:ObjectCreated:*
+and s3:ObjectRemoved:* itself rather than deferring to RGW; those are the same
+two families RGW uses as its own default. That fallback covers only those two
+families: to receive the lifecycle, replication or sync events RGW also
+supports, list them here explicitly. The values are not validated by the CRD,
+so one RGW does not recognize fails the notification at provisioning time.</p>
 </td>
 </tr>
 <tr>
@@ -2283,6 +2289,25 @@ is preserved, except when DefaultPlacement changes, which resets the
 storage class to the new target&rsquo;s default (STANDARD).</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>secretTemplate,omitzero</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.SecretTemplate">
+SecretTemplate
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>SecretTemplate defines labels and annotations to add to the Secret that
+holds this user&rsquo;s credentials, for example to opt the Secret in to a
+tool that copies Secrets into other namespaces. Anyone who can edit this
+CephObjectStoreUser can use it to hand the credentials to such a tool.
+The labels app, user, rook_cluster and rook_object_store, which Rook
+sets on this Secret, are reserved.</p>
+</td>
+</tr>
 </table>
 </td>
 </tr>
@@ -2781,6 +2806,146 @@ future release.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="ceph.rook.io/v1.AccountQuotaSpec">AccountQuotaSpec
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ObjectStoreAccountSpec">ObjectStoreAccountSpec</a>)
+</p>
+<div>
+<p>AccountQuotaSpec configures the storage quotas and resource limits for an RGW account.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>maxSize</code><br/>
+<em>
+k8s.io/apimachinery/pkg/api/resource.Quantity
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxSize is the account-wide storage quota, limiting the total size of all objects across all
+buckets owned by the account.
+Values:
+- <code>-1</code>: Unlimited data allowed
+- <code>0</code>: No data allowed
+- Positive value <code>N</code>: Maximum of N units of data allowed
+Default: <code>-1</code>.
+Example: <code>100Gi</code> = Maximum 100 gibibytes of data allowed.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxObjects</code><br/>
+<em>
+int64
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxObjects is the account-wide object quota, limiting the total number of objects across all
+buckets owned by the account.
+Values:
+- <code>-1</code>: Unlimited objects allowed
+- <code>0</code>: No objects allowed
+- Positive integer <code>N</code>: Maximum of N objects allowed
+Default: <code>-1</code>.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxBuckets</code><br/>
+<em>
+int64
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxBuckets is the maximum number of buckets the account can own.
+Values:
+- <code>-1</code>: Unlimited buckets allowed
+- <code>0</code>: No buckets allowed
+- Positive integer <code>N</code>: Maximum of N buckets allowed
+Default: <code>1000</code>.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxUsers</code><br/>
+<em>
+int64
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxUsers is the maximum number of users the account can own.
+Values:
+- <code>-1</code>: Unlimited users allowed
+- <code>0</code>: No users allowed
+- Positive integer <code>N</code>: Maximum of N users allowed
+Default: <code>1000</code>.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxRoles</code><br/>
+<em>
+int64
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxRoles is the maximum number of IAM roles the account can own.
+Values:
+- <code>-1</code>: Unlimited roles allowed
+- <code>0</code>: No roles allowed
+- Positive integer <code>N</code>: Maximum of N roles allowed
+Default: <code>1000</code>.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxGroups</code><br/>
+<em>
+int64
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxGroups is the maximum number of IAM groups the account can own.
+Values:
+- <code>-1</code>: Unlimited groups allowed
+- <code>0</code>: No groups allowed
+- Positive integer <code>N</code>: Maximum of N groups allowed
+Default: <code>1000</code>.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxAccessKeys</code><br/>
+<em>
+int64
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxAccessKeys is the maximum number of access keys each user in the account can have.
+Values:
+- <code>-1</code>: Unlimited keys allowed
+- <code>0</code>: No keys allowed
+- Positive integer <code>N</code>: Maximum of N keys allowed per user
+Default: <code>4</code>.</p>
+</td>
+</tr>
+</tbody>
+</table>
 <h3 id="ceph.rook.io/v1.AccountRootUserSpec">AccountRootUserSpec
 </h3>
 <p>
@@ -2849,7 +3014,8 @@ string
 <p>SubPath defines the sub-path (subdirectory) of the directory root where the volumeSource will
 be mounted. All files/keys in the volume source&rsquo;s volume will be mounted to the subdirectory.
 This is not the same as the Kubernetes <code>subPath</code> volume mount option.
-Each subPath definition must be unique and must not contain &lsquo;:&rsquo;.</p>
+Each subPath definition must be unique and must not contain &lsquo;:&rsquo;. A subPath with a &lsquo;..&rsquo; path
+element is rejected.</p>
 </td>
 </tr>
 <tr>
@@ -2924,6 +3090,17 @@ CIDRList
 </tr>
 </tbody>
 </table>
+<h3 id="ceph.rook.io/v1.AnnotationValue">AnnotationValue
+(<code>string</code> alias)</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.SecretTemplate">SecretTemplate</a>)
+</p>
+<div>
+<p>AnnotationValue is a Kubernetes annotation value of at most 256 KiB. Its
+length is also capped at 262144 characters, the most a 256 KiB value can
+hold, because the API server needs that bound to accept the CEL rules that
+check a template&rsquo;s annotations.</p>
+</div>
 <h3 id="ceph.rook.io/v1.Annotations">Annotations
 (<code>map[string]string</code> alias)</h3>
 <p>
@@ -3019,7 +3196,13 @@ string
 </td>
 <td>
 <em>(Optional)</em>
-<p>List of events that should trigger the notification</p>
+<p>List of events that should trigger the notification. The S3 API requires a
+non-empty list, so when this is unset or empty Rook sends s3:ObjectCreated:*
+and s3:ObjectRemoved:* itself rather than deferring to RGW; those are the same
+two families RGW uses as its own default. That fallback covers only those two
+families: to receive the lifecycle, replication or sync events RGW also
+supports, list them here explicitly. The values are not validated by the CRD,
+so one RGW does not recognize fails the notification at provisioning time.</p>
 </td>
 </tr>
 <tr>
@@ -3587,6 +3770,17 @@ ConditionType
 </tr>
 <tr>
 <td>
+<code>message</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+</td>
+</tr>
+<tr>
+<td>
 <code>info</code><br/>
 <em>
 map[string]string
@@ -3672,6 +3866,17 @@ SnapshotScheduleStatusSpec
 <a href="#ceph.rook.io/v1.ConditionType">
 ConditionType
 </a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+</td>
+</tr>
+<tr>
+<td>
+<code>message</code><br/>
+<em>
+string
 </em>
 </td>
 <td>
@@ -4211,6 +4416,17 @@ ConditionType
 </tr>
 <tr>
 <td>
+<code>message</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+</td>
+</tr>
+<tr>
+<td>
 <code>snapshotScheduleStatus</code><br/>
 <em>
 <a href="#ceph.rook.io/v1.FilesystemSnapshotScheduleStatusSpec">
@@ -4479,6 +4695,17 @@ ConditionType
 </tr>
 <tr>
 <td>
+<code>message</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+</td>
+</tr>
+<tr>
+<td>
 <code>info</code><br/>
 <em>
 map[string]string
@@ -4721,6 +4948,22 @@ bool
 <td>
 <em>(Optional)</em>
 <p>Whether host networking is enabled for the gateway. If not set, the network settings from the cluster CR will be applied.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>interruptMode</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>InterruptMode controls whether SPDK runs in interrupt mode (true) or poll mode (false).
+In interrupt mode, SPDK reactors only consume CPU when processing I/O, dramatically
+reducing idle CPU usage. In poll mode, reactors spin at 100% CPU per core for lowest
+latency under heavy I/O workloads.
+If not set, defaults to true (interrupt mode).</p>
 </td>
 </tr>
 <tr>
@@ -8718,7 +8961,9 @@ AdditionalVolumeMounts
 <p>AdditionalVolumeMounts allows additional volumes to be mounted to the RGW pod.
 The root directory for each additional volume mount is <code>/var/rgw</code>.
 Example: for an additional mount at subPath <code>ldap</code>, mounted from a secret that has key
-<code>bindpass.secret</code>, the file would reside at <code>/var/rgw/ldap/bindpass.secret</code>.</p>
+<code>bindpass.secret</code>, the file would reside at <code>/var/rgw/ldap/bindpass.secret</code>.
+Anyone who can edit this field can mount any host path, or any Secret in the namespace, into
+the RGW pod.</p>
 </td>
 </tr>
 <tr>
@@ -9462,6 +9707,15 @@ int
 </tr>
 </tbody>
 </table>
+<h3 id="ceph.rook.io/v1.LabelValue">LabelValue
+(<code>string</code> alias)</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.SecretTemplate">SecretTemplate</a>)
+</p>
+<div>
+<p>LabelValue is a Kubernetes label value: at most 63 characters, empty or
+alphanumeric at both ends, with &lsquo;-&rsquo;, &lsquo;_&rsquo; and &lsquo;.&rsquo; allowed in between.</p>
+</div>
 <h3 id="ceph.rook.io/v1.Labels">Labels
 (<code>map[string]string</code> alias)</h3>
 <p>
@@ -10771,6 +11025,20 @@ Kubernetes meta/v1.Duration
 </tr>
 <tr>
 <td>
+<code>scrapeTimeoutSeconds</code><br/>
+<em>
+int64
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ScrapeTimeoutSeconds determines the timeout of a prometheus scrape, in seconds. It must
+not be greater than the scrape interval, which defaults to 10s when unset. Defaults to the
+Prometheus global scrape timeout when unset.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>metricsTLS,omitzero</code><br/>
 <em>
 <a href="#ceph.rook.io/v1.MetricsTLSSpec">
@@ -11023,6 +11291,17 @@ LocalCephxStatus
 <td>
 </td>
 </tr>
+<tr>
+<td>
+<code>message</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+</td>
+</tr>
 </tbody>
 </table>
 <h3 id="ceph.rook.io/v1.NVMeOFGatewayPorts">NVMeOFGatewayPorts
@@ -11252,6 +11531,22 @@ bool
 </tr>
 <tr>
 <td>
+<code>interruptMode</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>InterruptMode controls whether SPDK runs in interrupt mode (true) or poll mode (false).
+In interrupt mode, SPDK reactors only consume CPU when processing I/O, dramatically
+reducing idle CPU usage. In poll mode, reactors spin at 100% CPU per core for lowest
+latency under heavy I/O workloads.
+If not set, defaults to true (interrupt mode).</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>ports</code><br/>
 <em>
 <a href="#ceph.rook.io/v1.NVMeOFGatewayPorts">
@@ -11322,6 +11617,17 @@ LocalCephxStatus
 </em>
 </td>
 <td>
+</td>
+</tr>
+<tr>
+<td>
+<code>message</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
 </td>
 </tr>
 </tbody>
@@ -12215,6 +12521,22 @@ AccountRootUserSpec
 and has default permissions across all account resources.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>quotas,omitzero</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.AccountQuotaSpec">
+AccountQuotaSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Quotas sets the storage quotas and resource limits for the account.
+Accounts have several default limits. When unspecified, default limits apply.
+It is recommended to set all quotas for each account.</p>
+</td>
+</tr>
 </tbody>
 </table>
 <h3 id="ceph.rook.io/v1.ObjectStoreAccountStatus">ObjectStoreAccountStatus
@@ -12956,6 +13278,25 @@ RGW rejects unknown storage classes. If this field is absent the
 controller does not manage the user&rsquo;s storage class: an existing value
 is preserved, except when DefaultPlacement changes, which resets the
 storage class to the new target&rsquo;s default (STANDARD).</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>secretTemplate,omitzero</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.SecretTemplate">
+SecretTemplate
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>SecretTemplate defines labels and annotations to add to the Secret that
+holds this user&rsquo;s credentials, for example to opt the Secret in to a
+tool that copies Secrets into other namespaces. Anyone who can edit this
+CephObjectStoreUser can use it to hand the credentials to such a tool.
+The labels app, user, rook_cluster and rook_object_store, which Rook
+sets on this Secret, are reserved.</p>
 </td>
 </tr>
 </tbody>
@@ -14553,6 +14894,18 @@ Labels
 <p>The labels-related configuration to add/set on each rgw service.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>trafficDistribution</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>The trafficDistribution to set on each rgw service.</p>
+</td>
+</tr>
 </tbody>
 </table>
 <h3 id="ceph.rook.io/v1.RadosNamespaceMirroring">RadosNamespaceMirroring
@@ -14910,7 +15263,9 @@ AdditionalVolumeMounts
 <em>(Optional)</em>
 <p>AdditionalFiles defines any number of additional files that should be mounted into the SSSD
 sidecar with a directory root of <code>/etc/sssd/rook-additional/</code>.
-These files may be referenced by the sssd.conf config file.</p>
+These files may be referenced by the sssd.conf config file.
+Anyone who can edit this field can mount any host path, or any Secret in the namespace, into
+the SSSD sidecar.</p>
 </td>
 </tr>
 <tr>
@@ -15162,6 +15517,56 @@ string
 </em>
 </td>
 <td>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ceph.rook.io/v1.SecretTemplate">SecretTemplate
+</h3>
+<p>
+(<em>Appears on:</em><a href="#ceph.rook.io/v1.ObjectStoreUserSpec">ObjectStoreUserSpec</a>)
+</p>
+<div>
+<p>SecretTemplate defines labels and annotations to add to a Secret that Rook
+generates. Keys that Rook acts on in any Secret are rejected here; a resource
+that uses this type also reserves the labels it sets on its own Secret.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>labels</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.LabelValue">
+map[string]github.com/rook/rook/pkg/apis/ceph.rook.io/v1.LabelValue
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Labels to add to the Secret. The key do_not_reconcile, and keys with a
+rook.io or *.rook.io prefix, are reserved.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>annotations</code><br/>
+<em>
+<a href="#ceph.rook.io/v1.AnnotationValue">
+map[string]github.com/rook/rook/pkg/apis/ceph.rook.io/v1.AnnotationValue
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Annotations to add to the Secret, at most 256 KiB in total. The key
+cephx-keyring, and keys with a rook.io or *.rook.io prefix, are reserved.</p>
 </td>
 </tr>
 </tbody>

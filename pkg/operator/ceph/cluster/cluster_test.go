@@ -122,6 +122,9 @@ func TestConfigureMsgr2(t *testing.T) {
 					"ms_cluster_mode":         "secure",
 					"ms_service_mode":         "secure",
 					"ms_client_mode":          "secure",
+					"ms_mon_cluster_mode":     "secure",
+					"ms_mon_service_mode":     "secure",
+					"ms_mon_client_mode":      "secure",
 					"rbd_default_map_options": "ms_mode=secure",
 				},
 				cephVersion: cephver.CephVersion{Major: 16},
@@ -639,7 +642,7 @@ func TestFetchCephConfigFromSecrets(t *testing.T) {
 			clusterInfo := cephclient.AdminTestClusterInfo("rook-ceph")
 
 			for _, s := range tc.secrets {
-				_, err := clientset.CoreV1().Secrets(s.Namespace).Create(context.TODO(), s, metav1.CreateOptions{})
+				_, err := clientset.CoreV1().Secrets(s.Namespace).Create(t.Context(), s, metav1.CreateOptions{})
 				assert.NoError(t, err)
 			}
 
@@ -703,13 +706,13 @@ func Test_initClusterCephxStatus(t *testing.T) {
 				Username: "client.admin",
 				Secret:   "BBBBBBBBBBBBB==",
 			},
-			Context: context.TODO(),
+			Context: t.Context(),
 		}
 	}
 
 	notreadyClusterInfo := func() *cephclient.ClusterInfo {
 		return &cephclient.ClusterInfo{
-			Context: context.TODO(),
+			Context: t.Context(),
 		}
 	}
 
@@ -720,7 +723,7 @@ func Test_initClusterCephxStatus(t *testing.T) {
 		assert.NoError(t, err)
 
 		cluster := cephv1.CephCluster{}
-		err = c.context.Client.Get(context.TODO(), c.namespacedName, &cluster)
+		err = c.context.Client.Get(t.Context(), c.namespacedName, &cluster)
 		assert.NoError(t, err)
 		assert.Equal(t, cephv1.ClusterCephxStatus{}, cluster.Status.Cephx)
 	})
@@ -732,7 +735,7 @@ func Test_initClusterCephxStatus(t *testing.T) {
 		assert.NoError(t, err)
 
 		cluster := cephv1.CephCluster{}
-		err = c.context.Client.Get(context.TODO(), c.namespacedName, &cluster)
+		err = c.context.Client.Get(t.Context(), c.namespacedName, &cluster)
 		assert.NoError(t, err)
 		assert.Equal(t, keyring.UninitializedCephxStatus(), cluster.Status.Cephx.Mon)
 		assert.Equal(t, cephv1.CephxStatus{}, cluster.Status.Cephx.Mgr) // no status means no update
@@ -746,7 +749,7 @@ func Test_initClusterCephxStatus(t *testing.T) {
 		assert.NoError(t, err)
 
 		cluster := cephv1.CephCluster{}
-		err = c.context.Client.Get(context.TODO(), c.namespacedName, &cluster)
+		err = c.context.Client.Get(t.Context(), c.namespacedName, &cluster)
 		assert.NoError(t, err)
 		assert.Equal(t, monStatus, cluster.Status.Cephx.Mon)
 		assert.Equal(t, cephv1.CephxStatus{}, cluster.Status.Cephx.Mgr) // no status means no update
@@ -759,7 +762,7 @@ func Test_initClusterCephxStatus(t *testing.T) {
 		assert.NoError(t, err)
 
 		cluster := cephv1.CephCluster{}
-		err = c.context.Client.Get(context.TODO(), c.namespacedName, &cluster)
+		err = c.context.Client.Get(t.Context(), c.namespacedName, &cluster)
 		assert.NoError(t, err)
 		assert.Equal(t, keyring.UninitializedCephxStatus(), cluster.Status.Cephx.Mon)
 		assert.Equal(t, keyring.UninitializedCephxStatus(), cluster.Status.Cephx.Mgr)
@@ -776,7 +779,7 @@ func Test_initClusterCephxStatus(t *testing.T) {
 		assert.NoError(t, err)
 
 		cluster := cephv1.CephCluster{}
-		err = c.context.Client.Get(context.TODO(), c.namespacedName, &cluster)
+		err = c.context.Client.Get(t.Context(), c.namespacedName, &cluster)
 		assert.NoError(t, err)
 		assert.Equal(t, keyring.UninitializedCephxStatus(), cluster.Status.Cephx.Mon)
 		assert.Equal(t, cephv1.CephxStatus{}, cluster.Status.Cephx.Mgr) // no status means no update
@@ -790,7 +793,7 @@ func Test_initClusterCephxStatus(t *testing.T) {
 		assert.NoError(t, err)
 
 		cluster := cephv1.CephCluster{}
-		err = c.context.Client.Get(context.TODO(), c.namespacedName, &cluster)
+		err = c.context.Client.Get(t.Context(), c.namespacedName, &cluster)
 		assert.NoError(t, err)
 		assert.Equal(t, monStatus, cluster.Status.Cephx.Mon)
 		assert.Equal(t, cephv1.CephxStatus{}, cluster.Status.Cephx.Mgr) // no status means no update
@@ -808,7 +811,7 @@ func Test_initClusterCephxStatus(t *testing.T) {
 		assert.Error(t, err)
 
 		cluster := cephv1.CephCluster{}
-		err = c.context.Client.Get(context.TODO(), c.namespacedName, &cluster)
+		err = c.context.Client.Get(t.Context(), c.namespacedName, &cluster)
 		assert.NoError(t, err)
 		assert.Equal(t, cephv1.CephxStatus{}, cluster.Status.Cephx.Mon)
 		assert.Equal(t, cephv1.CephxStatus{}, cluster.Status.Cephx.Mgr) // no status means no update
@@ -827,7 +830,7 @@ func Test_initClusterCephxStatus(t *testing.T) {
 		assert.Error(t, err)
 
 		cluster := cephv1.CephCluster{}
-		err = c.context.Client.Get(context.TODO(), c.namespacedName, &cluster)
+		err = c.context.Client.Get(t.Context(), c.namespacedName, &cluster)
 		assert.NoError(t, err)
 		assert.Equal(t, monStatus, cluster.Status.Cephx.Mon)
 		assert.Equal(t, cephv1.CephxStatus{}, cluster.Status.Cephx.Mgr) // no status means no update

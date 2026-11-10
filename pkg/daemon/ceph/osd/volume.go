@@ -60,6 +60,10 @@ var (
 	lvmConfPath   = "/etc/lvm/lvm.conf"
 	cvLogDir      = ""
 
+	// callCephVolume and the lvm-mode and replacement prepare calls log here: a temporary location
+	// that isn't persisted, so a printed failure log carries none of a previous pod's failures
+	cephVolumeTmpLogDir = filepath.Join(os.TempDir(), "ceph-log")
+
 	isEncrypted = os.Getenv(oposd.EncryptedDeviceEnvVarName) == "true"
 	isOnPVC     = os.Getenv(oposd.PVCBackedOSDVarName) == "true"
 )
@@ -463,23 +467,31 @@ func UpdateLVMConfig(context *clusterd.Context, onPVC, lvBackedPV bool) error {
 	output = bytes.Replace(output, []byte("use_lvmetad = 1"), []byte("use_lvmetad = 0"), 1)
 	output = bytes.Replace(output, []byte("obtain_device_list_from_udev = 1"), []byte("obtain_device_list_from_udev = 0"), 1)
 
+	var filter []byte
+
 	// When running on PVC
 	if onPVC {
 		output = bytes.Replace(output, []byte(`scan = [ "/dev" ]`), []byte(`scan = [ "/dev", "/mnt" ]`), 1)
 		// Only filter blocks in /mnt, when running on PVC we copy the PVC claim path to /mnt
 		// And reject everything else
-		// We have 2 different regex depending on the version of LVM present in the container...
-		// Since https://github.com/lvmteam/lvm2/commit/08396b4bce45fb8311979250623f04ec0ddb628c#diff-13c602a6258e57ce666a240e67c44f38
-		// the content changed, so depending on which version is installed one of the two replacements will work
 		if lvBackedPV {
-			// ceph-volume calls lvs to locate given "vg/lv", so allow "/dev" here. However, ignore loopback devices
-			output = bytes.Replace(output, []byte(`# filter = [ "a|.*/|" ]`), []byte(`filter = [ "a|^/mnt/.*|", "r|^/dev/loop.*|", "a|^/dev/.*|", "r|.*|" ]`), 1)
-			output = bytes.Replace(output, []byte(`# filter = [ "a|.*|" ]`), []byte(`filter = [ "a|^/mnt/.*|", "r|^/dev/loop.*|", "a|^/dev/.*|", "r|.*|" ]`), 1)
+			// ceph-volume calls lvs to locate given "vg/lv", so allow "/dev" here.
+			// However, ignore loopback and rbd devices
+			filter = []byte(`filter = [ "a|^/mnt/.*|", "r|^/dev/loop.*|", "r|^/dev/rbd.*|", "a|^/dev/.*|", "r|.*|" ]`)
 		} else {
-			output = bytes.Replace(output, []byte(`# filter = [ "a|.*/|" ]`), []byte(`filter = [ "a|^/mnt/.*|", "r|.*|" ]`), 1)
-			output = bytes.Replace(output, []byte(`# filter = [ "a|.*|" ]`), []byte(`filter = [ "a|^/mnt/.*|", "r|.*|" ]`), 1)
+			filter = []byte(`filter = [ "a|^/mnt/.*|", "r|.*|" ]`)
 		}
+	} else {
+		// Reject RBD devices so that "lvs" does not scan them. When other OSDs are down (e.g. after
+		// a network outage), reads to mapped RBD devices can block indefinitely, which puts "lvs" in
+		// uninterruptible sleep (D state) and deadlocks OSD provisioning.
+		filter = []byte(`filter = [ "r|^/dev/rbd.*|", "a|.*|" ]`)
 	}
+	// We have 2 different regex depending on the version of LVM present in the container...
+	// Since https://github.com/lvmteam/lvm2/commit/08396b4bce45fb8311979250623f04ec0ddb628c#diff-13c602a6258e57ce666a240e67c44f38
+	// the content changed, so depending on which version is installed one of the two replacements will work
+	output = bytes.Replace(output, []byte(`# filter = [ "a|.*/|" ]`), filter, 1)
+	output = bytes.Replace(output, []byte(`# filter = [ "a|.*|" ]`), filter, 1)
 
 	// #nosec G703 -- lvmConfPath is a hard-coded constant, not user input
 	if err = os.WriteFile(lvmConfPath, output, 0o600); err != nil {
@@ -528,6 +540,12 @@ func isSafeToUseRawMode(device *DeviceOsdIDEntry) bool {
 		return false
 	}
 
+	// ceph-volume raw mode does not support encryption yet
+	if device.Config.EncryptedDevice {
+		logger.Debugf("won't use raw mode for disk %q since encryption is enabled", device.Config.Name)
+		return false
+	}
+
 	// ceph-volume raw mode does not support more than one OSD per disk
 	if device.Config.OSDsPerDevice > 1 {
 		logger.Debugf("won't use raw mode for disk %q since osd per device is %d", device.Config.Name, device.Config.OSDsPerDevice)
@@ -544,7 +562,7 @@ func isSafeToUseRawMode(device *DeviceOsdIDEntry) bool {
 }
 
 func lvmModeAllowed(device *DeviceOsdIDEntry, storeConfig *config.StoreConfig) bool {
-	if device.DeviceInfo.Type == sys.PartType && storeConfig.EncryptedDevice {
+	if device.DeviceInfo.Type == sys.PartType && (storeConfig.EncryptedDevice || device.Config.EncryptedDevice) {
 		logger.Infof("skipping partition %q for lvm mode since encryption is not supported on partitions with a `metadataDevice` or `osdsPerDevice > 1`", device.Config.Name)
 		return false
 	}
@@ -669,7 +687,7 @@ func (a *OsdAgent) initializeDevicesRawMode(context *clusterd.Context, devices *
 
 func (a *OsdAgent) initializeDevicesLVMMode(context *clusterd.Context, devices *DeviceOsdMapping) error {
 	storeFlag := a.storeConfig.GetStoreFlag()
-	logPath := "/tmp/ceph-log"
+	logPath := cephVolumeTmpLogDir
 	if err := os.MkdirAll(logPath, 0o700); err != nil {
 		return errors.Wrapf(err, "failed to create dir %q", logPath)
 	}
@@ -754,11 +772,16 @@ func (a *OsdAgent) initializeDevicesLVMMode(context *clusterd.Context, devices *
 				}
 
 				logger.Infof("using %s as metadataDevice for device %s and let ceph-volume lvm batch decide how to create volumes", md, deviceArg)
+				deviceEncrypted := strconv.FormatBool(a.storeConfig.EncryptedDevice || device.Config.EncryptedDevice)
 				if _, ok := metadataDevices[md]; ok {
 					// Fail when two devices using the same metadata device have different values for osdsPerDevice
 					metadataDevices[md]["devices"] += " " + deviceArg
 					if deviceOSDCount != metadataDevices[md]["osdsperdevice"] {
 						return errors.Errorf("metadataDevice (%s) has more than 1 osdsPerDevice value set: %s != %s", md, deviceOSDCount, metadataDevices[md]["osdsperdevice"])
+					}
+					// Fail when two devices using the same metadata device have different values for encryptedDevice
+					if deviceEncrypted != metadataDevices[md]["encrypted"] {
+						return errors.Errorf("metadataDevice (%s) has more than 1 encryptedDevice value set: %s != %s", md, deviceEncrypted, metadataDevices[md]["encrypted"])
 					}
 				} else {
 					metadataDevices[md] = make(map[string]string)
@@ -767,6 +790,7 @@ func (a *OsdAgent) initializeDevicesLVMMode(context *clusterd.Context, devices *
 						metadataDevices[md]["deviceclass"] = device.Config.DeviceClass
 					}
 					metadataDevices[md]["devices"] = deviceArg
+					metadataDevices[md]["encrypted"] = deviceEncrypted
 				}
 				if metadataDevice.Type == sys.PartType {
 					if a.metadataDevice != "" && device.Config.MetadataDevice == "" {
@@ -800,6 +824,10 @@ func (a *OsdAgent) initializeDevicesLVMMode(context *clusterd.Context, devices *
 					deviceArg,
 				}...)
 
+				if device.Config.EncryptedDevice && !a.storeConfig.EncryptedDevice {
+					immediateExecuteArgs = append(immediateExecuteArgs, encryptedFlag)
+				}
+
 				// assign the device class specific to the device
 				immediateExecuteArgs = a.appendDeviceClassArg(device, immediateExecuteArgs)
 
@@ -817,7 +845,7 @@ func (a *OsdAgent) initializeDevicesLVMMode(context *clusterd.Context, devices *
 
 				// execute ceph-volume immediately with the device-specific setting instead of batching up multiple devices together
 				if err := context.Executor.ExecuteCommand(baseCommand, immediateExecuteArgs...); err != nil {
-					cvLog := readCVLogContent("/tmp/ceph-log/ceph-volume.log")
+					cvLog := readCVLogContent(filepath.Join(cephVolumeTmpLogDir, "ceph-volume.log"))
 					if cvLog != "" {
 						logger.Errorf("%s", cvLog)
 					}
@@ -893,6 +921,10 @@ func (a *OsdAgent) initializeDevicesLVMMode(context *clusterd.Context, devices *
 				dbDeviceFlag,
 				mdPath,
 			}...)
+		}
+
+		if conf["encrypted"] == "true" && !a.storeConfig.EncryptedDevice {
+			mdArgs = append(mdArgs, encryptedFlag)
 		}
 
 		if _, ok := conf["deviceclass"]; ok {
@@ -999,12 +1031,14 @@ func (a *OsdAgent) appendDeviceClassArg(device *DeviceOsdIDEntry, args []string)
 // changes in ceph-volume behavior across Ceph versions.
 func ZapDevice(context *clusterd.Context, devicePath string) error {
 	// First, attempt ceph-volume lvm zap
+	// zap reports the logical volume's lv_tags, which for an encrypted OSD carry the dm-crypt
+	// lockbox secret, so neither branch may log the output as-is
 	output, err := context.Executor.ExecuteCommandWithCombinedOutput("stdbuf", "-oL", cephVolumeCmd, "lvm", "zap", devicePath)
 	if err != nil {
 		// log and continue with direct cleanup
-		logger.Warningf("ceph-volume lvm zap failed for %q (will continue with direct cleanup): %s. %v", devicePath, output, err)
+		logger.Warningf("ceph-volume lvm zap failed for %q (will continue with direct cleanup): %s. %v", devicePath, redactCephVolumeOutput(output), err)
 	} else {
-		logger.Infof("ceph-volume lvm zap output for %q: %s", devicePath, output)
+		logger.Infof("ceph-volume lvm zap output for %q: %s", devicePath, redactCephVolumeOutput(output))
 	}
 
 	// Follow up with Rook's internal cleanup to ensure all metadata is removed
@@ -1078,6 +1112,12 @@ func (a *OsdAgent) WipeDevicesFromOtherClusters(context *clusterd.Context) error
 	}
 
 	for _, existingOSD := range existingOSDs {
+		// An entry for a separate metadata (db/wal) device has neither a device nor a
+		// ceph_fsid. That doesn't mean it belongs to another cluster, so leave it alone.
+		if existingOSD.CephFsid == "" || existingOSD.Device == "" {
+			logger.Debugf("skip checking OSD %d with uuid %q for wiping since its device or ceph fsid is unknown", existingOSD.OsdID, existingOSD.OsdUUID)
+			continue
+		}
 		// Wipe the devices that will be used for preparing OSD but already have OSD metadata from another ceph cluster
 		if existingOSD.CephFsid != a.clusterInfo.FSID {
 			osdID := existingOSD.OsdID
@@ -1147,6 +1187,9 @@ func wipeEncryptedDevicesFromOtherClusters(context *clusterd.Context, currentClu
 
 // getOSDDiskToBeWiped returns OSD disk path and the dmcrypt block in case of encrypted OSDs
 func getOSDDiskToBeWiped(context *clusterd.Context, existingOSDDevice string) (*sys.LocalDisk, string, error) {
+	if existingOSDDevice == "" {
+		return nil, "", nil
+	}
 	var err error
 	var encryptedBlock string
 	// encrypted OSDs have /dev/mapper/* entries. Find the real device path in case of encrypted OSDs
@@ -1233,6 +1276,7 @@ func GetCephVolumeLVMOSDs(context *clusterd.Context, clusterInfo *client.Cluster
 			continue
 		}
 		var osdFSID, osdDeviceClass string
+		var osdEncrypted bool
 		for _, osd := range osdInfo {
 			if osd.Tags.ClusterFSID != cephfsid {
 				logger.Infof("skipping osd%d: %q running on a different ceph cluster %q", id, osd.Tags.OSDFSID, osd.Tags.ClusterFSID)
@@ -1240,6 +1284,7 @@ func GetCephVolumeLVMOSDs(context *clusterd.Context, clusterInfo *client.Cluster
 			}
 			osdFSID = osd.Tags.OSDFSID
 			osdDeviceClass = osd.Tags.CrushDeviceClass
+			osdEncrypted = osd.Tags.Encrypted == "1"
 
 			// If no lv is specified let's take the one we discovered
 			if lv == "" {
@@ -1275,6 +1320,7 @@ func GetCephVolumeLVMOSDs(context *clusterd.Context, clusterInfo *client.Cluster
 			CVMode:        cvMode,
 			Store:         osdStore,
 			DeviceClass:   osdDeviceClass,
+			Encrypted:     osdEncrypted,
 		}
 		osds = append(osds, osd)
 	}
@@ -1562,11 +1608,14 @@ func GetCephVolumeRawOSDs(context *clusterd.Context, clusterInfo *client.Cluster
 	return osds, nil
 }
 
-// the ceph-volume list output reports the cephx lockbox secret of every encrypted OSD, both as a
-// json tag map and as the raw lv_tags string, and none of it belongs in a pod log
+// the ceph-volume list and zap output reports the cephx lockbox secret of every encrypted OSD, both
+// as a json tag map and as the raw lv_tags string, and none of it belongs in a pod log
 var (
-	lockboxSecretTagRegex   = regexp.MustCompile(`("ceph\.cephx_lockbox_secret"\s*:\s*")[^"]*(")`)
-	lockboxSecretLVTagRegex = regexp.MustCompile(`(ceph\.cephx_lockbox_secret=)[^,"]*`)
+	lockboxSecretTagRegex = regexp.MustCompile(`("ceph\.cephx_lockbox_secret"\s*:\s*")[^"]*(")`)
+	// a negated class matches a newline, so the end of the line has to terminate the secret
+	// explicitly: in line-oriented output such as "lvm zap" a secret that ends a line would
+	// otherwise consume everything up to the next comma or quote, taking the diagnostics with it
+	lockboxSecretLVTagRegex = regexp.MustCompile(`(ceph\.cephx_lockbox_secret=)[^,"\n]*`)
 )
 
 func redactCephVolumeOutput(output string) string {
@@ -1584,7 +1633,7 @@ func callCephVolume(context *clusterd.Context, args ...string) (string, error) {
 	// Send the log to a temp location that isn't persisted to disk so that we can print out the
 	// failure log later without also printing out past failures
 	// TODO: does this mess up expectations from the ceph log collector daemon?
-	logPath := "/tmp/ceph-log"
+	logPath := cephVolumeTmpLogDir
 	if err := os.MkdirAll(logPath, 0o700); err != nil {
 		return "", errors.Wrapf(err, "failed to create dir %q", logPath)
 	}
@@ -1595,7 +1644,7 @@ func callCephVolume(context *clusterd.Context, args ...string) (string, error) {
 	co, err := f(baseCommand, append(baseArgs, args...)...)
 	if err != nil {
 		// Print c-v log before exiting with failure
-		cvLog := readCVLogContent("/tmp/ceph-log/ceph-volume.log")
+		cvLog := readCVLogContent(filepath.Join(cephVolumeTmpLogDir, "ceph-volume.log"))
 		logger.Errorf("%s", redactCephVolumeOutput(co))
 		if cvLog != "" {
 			logger.Errorf("%s", redactCephVolumeOutput(cvLog))
