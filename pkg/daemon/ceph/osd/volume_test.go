@@ -2101,6 +2101,110 @@ func TestCephVolumeLVMResultParseFailureDoesNotLeakLockboxSecret(t *testing.T) {
 	}
 }
 
+// captureLogsAtLevel redirects the capnslog sink into a buffer at the given level for the duration
+// of the test, restoring both the formatter and the package default level afterwards so later tests
+// in this package keep logging to stderr instead of a buffer nobody reads.
+func captureLogsAtLevel(t *testing.T, level capnslog.LogLevel) *bytes.Buffer {
+	t.Helper()
+
+	logBuf := bytes.NewBuffer([]byte{})
+	capnslog.SetFormatter(capnslog.NewLogFormatter(logBuf, "", 0))
+	capnslog.SetGlobalLogLevel(level)
+	t.Cleanup(func() {
+		capnslog.SetFormatter(capnslog.NewDefaultFormatter(os.Stderr))
+		capnslog.SetGlobalLogLevel(capnslog.INFO)
+	})
+
+	return logBuf
+}
+
+func TestRedactCephVolumeOutputKeepsFollowingLines(t *testing.T) {
+	// a negated character class matches a newline, so a secret that ends a line used to redact
+	// everything up to the next comma or quote, which in line-oriented output is the whole
+	// remainder of the log
+	const lockboxSecret = "EXAMPLELOCKBOXSECRET00000000000000000003"
+	output := "ceph.cephx_lockbox_secret=" + lockboxSecret + "\n" +
+		"--> Zapping successful for: <Raw Device: /dev/vdb>\n"
+
+	redacted := redactCephVolumeOutput(output)
+
+	assert.NotContains(t, redacted, lockboxSecret)
+	assert.Equal(t, "ceph.cephx_lockbox_secret=*****\n--> Zapping successful for: <Raw Device: /dev/vdb>\n", redacted)
+}
+
+func TestZapDeviceDoesNotLogLockboxSecret(t *testing.T) {
+	// "ceph-volume lvm zap" reports the logical volume's lv_tags, which for an encrypted OSD carry
+	// the dm-crypt lockbox secret. Both zap log lines are at WARNING and INFO, so they leak with no
+	// debug logging enabled at all.
+	const (
+		lockboxSecret = "EXAMPLELOCKBOXSECRET00000000000000000002"
+		devicePath    = "/dev/vdb"
+	)
+	// combined output, so ceph-volume's stderr is interleaved with the tags, and the second
+	// occurrence ends a line rather than sitting between two commas
+	zapOutput := `--> Zapping: /dev/ceph-5b0b1e3f/osd-block-9ee6a1e7
+ stderr: lv_tags: ceph.block_device=/dev/ceph-5b0b1e3f/osd-block-9ee6a1e7,ceph.cephx_lockbox_secret=` + lockboxSecret + `,ceph.encrypted=1,ceph.osd_fsid=9ee6a1e7-1c3f-4c1e-9a5b-0c4b1f2d3e4f
+Running command: /usr/bin/dd if=/dev/zero of=/dev/vdb bs=1M count=10 conv=fsync
+ stderr: ceph.cephx_lockbox_secret=` + lockboxSecret + `
+ stderr: 10+0 records in
+--> Zapping successful for: <Raw Device: /dev/vdb>`
+
+	tests := []struct {
+		name string
+		// ZapDevice tolerates a zap failure and continues with the direct cleanup, so both
+		// branches log the output and both have to redact it
+		zapErr error
+		// the fragment that identifies the branch taken
+		logMarker string
+	}{
+		{
+			name:      "failure",
+			zapErr:    errors.New("exit status 1"),
+			logMarker: "ceph-volume lvm zap failed",
+		},
+		{
+			name:      "success",
+			logMarker: "ceph-volume lvm zap output",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			executor := &exectest.MockExecutor{}
+			executor.MockExecuteCommandWithCombinedOutput = func(command string, args ...string) (string, error) {
+				if command == "stdbuf" && slices.Contains(args, "zap") {
+					return zapOutput, tc.zapErr
+				}
+				switch command {
+				case "umount":
+					return "not mounted", errors.New("not mounted")
+				case "wipefs", "ceph-bluestore-tool", "dd":
+					return "", nil
+				}
+				return "", errors.Errorf("unknown command %s %v", command, args)
+			}
+
+			logBuf := captureLogsAtLevel(t, capnslog.INFO)
+
+			err := ZapDevice(&clusterd.Context{Executor: executor}, devicePath)
+			require.NoError(t, err)
+
+			logOutput := logBuf.String()
+			require.Contains(t, logOutput, tc.logMarker)
+			// the output is a string rendered with %s, so the literal form is the only
+			// shape it can leak in
+			assert.NotContains(t, logOutput, lockboxSecret)
+			// the rest of the zap output is why the log line exists, and the redaction must
+			// not take it along: the remainder of the tags line, the lines after the secret
+			// that ends its own line, and the device being zapped
+			assert.Contains(t, logOutput, "ceph.osd_fsid=9ee6a1e7-1c3f-4c1e-9a5b-0c4b1f2d3e4f")
+			assert.Contains(t, logOutput, "stderr: 10+0 records in")
+			assert.Contains(t, logOutput, "--> Zapping successful for: <Raw Device: /dev/vdb>")
+			assert.Contains(t, logOutput, devicePath)
+		})
+	}
+}
+
 func TestParseCephVolumeRawResult(t *testing.T) {
 	executor := &exectest.MockExecutor{}
 	executor.MockExecuteCommandWithOutput = func(command string, args ...string) (string, error) {
@@ -2757,6 +2861,41 @@ func TestWipeDevicesFromOtherClusters(t *testing.T) {
 	context.Executor = executor
 	err = agent.WipeDevicesFromOtherClusters(context)
 	assert.NoError(t, err)
+
+	// `ceph-volume raw list` returns an entry for the separate metadata device of an
+	// OSD, without "device" and "ceph_fsid". The metadata device (no DevLinks) must
+	// not be zapped.
+	executor.MockExecuteCommandWithOutput = func(command string, args ...string) (string, error) {
+		logger.Infof("%s %v", command, args)
+		if slices.Contains(args, "raw") && slices.Contains(args, "list") {
+			return `{
+    "c21c3c5e-7a1d-4e5e-9a5d-2f1f6d0c1a11": {
+        "device_db": "/dev/vdc",
+        "osd_uuid": "c21c3c5e-7a1d-4e5e-9a5d-2f1f6d0c1a11"
+    }
+}`, nil
+		}
+		return "", errors.Errorf("unknown command %s %s", command, args)
+	}
+	executor.MockExecuteCommandWithCombinedOutput = func(command string, args ...string) (string, error) {
+		return "", errors.Errorf("no device should be zapped, got %s %v", command, args)
+	}
+	context = &clusterd.Context{
+		Devices: []*sys.LocalDisk{{RealPath: "/dev/vdc"}},
+	}
+	context.Executor = executor
+	err = agent.WipeDevicesFromOtherClusters(context)
+	assert.NoError(t, err)
+}
+
+func TestGetOSDDiskToBeWipedEmptyPath(t *testing.T) {
+	context := &clusterd.Context{
+		Devices: []*sys.LocalDisk{{RealPath: "/dev/vdc"}},
+	}
+	osdDisk, encryptedBlock, err := getOSDDiskToBeWiped(context, "")
+	assert.NoError(t, err)
+	assert.Nil(t, osdDisk)
+	assert.Empty(t, encryptedBlock)
 }
 
 func TestFindDeviceClass(t *testing.T) {
@@ -2839,4 +2978,57 @@ func TestGetCephVolumeRawOSDsHonorDeviceClass(t *testing.T) {
 			assert.Equal(t, tc.wantPerDev, got)
 		})
 	}
+}
+
+func TestUpdateLVMConfig(t *testing.T) {
+	originalLVMConfPath := lvmConfPath
+	defer func() { lvmConfPath = originalLVMConfPath }()
+
+	sampleConf := `udev_sync = 1
+allow_changes_with_duplicate_pvs = 0
+udev_rules = 1
+use_lvmetad = 1
+obtain_device_list_from_udev = 1
+scan = [ "/dev" ]
+	# filter = [ "a|.*|" ]
+`
+
+	setupConfFile := func(t *testing.T) {
+		t.Helper()
+		f, err := os.CreateTemp("", "lvmconf")
+		require.NoError(t, err)
+		t.Cleanup(func() { os.Remove(f.Name()) })
+		_, err = f.WriteString(sampleConf)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+		lvmConfPath = f.Name()
+	}
+
+	t.Run("not on PVC rejects RBD devices so lvs does not block on them", func(t *testing.T) {
+		setupConfFile(t)
+		err := UpdateLVMConfig(&clusterd.Context{}, false, false)
+		require.NoError(t, err)
+		output, err := os.ReadFile(lvmConfPath)
+		require.NoError(t, err)
+		assert.Contains(t, string(output), `filter = [ "r|^/dev/rbd.*|", "a|.*|" ]`)
+	})
+
+	t.Run("on PVC does not add an RBD filter", func(t *testing.T) {
+		setupConfFile(t)
+		err := UpdateLVMConfig(&clusterd.Context{}, true, false)
+		require.NoError(t, err)
+		output, err := os.ReadFile(lvmConfPath)
+		require.NoError(t, err)
+		assert.NotContains(t, string(output), "rbd")
+		assert.Contains(t, string(output), `filter = [ "a|^/mnt/.*|", "r|.*|" ]`)
+	})
+
+	t.Run("LV-backed PVCs reject loopback and RBD devices", func(t *testing.T) {
+		setupConfFile(t)
+		err := UpdateLVMConfig(&clusterd.Context{}, true, true)
+		require.NoError(t, err)
+		output, err := os.ReadFile(lvmConfPath)
+		require.NoError(t, err)
+		assert.Contains(t, string(output), `filter = [ "a|^/mnt/.*|", "r|^/dev/loop.*|", "r|^/dev/rbd.*|", "a|^/dev/.*|", "r|.*|" ]`)
+	})
 }

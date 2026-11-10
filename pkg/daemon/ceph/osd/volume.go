@@ -467,23 +467,31 @@ func UpdateLVMConfig(context *clusterd.Context, onPVC, lvBackedPV bool) error {
 	output = bytes.Replace(output, []byte("use_lvmetad = 1"), []byte("use_lvmetad = 0"), 1)
 	output = bytes.Replace(output, []byte("obtain_device_list_from_udev = 1"), []byte("obtain_device_list_from_udev = 0"), 1)
 
+	var filter []byte
+
 	// When running on PVC
 	if onPVC {
 		output = bytes.Replace(output, []byte(`scan = [ "/dev" ]`), []byte(`scan = [ "/dev", "/mnt" ]`), 1)
 		// Only filter blocks in /mnt, when running on PVC we copy the PVC claim path to /mnt
 		// And reject everything else
-		// We have 2 different regex depending on the version of LVM present in the container...
-		// Since https://github.com/lvmteam/lvm2/commit/08396b4bce45fb8311979250623f04ec0ddb628c#diff-13c602a6258e57ce666a240e67c44f38
-		// the content changed, so depending on which version is installed one of the two replacements will work
 		if lvBackedPV {
-			// ceph-volume calls lvs to locate given "vg/lv", so allow "/dev" here. However, ignore loopback devices
-			output = bytes.Replace(output, []byte(`# filter = [ "a|.*/|" ]`), []byte(`filter = [ "a|^/mnt/.*|", "r|^/dev/loop.*|", "a|^/dev/.*|", "r|.*|" ]`), 1)
-			output = bytes.Replace(output, []byte(`# filter = [ "a|.*|" ]`), []byte(`filter = [ "a|^/mnt/.*|", "r|^/dev/loop.*|", "a|^/dev/.*|", "r|.*|" ]`), 1)
+			// ceph-volume calls lvs to locate given "vg/lv", so allow "/dev" here.
+			// However, ignore loopback and rbd devices
+			filter = []byte(`filter = [ "a|^/mnt/.*|", "r|^/dev/loop.*|", "r|^/dev/rbd.*|", "a|^/dev/.*|", "r|.*|" ]`)
 		} else {
-			output = bytes.Replace(output, []byte(`# filter = [ "a|.*/|" ]`), []byte(`filter = [ "a|^/mnt/.*|", "r|.*|" ]`), 1)
-			output = bytes.Replace(output, []byte(`# filter = [ "a|.*|" ]`), []byte(`filter = [ "a|^/mnt/.*|", "r|.*|" ]`), 1)
+			filter = []byte(`filter = [ "a|^/mnt/.*|", "r|.*|" ]`)
 		}
+	} else {
+		// Reject RBD devices so that "lvs" does not scan them. When other OSDs are down (e.g. after
+		// a network outage), reads to mapped RBD devices can block indefinitely, which puts "lvs" in
+		// uninterruptible sleep (D state) and deadlocks OSD provisioning.
+		filter = []byte(`filter = [ "r|^/dev/rbd.*|", "a|.*|" ]`)
 	}
+	// We have 2 different regex depending on the version of LVM present in the container...
+	// Since https://github.com/lvmteam/lvm2/commit/08396b4bce45fb8311979250623f04ec0ddb628c#diff-13c602a6258e57ce666a240e67c44f38
+	// the content changed, so depending on which version is installed one of the two replacements will work
+	output = bytes.Replace(output, []byte(`# filter = [ "a|.*/|" ]`), filter, 1)
+	output = bytes.Replace(output, []byte(`# filter = [ "a|.*|" ]`), filter, 1)
 
 	// #nosec G703 -- lvmConfPath is a hard-coded constant, not user input
 	if err = os.WriteFile(lvmConfPath, output, 0o600); err != nil {
@@ -1023,12 +1031,14 @@ func (a *OsdAgent) appendDeviceClassArg(device *DeviceOsdIDEntry, args []string)
 // changes in ceph-volume behavior across Ceph versions.
 func ZapDevice(context *clusterd.Context, devicePath string) error {
 	// First, attempt ceph-volume lvm zap
+	// zap reports the logical volume's lv_tags, which for an encrypted OSD carry the dm-crypt
+	// lockbox secret, so neither branch may log the output as-is
 	output, err := context.Executor.ExecuteCommandWithCombinedOutput("stdbuf", "-oL", cephVolumeCmd, "lvm", "zap", devicePath)
 	if err != nil {
 		// log and continue with direct cleanup
-		logger.Warningf("ceph-volume lvm zap failed for %q (will continue with direct cleanup): %s. %v", devicePath, output, err)
+		logger.Warningf("ceph-volume lvm zap failed for %q (will continue with direct cleanup): %s. %v", devicePath, redactCephVolumeOutput(output), err)
 	} else {
-		logger.Infof("ceph-volume lvm zap output for %q: %s", devicePath, output)
+		logger.Infof("ceph-volume lvm zap output for %q: %s", devicePath, redactCephVolumeOutput(output))
 	}
 
 	// Follow up with Rook's internal cleanup to ensure all metadata is removed
@@ -1102,6 +1112,12 @@ func (a *OsdAgent) WipeDevicesFromOtherClusters(context *clusterd.Context) error
 	}
 
 	for _, existingOSD := range existingOSDs {
+		// An entry for a separate metadata (db/wal) device has neither a device nor a
+		// ceph_fsid. That doesn't mean it belongs to another cluster, so leave it alone.
+		if existingOSD.CephFsid == "" || existingOSD.Device == "" {
+			logger.Debugf("skip checking OSD %d with uuid %q for wiping since its device or ceph fsid is unknown", existingOSD.OsdID, existingOSD.OsdUUID)
+			continue
+		}
 		// Wipe the devices that will be used for preparing OSD but already have OSD metadata from another ceph cluster
 		if existingOSD.CephFsid != a.clusterInfo.FSID {
 			osdID := existingOSD.OsdID
@@ -1171,6 +1187,9 @@ func wipeEncryptedDevicesFromOtherClusters(context *clusterd.Context, currentClu
 
 // getOSDDiskToBeWiped returns OSD disk path and the dmcrypt block in case of encrypted OSDs
 func getOSDDiskToBeWiped(context *clusterd.Context, existingOSDDevice string) (*sys.LocalDisk, string, error) {
+	if existingOSDDevice == "" {
+		return nil, "", nil
+	}
 	var err error
 	var encryptedBlock string
 	// encrypted OSDs have /dev/mapper/* entries. Find the real device path in case of encrypted OSDs
@@ -1589,11 +1608,14 @@ func GetCephVolumeRawOSDs(context *clusterd.Context, clusterInfo *client.Cluster
 	return osds, nil
 }
 
-// the ceph-volume list output reports the cephx lockbox secret of every encrypted OSD, both as a
-// json tag map and as the raw lv_tags string, and none of it belongs in a pod log
+// the ceph-volume list and zap output reports the cephx lockbox secret of every encrypted OSD, both
+// as a json tag map and as the raw lv_tags string, and none of it belongs in a pod log
 var (
-	lockboxSecretTagRegex   = regexp.MustCompile(`("ceph\.cephx_lockbox_secret"\s*:\s*")[^"]*(")`)
-	lockboxSecretLVTagRegex = regexp.MustCompile(`(ceph\.cephx_lockbox_secret=)[^,"]*`)
+	lockboxSecretTagRegex = regexp.MustCompile(`("ceph\.cephx_lockbox_secret"\s*:\s*")[^"]*(")`)
+	// a negated class matches a newline, so the end of the line has to terminate the secret
+	// explicitly: in line-oriented output such as "lvm zap" a secret that ends a line would
+	// otherwise consume everything up to the next comma or quote, taking the diagnostics with it
+	lockboxSecretLVTagRegex = regexp.MustCompile(`(ceph\.cephx_lockbox_secret=)[^,"\n]*`)
 )
 
 func redactCephVolumeOutput(output string) string {
