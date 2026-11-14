@@ -105,6 +105,7 @@ spec:
               accountID:
                 maxLength: 20
                 minLength: 20
+                pattern: ^RGW\d{17}$
                 type: string
               observedGeneration:
                 format: int64
