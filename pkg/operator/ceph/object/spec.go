@@ -120,6 +120,23 @@ var (
 	opsLogAbsFilename = path.Join(cephconfig.VarLogCephDir, opsLogFilename)
 )
 
+// appendEnvVarsIfMissing appends env vars whose names are not already present.
+// DaemonEnvVars already includes POD_NAME, so callers must not add it twice.
+func appendEnvVarsIfMissing(env []v1.EnvVar, extras ...v1.EnvVar) []v1.EnvVar {
+	have := make(map[string]struct{}, len(env))
+	for _, e := range env {
+		have[e.Name] = struct{}{}
+	}
+	for _, e := range extras {
+		if _, ok := have[e.Name]; ok {
+			continue
+		}
+		env = append(env, e)
+		have[e.Name] = struct{}{}
+	}
+	return env
+}
+
 type (
 	ProbeType    string
 	ProtocolType string
@@ -469,7 +486,7 @@ func (c *clusterConfig) makeDaemonContainer(rgwConfig *rgwConfig) (v1.Container,
 			controller.DaemonVolumeMounts(c.DataPathMap, rgwConfig.ResourceName, c.clusterSpec.DataDirHostPath),
 			c.mimeTypesVolumeMount(),
 		),
-		Env:             append(controller.DaemonEnvVars(c.clusterSpec), k8sutil.NameEnvVar()),
+		Env:             controller.DaemonEnvVars(c.clusterSpec),
 		Resources:       c.store.Spec.Gateway.Resources,
 		StartupProbe:    startupProbe,
 		LivenessProbe:   noLivenessProbe(),
@@ -492,7 +509,7 @@ func (c *clusterConfig) makeDaemonContainer(rgwConfig *rgwConfig) (v1.Container,
 	// If the startup probe is enabled
 	container = cephconfig.ConfigureStartupProbe(container, c.store.Spec.HealthCheck.StartupProbe)
 	// If the readiness probe is enabled
-	configureReadinessProbe(&container, c.store.Spec.HealthCheck)
+	container = cephconfig.ConfigureReadinessProbe(container, c.store.Spec.HealthCheck.ReadinessProbe)
 	if c.store.Spec.IsTLSEnabled() {
 		// Add a volume mount for the ssl certificate
 		mount := v1.VolumeMount{Name: certVolumeName, MountPath: certDir, ReadOnly: true}
@@ -535,7 +552,7 @@ func (c *clusterConfig) makeDaemonContainer(rgwConfig *rgwConfig) (v1.Container,
 		}
 	}
 	if c.store.Spec.Gateway.OpsLogSidecar != nil {
-		container.Env = append(container.Env, podNameEnvVars...)
+		container.Env = appendEnvVarsIfMissing(container.Env, podNameEnvVars...)
 		container.Args = append(
 			container.Args,
 			cephconfig.NewFlag("rgw_enable_ops_log", "true"),
@@ -627,22 +644,6 @@ func (c *clusterConfig) makeDaemonContainer(rgwConfig *rgwConfig) (v1.Container,
 	}
 
 	return container, nil
-}
-
-// configureReadinessProbe returns the desired readiness probe for a given daemon
-func configureReadinessProbe(container *v1.Container, healthCheck cephv1.ObjectHealthCheckSpec) {
-	if ok := healthCheck.ReadinessProbe; ok != nil {
-		if !healthCheck.ReadinessProbe.Disabled {
-			probe := healthCheck.ReadinessProbe.Probe
-			// If the spec value is empty, let's use a default
-			if probe != nil {
-				// Set the readiness probe on the container to overwrite the default probe created by Rook
-				container.ReadinessProbe = cephconfig.GetProbeWithDefaults(probe, container.ReadinessProbe)
-			}
-		} else {
-			container.ReadinessProbe = nil
-		}
-	}
 }
 
 // RGW has internal mechanisms for restarting its processing if it gets stuck. any failures detected
@@ -914,21 +915,26 @@ func (c *clusterConfig) vaultPrefixRGW() string {
 		vaultPrefixPath = path.Join(vaultPrefix,
 			c.store.Spec.Security.KeyManagementService.ConnectionDetails[vault.VaultBackendPathKey], "/data")
 	case kms.VaultTransitSecretEngineKey:
-		vaultPrefixPath = path.Join(vaultPrefix, secretEngine)
+		vaultPrefixPath = vaultTransitPrefix(c.store.Spec.Security.KeyManagementService.ConnectionDetails)
 	}
 
 	return vaultPrefixPath
 }
 
-// vaultPrefixRGWSSES3 returns the Vault path prefix RGW uses for SSE-S3: the transit mount named by
-// VAULT_TRANSIT_BACKEND_PATH, or "transit" when it is not set.
-func (c *clusterConfig) vaultPrefixRGWSSES3() string {
-	connectionDetails := c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails
+// vaultTransitPrefix returns the Vault path prefix of a transit engine: the mount named by
+// VAULT_TRANSIT_BACKEND_PATH, or the secret engine name (transit) when it is not set.
+func vaultTransitPrefix(connectionDetails map[string]string) string {
 	mount := connectionDetails[kms.VaultSecretEngineKey]
 	if transitPath := kms.GetParam(connectionDetails, kms.VaultTransitBackendPathKey); transitPath != "" {
 		mount = transitPath
 	}
 	return path.Join(vaultPrefix, mount)
+}
+
+// vaultPrefixRGWSSES3 returns the Vault path prefix RGW uses for SSE-S3: the transit mount named by
+// VAULT_TRANSIT_BACKEND_PATH, or "transit" when it is not set.
+func (c *clusterConfig) vaultPrefixRGWSSES3() string {
+	return vaultTransitPrefix(c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails)
 }
 
 func (c *clusterConfig) CheckRGWKMS() (bool, error) {
