@@ -237,9 +237,21 @@ The gateway settings correspond to the RGW daemon settings.
 * `priorityClassName`: Set priority class name for the Gateway Pod(s)
 * `additionalVolumeMounts`: additional volumes to be mounted to the RGW pod. The root directory for
     each additional volume mount is `/var/rgw`. Each volume mount has a `subPath` that defines the
-    subdirectory where that volumes files will be mounted. Rook supports several standard Kubernetes
-    volume types. Example: for an additional mount at subPath `ldap`, mounted from a secret that has
-    key `bindpass.secret`, the file would reside at `/var/rgw/ldap/bindpass.secret`.
+    subdirectory where that volume's files will be mounted. A `subPath` must not contain a `..` path
+    element. Rook supports several standard Kubernetes volume types. Example: for an additional
+    mount at subPath `ldap`, mounted from a secret that has key `bindpass.secret`, the file would
+    reside at `/var/rgw/ldap/bindpass.secret`.
+
+    !!! warning
+        `additionalVolumeMounts` accepts `hostPath`, `secret`, `configMap`, `projected`, `emptyDir`
+        and `persistentVolumeClaim` sources, including a `hostPath` of any path on the node, which
+        is mounted writable, and any Secret in the CephObjectStore's namespace, such as the Ceph
+        admin credentials in `rook-ceph-admin-keyring`. The same CephObjectStore sets the options of
+        the `radosgw` process those volumes are mounted into, through `rgwConfig`,
+        `rgwConfigFromSecret` and `rgwCommandFlags`. Treat permission to create or edit a
+        CephObjectStore as equivalent to root access on the node and to read access to every Secret
+        in that namespace, and grant it only to principals trusted with that access.
+
 * `service`: The annotations to set on to the Kubernetes Service of RGW. The [service serving cert](https://docs.okd.io/latest/security/certificates/service-serving-certificate.html) feature supported in Openshift is enabled by the following example:
 
     ```yaml
@@ -324,6 +336,13 @@ The following CRD settings are available:
     * `startupProbe`: Disable, or override timing and threshold values of the object gateway startup probe.
     * `readinessProbe`: Disable, or override timing and threshold values of the object gateway readiness probe.
 
+Only the timing and threshold fields under `probe` are used: `initialDelaySeconds`, `periodSeconds`,
+`timeoutSeconds`, `successThreshold`, `failureThreshold` and `terminationGracePeriodSeconds`,
+subject to Kubernetes' rules for each probe type. The check the probe runs is always the one Rook
+generates, and an `exec`, `httpGet`, `tcpSocket` or `grpc` handler set under `probe` is ignored. If
+neither the `s3` nor the `swift` API is enabled, Rook has no check to run, so the gateway gets no
+startup or readiness probe and these settings are ignored.
+
 Here is a complete example:
 
 ```yaml
@@ -332,8 +351,9 @@ healthCheck:
     disabled: false
   readinessProbe:
     disabled: false
-    periodSeconds: 5
-    failureThreshold: 2
+    probe:
+      periodSeconds: 5
+      failureThreshold: 2
 ```
 
 You can monitor the health of a CephObjectStore by monitoring the gateway deployments it creates.
@@ -414,7 +434,6 @@ security:
     connectionDetails:
       KMS_PROVIDER: vault
       VAULT_ADDR: http://vault.default.svc.cluster.local:8200
-      VAULT_BACKEND_PATH: rgw
       VAULT_SECRET_ENGINE: transit
     # name of the k8s secret containing the kms authentication token
     tokenSecretName: rgw-vault-s3-token
@@ -423,6 +442,7 @@ security:
 For RGW, please note the following:
 
 * `VAULT_SECRET_ENGINE`: the secret engine which Vault should use. Currently supports [kv](https://www.vaultproject.io/docs/secrets/kv) and [transit](https://www.vaultproject.io/docs/secrets/transit). AWS-SSE:KMS supports `transit` engine and `kv` engine version 2. AWS-SSE:S3 only supports `transit` engine.
+* `VAULT_TRANSIT_BACKEND_PATH`: for the `transit` engine (AWS-SSE:S3 and AWS-SSE:KMS), the path where the engine is mounted in Vault. It defaults to `transit` and is only needed when the engine is mounted elsewhere. `VAULT_BACKEND_PATH` is not used by AWS-SSE:S3 or by AWS-SSE:KMS with the `transit` engine.
 * The Storage administrator needs to create a secret in the Vault server so that S3 clients use that key for encryption for AWS-SSE:KMS
 
 ```console

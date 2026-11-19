@@ -1,0 +1,77 @@
+suite: cephblockpool
+templates:
+  - cephblockpool.yaml
+tests:
+  - it: renders the storage class labels
+    set:
+      cephBlockPools:
+        - name: ceph-blockpool
+          spec:
+            replicated:
+              size: 3
+          storageClass:
+            enabled: true
+            name: ceph-block
+            labels:
+              team: storage
+              tier: fast
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: StorageClass
+        documentIndex: 1
+      - equal:
+          path: metadata.labels
+          value:
+            team: storage
+            tier: fast
+        documentIndex: 1
+
+  - it: omits the storage class labels when none are set
+    set:
+      cephBlockPools:
+        - name: ceph-blockpool
+          spec:
+            replicated:
+              size: 3
+          storageClass:
+            enabled: true
+            name: ceph-block
+    asserts:
+      - notExists:
+          path: metadata.labels
+        documentIndex: 1
+
+  - it: keeps allowVolumeExpansion false on the storage class
+    set:
+      cephBlockPools:
+        - name: ceph-blockpool
+          spec:
+            replicated:
+              size: 3
+          storageClass:
+            enabled: true
+            name: ceph-block
+            allowVolumeExpansion: false
+    asserts:
+      - equal:
+          path: allowVolumeExpansion
+          value: false
+        documentIndex: 1
+
+  - it: allows volume expansion when allowVolumeExpansion is not set
+    set:
+      cephBlockPools:
+        - name: ceph-blockpool
+          spec:
+            replicated:
+              size: 3
+          storageClass:
+            enabled: true
+            name: ceph-block
+    asserts:
+      - equal:
+          path: allowVolumeExpansion
+          value: true
+        documentIndex: 1

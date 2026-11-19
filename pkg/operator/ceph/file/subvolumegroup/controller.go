@@ -132,28 +132,35 @@ func add(opManagerContext context.Context, mgr manager.Manager, r reconcile.Reco
 		return err
 	}
 
-	// Build handler to map events to CephFilesystemSubVolumeGroup reconcile requests
-	clientProfileHandler, err := opcontroller.ObjectToCRMapper[*cephv1.CephFilesystemSubVolumeGroupList, *csiopv1.ClientProfile](
-		opManagerContext,
-		mgr.GetClient(),
-		&cephv1.CephFilesystemSubVolumeGroupList{},
-		mgr.GetScheme(),
-	)
-	if err != nil {
-		return err
-	}
+	// The ClientProfile CRD is only installed along with the ceph-csi-operator. If Rook is not
+	// creating the csi operator resources, the CRD may not exist and watching it would prevent
+	// the cache from ever syncing, which causes the operator to exit.
+	if opcontroller.CSIOperatorResourcesEnabled() {
+		// Build handler to map events to CephFilesystemSubVolumeGroup reconcile requests
+		clientProfileHandler, err := opcontroller.ObjectToCRMapper[*cephv1.CephFilesystemSubVolumeGroupList, *csiopv1.ClientProfile](
+			opManagerContext,
+			mgr.GetClient(),
+			&cephv1.CephFilesystemSubVolumeGroupList{},
+			mgr.GetScheme(),
+		)
+		if err != nil {
+			return err
+		}
 
-	// Watch for ClientProfile changes
-	err = c.Watch(
-		source.Kind(
-			mgr.GetCache(),
-			&csiopv1.ClientProfile{TypeMeta: metav1.TypeMeta{Kind: "ClientProfile", APIVersion: fmt.Sprintf("%s/%s", csiopv1.GroupVersion.Group, csiopv1.GroupVersion.Version)}},
-			handler.TypedEnqueueRequestsFromMapFunc(clientProfileHandler),
-			opcontroller.WatchControllerPredicate[*csiopv1.ClientProfile](mgr.GetScheme()),
-		),
-	)
-	if err != nil {
-		return err
+		// Watch for ClientProfile changes
+		err = c.Watch(
+			source.Kind(
+				mgr.GetCache(),
+				&csiopv1.ClientProfile{TypeMeta: metav1.TypeMeta{Kind: "ClientProfile", APIVersion: fmt.Sprintf("%s/%s", csiopv1.GroupVersion.Group, csiopv1.GroupVersion.Version)}},
+				handler.TypedEnqueueRequestsFromMapFunc(clientProfileHandler),
+				opcontroller.WatchControllerPredicate[*csiopv1.ClientProfile](mgr.GetScheme()),
+			),
+		)
+		if err != nil {
+			return err
+		}
+	} else {
+		logger.Debug("csi operator resources are disabled, not watching ClientProfile")
 	}
 
 	// Build handler to map Secret events to CephFilesystemSubVolumeGroup reconcile requests
@@ -244,7 +251,7 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) reconcile(request reconcile.Requ
 
 	// The CR was just created, initializing status fields
 	if cephFilesystemSubVolumeGroup.Status == nil {
-		r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, cephv1.ConditionProgressing)
+		r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, cephv1.ConditionProgressing, "Initializing subvolume group")
 	}
 
 	// Make sure a CephCluster is present otherwise do nothing
@@ -333,7 +340,7 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) reconcile(request reconcile.Requ
 	}
 	if cephCluster.Spec.External.Enable {
 		log.NamedDebug(request.NamespacedName, logger, "skip creating external subvolume in external mode, create it manually, the controller will assume it's there")
-		r.updateStatus(observedGeneration, namespacedName, cephv1.ConditionReady)
+		r.updateStatus(observedGeneration, namespacedName, cephv1.ConditionReady, "Subvolume group configured successfully")
 		err = csi.CreateUpdateClientProfileSubVolumeGroup(r.clusterInfo.Context, r.client, r.clusterInfo, cephFilesystemSubVolumeGroupName, buildClusterID(cephFilesystemSubVolumeGroup), cephFilesystemSubVolumeGroup.Spec.CSIMetadataRadosNamespace)
 		if err != nil {
 			return reconcile.Result{}, errors.Wrap(err, "failed to create ceph csi-op config CR for subvolume")
@@ -369,7 +376,7 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) reconcile(request reconcile.Requ
 			logger.Info(opcontroller.OperatorNotInitializedMessage)
 			return opcontroller.WaitForRequeueIfOperatorNotInitialized, nil
 		}
-		r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, cephv1.ConditionFailure)
+		r.updateStatus(k8sutil.ObservedGenerationNotAvailable, request.NamespacedName, cephv1.ConditionFailure, "Failed to create the subvolume group. See the operator log for details.")
 		return reconcile.Result{}, errors.Wrapf(err, "failed to create or update ceph filesystem subvolume group %q", cephFilesystemSubVolumeGroup.Name)
 	}
 
@@ -378,7 +385,7 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) reconcile(request reconcile.Requ
 		return reconcile.Result{}, errors.Wrapf(err, "failed to pin filesystem subvolume group %q", cephFilesystemSubVolumeGroup.Name)
 	}
 
-	r.updateStatus(observedGeneration, request.NamespacedName, cephv1.ConditionReady)
+	r.updateStatus(observedGeneration, request.NamespacedName, cephv1.ConditionReady, "Subvolume group configured successfully")
 
 	// In downstream for normal cluster, rook don't need to create client profile subvolume group CR.
 	if false {
@@ -450,7 +457,7 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) deleteSubVolumeGroup(cephFilesys
 }
 
 // updateStatus updates an object with a given status
-func (r *ReconcileCephFilesystemSubVolumeGroup) updateStatus(observedGeneration int64, name types.NamespacedName, status cephv1.ConditionType) {
+func (r *ReconcileCephFilesystemSubVolumeGroup) updateStatus(observedGeneration int64, name types.NamespacedName, status cephv1.ConditionType, message string) {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cephFilesystemSubVolumeGroup := &cephv1.CephFilesystemSubVolumeGroup{}
 		if err := r.client.Get(r.opManagerContext, name, cephFilesystemSubVolumeGroup); err != nil {
@@ -465,6 +472,7 @@ func (r *ReconcileCephFilesystemSubVolumeGroup) updateStatus(observedGeneration 
 		}
 
 		cephFilesystemSubVolumeGroup.Status.Phase = status
+		cephFilesystemSubVolumeGroup.Status.Message = message
 		cephFilesystemSubVolumeGroup.Status.Info = map[string]string{
 			"clusterID": buildClusterID(cephFilesystemSubVolumeGroup),
 			"pinning":   formatPinning(cephFilesystemSubVolumeGroup.Spec.Pinning),

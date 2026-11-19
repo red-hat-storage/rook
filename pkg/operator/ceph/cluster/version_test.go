@@ -18,7 +18,6 @@ limitations under the License.
 package cluster
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -158,7 +157,7 @@ func TestDiffImageSpecAndClusterRunningVersion(t *testing.T) {
 func TestMinVersion(t *testing.T) {
 	c := testSpec(t)
 	c.Spec.CephVersion.AllowUnsupported = true
-	c.ClusterInfo = &client.ClusterInfo{Context: context.TODO()}
+	c.ClusterInfo = &client.ClusterInfo{Context: t.Context()}
 
 	// All versions less than 19.2.0 or invalid tag are invalid
 	v := &cephver.CephVersion{Major: 18, Minor: 1, Extra: 999}
@@ -175,7 +174,7 @@ func TestMinVersion(t *testing.T) {
 
 func TestSupportedVersion(t *testing.T) {
 	c := testSpec(t)
-	c.ClusterInfo = &client.ClusterInfo{Context: context.TODO()}
+	c.ClusterInfo = &client.ClusterInfo{Context: t.Context()}
 
 	// lower version is not supported
 	v := &cephver.CephVersion{Major: 17, Minor: 2, Extra: 7}
@@ -193,8 +192,12 @@ func TestSupportedVersion(t *testing.T) {
 	v = &cephver.CephVersion{Major: 20, Minor: 1, Extra: 0}
 	assert.NoError(t, c.validateCephVersion(v))
 
-	// Umbrella release is not supported
+	// Umbrella is supported
 	v = &cephver.CephVersion{Major: 21, Minor: 1, Extra: 0}
+	assert.NoError(t, c.validateCephVersion(v))
+
+	// Vampire release is not supported
+	v = &cephver.CephVersion{Major: 22, Minor: 1, Extra: 0}
 	assert.Error(t, c.validateCephVersion(v))
 
 	// Unsupported versions are now valid

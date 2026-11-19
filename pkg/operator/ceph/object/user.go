@@ -98,7 +98,12 @@ func GetUser(c *Context, id string) (*ObjectUser, int, error) {
 		return nil, RGWErrorNotFound, errors.New("warn: s3 user not found")
 	}
 	if err != nil {
-		return nil, RGWErrorUnknown, errors.Wrapf(err, "radosgw-admin command err. %s", result)
+		// the output is whatever `user info` wrote before failing, which is the user
+		// document and its S3 keys when the command printed one, and this error is
+		// reported into the CephObjectStore status and a Kubernetes event, so report
+		// the response size in place of the response.
+		log.NamedTrace(c.NsName(), logger, "failed to get s3 user %q: %s", id, result) // only trace(insecure) logged because the response may carry the user's S3 keys
+		return nil, RGWErrorUnknown, errors.Wrapf(err, "radosgw-admin command err. user info response (%d bytes)", len(result))
 	}
 	match, err := extractJSON(result)
 	if err != nil {
@@ -187,7 +192,9 @@ func CreateUser(c *Context, user ObjectUser, force bool) (*ObjectUser, int, erro
 // It is called from the rgw dashboard setup logic.
 func CreateOrRecreateUserIfExists(c *Context, user ObjectUser, force bool) (*ObjectUser, int, error) {
 	objUser, errCode, err := CreateUser(c, user, force)
-	if err != nil || (errCode != ErrorCodeFileExists && errCode != RGWErrorNone) {
+	// CreateUser reports an existing user as ErrorCodeFileExists along with an error, so the code
+	// has to be checked first or the user is never re-created.
+	if errCode != ErrorCodeFileExists && (err != nil || errCode != RGWErrorNone) {
 		return nil, errCode, err
 	}
 

@@ -45,6 +45,10 @@ const (
 
 func (c *Cluster) makeDeployment(mdsConfig *mdsConfig, fsNamespacedname types.NamespacedName) (*apps.Deployment, error) {
 	mdsContainer := c.makeMdsDaemonContainer(mdsConfig, fsNamespacedname.Name)
+	// MDS has no startup probe of its own, so one requested in the CR runs the liveness check.
+	if p := c.fs.Spec.MetadataServer.StartupProbe; p != nil && p.Probe != nil {
+		mdsContainer.StartupProbe = mdsContainer.LivenessProbe.DeepCopy()
+	}
 	mdsContainer = cephconfig.ConfigureStartupProbe(mdsContainer, c.fs.Spec.MetadataServer.StartupProbe)
 	mdsContainer = cephconfig.ConfigureLivenessProbe(mdsContainer, c.fs.Spec.MetadataServer.LivenessProbe)
 
@@ -142,6 +146,8 @@ func (c *Cluster) makeMdsDaemonContainer(mdsConfig *mdsConfig, fsName string) v1
 		args = append(args,
 			cephconfig.NewFlag("public-addr", controller.ContainerEnvVarReference(podIPEnvVar)))
 	}
+
+	args = append(args, controller.Msgr1BindingFlags(c.clusterInfo, c.clusterSpec)...)
 
 	container := v1.Container{
 		Name: "mds",

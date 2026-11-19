@@ -94,7 +94,7 @@ func TestOSDIntegration(t *testing.T) {
 
 // This is the actual test. If it hangs, we should consider that an error.
 func testOSDIntegration(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	contextCancel, cancel := context.WithCancel(ctx)
 	namespace := "osd-integration"
 	clusterName := "my-cluster"
@@ -340,7 +340,7 @@ func testOSDIntegration(t *testing.T) {
 				// while to make sure the watcher picks up the updated change
 				cancel()
 				// refresh the context so the rest of the test can continue
-				contextCancel = context.TODO()
+				contextCancel = ctx
 				break
 			}
 			i++
@@ -565,7 +565,7 @@ func osdIntegrationTestExecutor(t *testing.T, clientset *fake.Clientset, namespa
 					// ceph osd ls returns an array of osd IDs like [0,1,2]
 					// build this based on the number of deployments since they should be equal
 					// for this test
-					l, err := clientset.AppsV1().Deployments(namespace).List(context.TODO(), metav1.ListOptions{})
+					l, err := clientset.AppsV1().Deployments(namespace).List(t.Context(), metav1.ListOptions{})
 					if err != nil {
 						panic(fmt.Sprintf("failed to build 'ceph osd ls' output. %v", err))
 					}
@@ -666,7 +666,7 @@ func setStatusConfigMapToCompleted(t *testing.T, cm *corev1.ConfigMap, numOSDsIf
 		status.OSDs = []OSDInfo{
 			{
 				ID:        osdID,
-				UUID:      fmt.Sprintf("%032d", osdID),
+				UUID:      fmt.Sprintf("00000000-0000-0000-0000-%012d", osdID),
 				BlockPath: "/dev/path/to/block",
 				CVMode:    "raw",
 			},
@@ -680,7 +680,7 @@ func setStatusConfigMapToCompleted(t *testing.T, cm *corev1.ConfigMap, numOSDsIf
 			disk := k8sutil.IndexToName(i)
 			status.OSDs = append(status.OSDs, OSDInfo{
 				ID:        osdID,
-				UUID:      fmt.Sprintf("%032d", osdID),
+				UUID:      fmt.Sprintf("00000000-0000-0000-0000-%012d", osdID),
 				BlockPath: fmt.Sprintf("/dev/vd%s", disk),
 				CVMode:    "raw",
 			})

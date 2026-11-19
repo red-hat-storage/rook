@@ -206,8 +206,9 @@ func (r *ReconcileObjectZone) reconcile(request reconcile.Request) (reconcile.Re
 	// Make sure an ObjectZoneGroup is present
 	realmName, reconcileResponse, err := r.getCephObjectZoneGroup(cephObjectZone)
 	if err != nil {
-		// If the zone is being deleted and the zonegroup CRD is already gone (e.g., all multisite
-		// CRDs deleted simultaneously), remove the finalizer so the zone CRD doesn't get stuck.
+		// If the zone is being deleted and the zone group CR is already gone, remove the finalizer
+		// so the zone CR doesn't get stuck. The zone group waits for its zones, so this happens
+		// only in corner cases, such as a zone group finalizer that was removed by hand.
 		if !cephObjectZone.GetDeletionTimestamp().IsZero() && kerrors.IsNotFound(err) {
 			log.NamedWarning(request.NamespacedName, logger, "zonegroup CRD not found during zone deletion, removing finalizer")
 			err := opcontroller.RemoveFinalizer(r.opManagerContext, r.client, cephObjectZone)
@@ -337,7 +338,11 @@ func (r *ReconcileObjectZone) createZoneIfNotExists(objContext *object.Context, 
 			zoneEndpoints := strings.Join(zone.Spec.CustomEndpoints, ",")
 			log.NamedDebug(objContext.NsName(), logger, "Updating endpoints for zone %q are: %q", objContext.Zone, zoneEndpoints)
 			endpointArg := fmt.Sprintf("--endpoints=%s", zoneEndpoints)
-			err = object.JoinMultisite(objContext, endpointArg, zoneEndpoints, zone.Namespace)
+			err = object.JoinMultisite(objContext, endpointArg, zoneEndpoints)
+			if err != nil {
+				return err
+			}
+			err = object.EnsureMultisiteSystemUser(objContext, zone.Namespace)
 			if err != nil {
 				return err
 			}
@@ -503,7 +508,18 @@ func (r *ReconcileObjectZone) deleteZonePools(objContext *object.Context, zone *
 	}
 	poolPrefix, err := decodePoolPrefixfromZone(zoneOutput)
 	if err != nil {
-		return errors.Wrapf(err, "failed to parse pool prefix for zone json %v", zoneOutput)
+		// the zone document carries the realm system user's live S3 credentials, and this error
+		// reaches the CephObjectZone status and a Kubernetes Event by way of reporting, so it
+		// reports the response size in place of the payload: a json syntax error names no
+		// offset. The raw response is available at the TRACE level
+		// ROOK_LOG_LEVEL=TRACE_INSECURE unlocks.
+		//
+		// This covers the parse failure only. A residual remains on the error return above:
+		// 'zone get' is run with expectJSON, so an exec that succeeds while extractJSON finds
+		// no brace-delimited block still wraps the whole raw document into its "didn't contain
+		// json" text. That site has many callers and is its own change.
+		log.NamedTrace(objContext.NsName(), logger, "failed to parse pool prefix for zone %q json: %s", zone.Name, zoneOutput)
+		return errors.Wrapf(err, "failed to parse pool prefix for zone json (%d bytes)", len(zoneOutput))
 	}
 
 	log.NamedDebug(objContext.NsName(), logger, "deleting pools for ceph zone %q with prefix %q", zone.Name, poolPrefix)

@@ -140,37 +140,34 @@ func (r *ReconcileCephNVMeOFGateway) createCephNVMeOFService(nvmeof *cephv1.Ceph
 		return errors.Wrapf(err, "failed to set owner reference to ceph nvmeof gateway %q", s)
 	}
 
-	svc, err := r.context.Clientset.CoreV1().Services(nvmeof.Namespace).Create(r.opManagerContext, s, metav1.CreateOptions{})
-	if err != nil {
-		if !kerrors.IsAlreadyExists(err) {
-			logger.Errorf("failed to create service: %v", err)
-			return errors.Wrap(err, "failed to create nvmeof gateway service")
-		}
-		// Service already exists – verify ClusterIP matches the desired hostNetwork mode.
-		// When hostNetwork changes (e.g. false→true), the service must be recreated
-		// because Kubernetes does not allow mutating spec.clusterIP on an existing service.
-		existing, getErr := r.context.Clientset.CoreV1().Services(nvmeof.Namespace).Get(r.opManagerContext, s.Name, metav1.GetOptions{})
-		if getErr != nil {
-			return errors.Wrapf(getErr, "failed to get existing service %q", s.Name)
-		}
+	// When hostNetwork changes (e.g. false→true), the service must be recreated
+	// because Kubernetes does not allow mutating spec.clusterIP on an existing service.
+	existing, err := r.context.Clientset.CoreV1().Services(nvmeof.Namespace).Get(r.opManagerContext, s.Name, metav1.GetOptions{})
+	if err == nil {
 		hostNetwork := nvmeof.IsHostNetwork(r.cephClusterSpec)
 		needsHeadless := hostNetwork
 		isHeadless := existing.Spec.ClusterIP == v1.ClusterIPNone
 		if needsHeadless != isHeadless {
 			logger.Infof("hostNetwork changed for %q (headless=%t, need=%t), recreating service", s.Name, isHeadless, needsHeadless)
-			delErr := r.context.Clientset.CoreV1().Services(nvmeof.Namespace).Delete(r.opManagerContext, s.Name, metav1.DeleteOptions{})
-			if delErr != nil && !kerrors.IsNotFound(delErr) {
-				return errors.Wrapf(delErr, "failed to delete stale service %q", s.Name)
+			if err := r.context.Clientset.CoreV1().Services(nvmeof.Namespace).Delete(r.opManagerContext, s.Name, metav1.DeleteOptions{}); err != nil && !kerrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to delete stale service %q", s.Name)
 			}
-			svc, err = r.context.Clientset.CoreV1().Services(nvmeof.Namespace).Create(r.opManagerContext, s, metav1.CreateOptions{})
+			svc, err := r.context.Clientset.CoreV1().Services(nvmeof.Namespace).Create(r.opManagerContext, s, metav1.CreateOptions{})
 			if err != nil {
 				return errors.Wrapf(err, "failed to recreate service %q", s.Name)
 			}
 			logger.Infof("recreated service %q with ClusterIP=%s", s.Name, svc.Spec.ClusterIP)
-		} else {
-			logger.Infof("ceph nvmeof gateway service already created with correct type")
+			return nil
 		}
-		return nil
+	} else if !kerrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to get existing service %q", s.Name)
+	}
+
+	// The service is preserved across scale-down/scale-up to keep a stable
+	// ClusterIP, same pattern as mon services.
+	svc, err := k8sutil.CreateOrUpdateService(r.opManagerContext, r.context.Clientset, nvmeof.Namespace, s)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create/update nvmeof gateway service %q", s.Name)
 	}
 
 	_, _, _, discoveryPort := getPorts(nvmeof)
@@ -478,7 +475,7 @@ func (r *ReconcileCephNVMeOFGateway) daemonContainer(nvmeof *cephv1.CephNVMeOFGa
 		},
 	}
 
-	if nvmeof.Spec.LivenessProbe != nil && !nvmeof.Spec.LivenessProbe.Disabled && nvmeof.Spec.LivenessProbe.Probe == nil {
+	if nvmeof.Spec.LivenessProbe != nil {
 		container.LivenessProbe = r.defaultLivenessProbe(nvmeof)
 	}
 	result := cephconfig.ConfigureLivenessProbe(container, nvmeof.Spec.LivenessProbe)
@@ -508,6 +505,10 @@ func (r *ReconcileCephNVMeOFGateway) getNVMeOFImage(nvmeof *cephv1.CephNVMeOFGat
 	if nvmeof.Spec.Image != "" {
 		logger.Infof("using NVMe-oF gateway image from CR spec: %s", nvmeof.Spec.Image)
 		return nvmeof.Spec.Image, nil
+	}
+
+	if envImage := nvmeofImageFromEnvVar(); envImage != "" {
+		return envImage, nil
 	}
 
 	monStore := cephconfig.GetMonStore(r.context, r.clusterInfo)

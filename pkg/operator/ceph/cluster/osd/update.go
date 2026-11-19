@@ -219,12 +219,14 @@ func (c *updateConfig) updateExistingOSDs(errs *provisionErrors) {
 		listIDs = append(listIDs, strconv.Itoa(osdID))
 	}
 
-	// when waiting on deployments to be updated, only list OSDs we intend to update specifically by ID
-	listFunc := c.cluster.getFuncToListDeploymentsWithIDs(listIDs)
+	if len(updatedDeployments) > 0 {
+		// when waiting on deployments to be updated, only list OSDs we intend to update specifically by ID
+		listFunc := c.cluster.getFuncToListDeploymentsWithIDs(listIDs)
 
-	failures := updateMultipleDeploymentsAndWaitFunc(c.cluster.clusterInfo.Context, c.cluster.context.Clientset, updatedDeployments, listFunc)
-	for _, f := range failures {
-		errs.addError("%v", errors.Wrapf(f.Error, "failed to update OSD deployment %q", f.ResourceName))
+		failures := updateMultipleDeploymentsAndWaitFunc(c.cluster.clusterInfo.Context, c.cluster.context.Clientset, updatedDeployments, listFunc)
+		for _, f := range failures {
+			errs.addError("%v", errors.Wrapf(f.Error, "failed to update OSD deployment %q", f.ResourceName))
+		}
 	}
 
 	// If there were failures, don't retry them. If it's a transitory k8s/etcd issue, the next
@@ -256,8 +258,12 @@ func (c *Cluster) getOSDUpdateInfo(errs *provisionErrors) (*updateQueue, *existe
 			errs.addError("%v. did a user create their own deployment with label %q?", selector, err)
 			continue
 		}
-		// all OSD deployments should be marked as existing
-		existenceList.Add(id)
+		identity := osdIdentity{
+			UUID: getOSDUUIDFromDeployment(&deps.Items[i]),
+		}
+		identity.NodeOrPVCName, _ = getNodeOrPVCName(&deps.Items[i])
+
+		existenceList.AddWithDetail(id, identity)
 		updateQueue.Push(id)
 	}
 
@@ -327,16 +333,22 @@ func (q *updateQueue) Remove(osdIDs []int) {
 	q.q = q.q[:lastIdx]
 }
 
-// An existenceList keeps track of which OSDs already have Deployments created for them. It is
+// osdIdentity stores identifying details about an existing OSD deployment.
+type osdIdentity struct {
+	UUID          string
+	NodeOrPVCName string
+}
+
+// An existenceList keeps track of which OSDs already have Deployments created for them that is
 // queryable in O(1) time.
 type existenceList struct {
-	m map[int]bool
+	m map[int]osdIdentity
 }
 
 // Create a new existenceList with capacity reserved.
 func newExistenceListWithCapacity(cap int) *existenceList {
 	return &existenceList{
-		m: make(map[int]bool, cap),
+		m: make(map[int]osdIdentity, cap),
 	}
 }
 
@@ -353,9 +365,14 @@ func (e *existenceList) Len() int {
 	return len(e.m)
 }
 
-// Add adds an item to the existenceList.
+// Add adds an item to the existenceList with an empty identity.
 func (e *existenceList) Add(osdID int) {
-	e.m[osdID] = true
+	e.m[osdID] = osdIdentity{}
+}
+
+// AddWithDetail adds an item to the existenceList along with its OSD identity.
+func (e *existenceList) AddWithDetail(osdID int, identity osdIdentity) {
+	e.m[osdID] = identity
 }
 
 // Exists returns true if an item is recorded in the existence list or false if it is not.
@@ -364,8 +381,19 @@ func (e *existenceList) Exists(osdID int) bool {
 	return ok
 }
 
+// Get returns the identity for an existing OSD, or an empty identity and false if the OSD is not found.
+func (e *existenceList) Get(osdID int) (osdIdentity, bool) {
+	d, ok := e.m[osdID]
+	return d, ok
+}
+
 // return a function that will list only OSD deployments with the IDs given
 func (c *Cluster) getFuncToListDeploymentsWithIDs(osdIDs []string) func() (*appsv1.DeploymentList, error) {
+	if len(osdIDs) == 0 {
+		return func() (*appsv1.DeploymentList, error) {
+			return &appsv1.DeploymentList{}, nil
+		}
+	}
 	selector := fmt.Sprintf("ceph-osd-id in (%s)", strings.Join(osdIDs, ", "))
 	listOpts := metav1.ListOptions{
 		LabelSelector: selector, // e.g. 'ceph-osd-id in (1, 3, 5, 7, 9)'

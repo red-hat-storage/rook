@@ -48,7 +48,7 @@ import (
 )
 
 func TestCheckHealth(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	var deploymentsUpdated *[]*apps.Deployment
 	updateDeploymentAndWait, deploymentsUpdated = testopk8s.UpdateDeploymentAndWaitStub()
 
@@ -234,20 +234,20 @@ func TestScheduleFailoverImmediately(t *testing.T) {
 			Labels: map[string]string{"kubernetes.io/hostname": "nodea"},
 		},
 	}
-	_, err := clientset.CoreV1().Nodes().Create(context.TODO(), node, metav1.CreateOptions{})
+	_, err := clientset.CoreV1().Nodes().Create(t.Context(), node, metav1.CreateOptions{})
 	assert.NoError(t, err)
 
 	// mon a is assigned to a node, so it should not failover immediately
-	assert.False(t, c.shouldFailoverMonImmediately((context.TODO()), "a"))
+	assert.False(t, c.shouldFailoverMonImmediately((t.Context()), "a"))
 	// mon b is not assigned to a node, so it should not failover immediately
-	assert.False(t, c.shouldFailoverMonImmediately((context.TODO()), "b"))
+	assert.False(t, c.shouldFailoverMonImmediately((t.Context()), "b"))
 	// mon c is assigned to a non-existent node, so it should failover immediately
-	assert.True(t, c.shouldFailoverMonImmediately((context.TODO()), "c"))
+	assert.True(t, c.shouldFailoverMonImmediately((t.Context()), "c"))
 	// Test that the function detects node deletion when called repeatedly
-	err = clientset.CoreV1().Nodes().Delete(context.TODO(), "a", metav1.DeleteOptions{})
+	err = clientset.CoreV1().Nodes().Delete(t.Context(), "a", metav1.DeleteOptions{})
 	assert.NoError(t, err)
 	// node a has been deleted, so mon a should failover immediately
-	assert.True(t, c.shouldFailoverMonImmediately((context.TODO()), "a"))
+	assert.True(t, c.shouldFailoverMonImmediately((t.Context()), "a"))
 }
 
 func TestTrackMonsOutOfQuorum(t *testing.T) {
@@ -282,7 +282,7 @@ func TestTrackMonsOutOfQuorum(t *testing.T) {
 	assert.True(t, updated)
 	assert.NoError(t, err)
 
-	cm, err := clientset.CoreV1().ConfigMaps(c.Namespace).Get(context.TODO(), EndpointConfigMapName, metav1.GetOptions{})
+	cm, err := clientset.CoreV1().ConfigMaps(c.Namespace).Get(t.Context(), EndpointConfigMapName, metav1.GetOptions{})
 	assert.NoError(t, err)
 	assert.Equal(t, "a", cm.Data[opcontroller.OutOfQuorumKey])
 
@@ -291,13 +291,13 @@ func TestTrackMonsOutOfQuorum(t *testing.T) {
 	assert.True(t, updated)
 	assert.NoError(t, err)
 
-	cm, err = clientset.CoreV1().ConfigMaps(c.Namespace).Get(context.TODO(), EndpointConfigMapName, metav1.GetOptions{})
+	cm, err = clientset.CoreV1().ConfigMaps(c.Namespace).Get(t.Context(), EndpointConfigMapName, metav1.GetOptions{})
 	assert.NoError(t, err)
 	assert.Equal(t, "", cm.Data[opcontroller.OutOfQuorumKey])
 }
 
 func TestEvictMonOnSameNode(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	clientset := test.New(t, 1)
 	configDir := t.TempDir()
 	executor := &exectest.MockExecutor{
@@ -366,7 +366,7 @@ func TestEvictMonOnSameNode(t *testing.T) {
 }
 
 func TestHostNetworkFailover(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	context := &clusterd.Context{}
 	ownerInfo := cephclient.NewMinimumOwnerInfoWithOwnerRef()
 	c := New(ctx, context, "ns", cephv1.ClusterSpec{}, ownerInfo)
@@ -403,12 +403,12 @@ func createTestMonPod(t *testing.T, clientset kubernetes.Interface, c *Cluster, 
 	}
 	monPod.Spec.NodeName = node
 	monPod.Status.Phase = v1.PodRunning
-	_, err = clientset.CoreV1().Pods(c.Namespace).Create(context.TODO(), monPod, metav1.CreateOptions{})
+	_, err = clientset.CoreV1().Pods(c.Namespace).Create(t.Context(), monPod, metav1.CreateOptions{})
 	assert.NoError(t, err)
 }
 
 func TestScaleMonDeployment(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	clientset := test.New(t, 1)
 	context := &clusterd.Context{Clientset: clientset}
 	ownerInfo := cephclient.NewMinimumOwnerInfoWithOwnerRef()
@@ -441,7 +441,7 @@ func verifyMonReplicas(ctx context.Context, t *testing.T, c *Cluster, name strin
 }
 
 func TestCheckHealthNotFound(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	var deploymentsUpdated *[]*apps.Deployment
 	updateDeploymentAndWait, deploymentsUpdated = testopk8s.UpdateDeploymentAndWaitStub()
 
@@ -513,7 +513,7 @@ func TestCheckHealthNotFound(t *testing.T) {
 }
 
 func TestAddRemoveMons(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	var deploymentsUpdated *[]*apps.Deployment
 	updateDeploymentAndWait, deploymentsUpdated = testopk8s.UpdateDeploymentAndWaitStub()
 
@@ -844,7 +844,7 @@ func Test_removeMonsFromQuorumStatusResponse(t *testing.T) {
 
 func TestExternalMons_notInSpec_InQuorum(t *testing.T) {
 	// 1. setup test
-	ctx := context.TODO()
+	ctx := t.Context()
 	var deploymentsUpdated *[]*apps.Deployment
 	updateDeploymentAndWait, deploymentsUpdated = testopk8s.UpdateDeploymentAndWaitStub()
 
@@ -1000,7 +1000,7 @@ func TestExternalMons_notInSpec_InQuorum(t *testing.T) {
 
 func TestExternalMons_inSpec_notInQuorum(t *testing.T) {
 	// 1. setup test
-	ctx := context.TODO()
+	ctx := t.Context()
 	var deploymentsUpdated *[]*apps.Deployment
 	updateDeploymentAndWait, deploymentsUpdated = testopk8s.UpdateDeploymentAndWaitStub()
 
@@ -1134,7 +1134,7 @@ func TestExternalMons_inSpec_notInQuorum(t *testing.T) {
 
 func TestExternalMons_inSpec_inQuorum(t *testing.T) {
 	// 1. setup test
-	ctx := context.TODO()
+	ctx := t.Context()
 	var deploymentsUpdated *[]*apps.Deployment
 	updateDeploymentAndWait, deploymentsUpdated = testopk8s.UpdateDeploymentAndWaitStub()
 
@@ -1320,4 +1320,28 @@ func getCephCluster(name, namespace string) *cephv1.CephCluster {
 			},
 		},
 	}
+}
+
+func TestExternalMonAdvertisingMsgr1KeepsDaemonMsgr1(t *testing.T) {
+	namespace := "ns"
+	context, err := newTestStartCluster(t, namespace)
+	require.NoError(t, err)
+	c := newCluster(context, namespace, true, v1.ResourceRequirements{})
+	c.ClusterInfo = clienttest.CreateTestClusterInfo(3)
+	c.spec.Network.Connections = &cephv1.ConnectionsSpec{RequireMsgr2: true}
+	c.spec.Mon.ExternalMonIDs = []string{"ext"}
+	// every mon deployed by Rook is on the msgr2 port
+	require.Equal(t, []string{"--ms-bind-msgr1=false"}, opcontroller.Msgr1BindingFlags(c.ClusterInfo, &c.spec))
+
+	ext := cephclient.MonMapEntry{Name: "ext", Rank: 3, PublicAddr: "10.0.0.9:6789/0"}
+	ext.PublicAddrs.Addrvec = []cephclient.AddrvecEntry{{Type: "v2", Addr: "10.0.0.9:3300"}, {Type: "v1", Addr: "10.0.0.9:6789"}}
+	status := cephclient.MonStatusResponse{Quorum: []int{3}}
+	status.MonMap.Mons = []cephclient.MonMapEntry{ext}
+	_, err = c.reconcileExternalMons(t.Context(), status)
+	require.NoError(t, err)
+
+	// the external mon is recorded on the msgr2 port although it still advertises msgr1
+	require.Contains(t, c.ClusterInfo.ExternalMons, "ext")
+	assert.Equal(t, "10.0.0.9:3300", c.ClusterInfo.ExternalMons["ext"].Endpoint)
+	assert.Empty(t, opcontroller.Msgr1BindingFlags(c.ClusterInfo, &c.spec))
 }

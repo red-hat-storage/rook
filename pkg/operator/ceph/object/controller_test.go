@@ -327,7 +327,7 @@ var (
 )
 
 func TestCephObjectStoreController(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	// Set DEBUG logging
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
 	os.Setenv("ROOK_LOG_LEVEL", "DEBUG")
@@ -393,7 +393,7 @@ func TestCephObjectStoreController(t *testing.T) {
 			scheme:           s,
 			context:          c,
 			recorder:         events.NewFakeRecorder(50),
-			opManagerContext: context.TODO(),
+			opManagerContext: t.Context(),
 		}
 
 		return r
@@ -546,13 +546,48 @@ func TestCephObjectStoreController(t *testing.T) {
 		assert.False(t, res.Requeue)
 
 		objectStore := &cephv1.CephObjectStore{}
-		err = r.client.Get(context.TODO(), req.NamespacedName, objectStore)
+		err = r.client.Get(t.Context(), req.NamespacedName, objectStore)
 		assert.NoError(t, err)
 		assert.Equal(t, cephv1.ConditionReady, objectStore.Status.Phase, objectStore)
 		assert.NotEmpty(t, objectStore.Status.Info["endpoint"], objectStore)
 		assert.Equal(t, "http://rook-ceph-rgw-my-store.rook-ceph.svc:80", objectStore.Status.Info["endpoint"], objectStore)
 		assert.True(t, calledCommitConfigChanges)
 		assert.Equal(t, 19, r.clusterInfo.CephVersion.Major)
+	})
+
+	t.Run("error - additional volume mount outside /var/rgw", func(t *testing.T) {
+		r := setupEnvironmentWithReadyCephCluster()
+		recorder := events.NewFakeRecorder(50)
+		r.recorder = recorder
+
+		objectStore := &cephv1.CephObjectStore{}
+		require.NoError(t, r.client.Get(ctx, req.NamespacedName, objectStore))
+		objectStore.Spec.Gateway.AdditionalVolumeMounts = cephv1.AdditionalVolumeMounts{
+			{
+				SubPath: "../../usr/local/bin",
+				VolumeSource: &cephv1.ConfigFileVolumeSource{
+					ConfigMap: &v1.ConfigMapVolumeSource{LocalObjectReference: v1.LocalObjectReference{Name: "bin"}},
+				},
+			},
+		}
+		require.NoError(t, r.client.Update(ctx, objectStore))
+
+		_, err := r.Reconcile(ctx, req)
+		assert.ErrorContains(t, err, `"../../usr/local/bin"`)
+
+		close(recorder.Events)
+		recorded := []string{}
+		for e := range recorder.Events {
+			recorded = append(recorded, e)
+		}
+		assert.Len(t, recorded, 1)
+		for _, e := range recorded {
+			assert.Contains(t, e, `"../../usr/local/bin"`)
+		}
+
+		deployments, err := r.context.Clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+		require.NoError(t, err)
+		assert.Empty(t, deployments.Items)
 	})
 
 	t.Run("requeue - osds still upgrading", func(t *testing.T) {
@@ -573,7 +608,7 @@ func TestCephObjectStoreController(t *testing.T) {
 }
 
 func TestCephObjectStoreControllerMultisite(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
 	os.Setenv("ROOK_LOG_LEVEL", "DEBUG")
 	var deploymentsUpdated *[]*apps.Deployment
@@ -833,7 +868,7 @@ func TestCephObjectStoreControllerZoneNotReady(t *testing.T) {
 	// is not yet Ready. This prevents a race condition where RGW starts before
 	// the zone controller has configured shared pool placements, causing RGW to
 	// auto-create unwanted default pools (see https://github.com/rook/rook/issues/17013).
-	ctx := context.TODO()
+	ctx := t.Context()
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
 	os.Setenv("ROOK_LOG_LEVEL", "DEBUG")
 
@@ -1082,7 +1117,7 @@ func TestRetrieveMultisiteZone(t *testing.T) {
 }
 
 func TestCephObjectExternalStoreController(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
 	os.Setenv("ROOK_LOG_LEVEL", "DEBUG")
 
@@ -1318,7 +1353,7 @@ func TestDiffVersions(t *testing.T) {
 	assert.NoError(t, err)
 
 	// runningCephVersion comes from LeastUptodateDaemonVersion()
-	runningCephVersion, err := client.LeastUptodateDaemonVersion(c, &client.ClusterInfo{Context: context.TODO()}, "mon")
+	runningCephVersion, err := client.LeastUptodateDaemonVersion(c, &client.ClusterInfo{Context: t.Context()}, "mon")
 	assert.NoError(t, err)
 
 	// Compares the pointer's address with the struct so it's wrong
@@ -1341,7 +1376,7 @@ func Test_mapSecretToCR(t *testing.T) {
 		s.AddKnownTypes(cephv1.SchemeGroupVersion, &cephv1.CephObjectStoreList{})
 		cl := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(objects...).Build()
 		mapFunc := mapSecretToCR(cl)
-		got := mapFunc(context.TODO(), &v1.Secret{
+		got := mapFunc(t.Context(), &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "secret",
 				Namespace: "ns",
@@ -1367,7 +1402,7 @@ func Test_mapSecretToCR(t *testing.T) {
 		s.AddKnownTypes(cephv1.SchemeGroupVersion, &cephv1.CephObjectStoreList{})
 		cl := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(objects...).Build()
 		mapFunc := mapSecretToCR(cl)
-		got := mapFunc(context.TODO(), &v1.Secret{
+		got := mapFunc(t.Context(), &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "secret",
 				Namespace: "ns",
@@ -1376,7 +1411,7 @@ func Test_mapSecretToCR(t *testing.T) {
 		assert.Len(t, got, 1, "expected 1 item")
 		assert.Equal(t, "store2", got[0].Name, "expected store2")
 
-		got = mapFunc(context.TODO(), &v1.Secret{
+		got = mapFunc(t.Context(), &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "secret-other",
 				Namespace: "ns",
@@ -1384,7 +1419,7 @@ func Test_mapSecretToCR(t *testing.T) {
 		})
 		assert.Empty(t, got, "empty: wrong secret name")
 
-		got = mapFunc(context.TODO(), &v1.Secret{
+		got = mapFunc(t.Context(), &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "secret",
 				Namespace: "ns-other",
@@ -1410,7 +1445,7 @@ func Test_mapSecretToCR(t *testing.T) {
 		s.AddKnownTypes(cephv1.SchemeGroupVersion, &cephv1.CephObjectStoreList{})
 		cl := fake.NewClientBuilder().WithScheme(s).WithRuntimeObjects(objects...).Build()
 		mapFunc := mapSecretToCR(cl)
-		got := mapFunc(context.TODO(), &v1.Secret{
+		got := mapFunc(t.Context(), &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "secret",
 				Namespace: "ns",
@@ -1419,7 +1454,7 @@ func Test_mapSecretToCR(t *testing.T) {
 		assert.Len(t, got, 1, "expected 1 item")
 		assert.Equal(t, "store2", got[0].Name, "expected store2")
 
-		got = mapFunc(context.TODO(), &v1.Secret{
+		got = mapFunc(t.Context(), &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "secret-other",
 				Namespace: "ns",
@@ -1427,7 +1462,7 @@ func Test_mapSecretToCR(t *testing.T) {
 		})
 		assert.Empty(t, got, "empty: wrong secret name")
 
-		got = mapFunc(context.TODO(), &v1.Secret{
+		got = mapFunc(t.Context(), &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "secret",
 				Namespace: "ns-other",
@@ -1441,7 +1476,7 @@ func TestKeyRotation(t *testing.T) {
 	// test key rotation end-to-end
 	keyring.SetAllowCephxKeyRotationForCluster(namespace, true)
 
-	ctx := context.TODO()
+	ctx := t.Context()
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
 	os.Setenv("ROOK_LOG_LEVEL", "DEBUG")
 	var deploymentsUpdated *[]*apps.Deployment

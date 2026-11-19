@@ -124,7 +124,7 @@ func TestStart(t *testing.T) {
 	clusterInfo := &cephclient.ClusterInfo{
 		Namespace:   namespace,
 		CephVersion: cephver.Squid,
-		Context:     context.TODO(),
+		Context:     t.Context(),
 	}
 	clusterInfo.SetName("rook-ceph-test")
 	context := &clusterd.Context{Clientset: clientset, Client: client, ConfigDir: "/var/lib/rook", Executor: executor}
@@ -178,7 +178,7 @@ func createNode(nodeName string, condition corev1.NodeConditionType, clientset *
 }
 
 func TestAddRemoveNode(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	namespace := "ns-add-remove"
 	// create a storage spec with the given nodes/devices/dirs
 	nodeName := "node23"
@@ -437,7 +437,7 @@ func TestPostReconcileUpdateOSDProperties(t *testing.T) {
 	clusterInfo := &cephclient.ClusterInfo{
 		Namespace:   namespace,
 		CephVersion: cephver.Squid,
-		Context:     context.TODO(),
+		Context:     t.Context(),
 	}
 	clusterInfo.SetName("rook-ceph-test")
 	context := &clusterd.Context{Clientset: clientset, Client: client, ConfigDir: "/var/lib/rook", Executor: executor}
@@ -487,7 +487,7 @@ func TestAddNodeFailure(t *testing.T) {
 	clusterInfo := &cephclient.ClusterInfo{
 		Namespace:   "ns-add-remove",
 		CephVersion: cephver.Squid,
-		Context:     context.TODO(),
+		Context:     t.Context(),
 	}
 	clusterInfo.SetName("testcluster")
 	clusterInfo.OwnerInfo = cephclient.NewMinimumOwnerInfo(t)
@@ -534,7 +534,7 @@ func TestOSDProvisionCleanup(t *testing.T) {
 	// Create orphaned status configmap
 	cmName := statusConfigMapName(missingNodeName)
 	cmLabels := statusConfigMapLabels(missingNodeName)
-	_, err := clientset.CoreV1().ConfigMaps(namespace).Create(context.TODO(), &corev1.ConfigMap{
+	_, err := clientset.CoreV1().ConfigMaps(namespace).Create(t.Context(), &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   cmName,
 			Labels: cmLabels,
@@ -545,7 +545,7 @@ func TestOSDProvisionCleanup(t *testing.T) {
 	// Create orphaned provision job
 	orphanedJobName := provisionJobName(missingNodeName)
 	orphanedJobLabels := provisionJobLabels(namespace)
-	_, err = clientset.BatchV1().Jobs(namespace).Create(context.TODO(), &batchv1.Job{
+	_, err = clientset.BatchV1().Jobs(namespace).Create(t.Context(), &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   orphanedJobName,
 			Labels: orphanedJobLabels,
@@ -565,7 +565,7 @@ func TestOSDProvisionCleanup(t *testing.T) {
 	// Create a non-orphaned provision job
 	nonOrphanedJobName := provisionJobName(existingNodeName)
 	nonOrphanedJobLabels := provisionJobLabels(namespace)
-	_, err = clientset.BatchV1().Jobs(namespace).Create(context.TODO(), &batchv1.Job{
+	_, err = clientset.BatchV1().Jobs(namespace).Create(t.Context(), &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   nonOrphanedJobName,
 			Labels: nonOrphanedJobLabels,
@@ -583,7 +583,7 @@ func TestOSDProvisionCleanup(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create the existing node
-	_, err = clientset.CoreV1().Nodes().Create(context.TODO(), &corev1.Node{
+	_, err = clientset.CoreV1().Nodes().Create(t.Context(), &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: existingNodeName,
 			Labels: map[string]string{
@@ -611,7 +611,7 @@ func TestOSDProvisionCleanup(t *testing.T) {
 	clusterInfo := &cephclient.ClusterInfo{
 		Namespace:   namespace,
 		CephVersion: cephver.Squid,
-		Context:     context.TODO(),
+		Context:     t.Context(),
 	}
 	clusterInfo.SetName("testcluster")
 	clusterInfo.OwnerInfo = cephclient.NewMinimumOwnerInfo(t)
@@ -643,20 +643,20 @@ func TestOSDProvisionCleanup(t *testing.T) {
 	assert.Nil(t, err)
 
 	// validate that orphaned status configmap was deleted
-	_, err = clientset.CoreV1().ConfigMaps(namespace).Get(context.TODO(), cmName, metav1.GetOptions{})
+	_, err = clientset.CoreV1().ConfigMaps(namespace).Get(t.Context(), cmName, metav1.GetOptions{})
 	assert.True(t, k8serrors.IsNotFound(err), "Orphaned status configmap was not deleted.")
 
 	// validate that orphaned provision job was deleted
-	_, err = clientset.BatchV1().Jobs(namespace).Get(context.TODO(), orphanedJobName, metav1.GetOptions{})
+	_, err = clientset.BatchV1().Jobs(namespace).Get(t.Context(), orphanedJobName, metav1.GetOptions{})
 	assert.True(t, k8serrors.IsNotFound(err), "Orphaned provision job was not deleted.")
 
 	// validate that the non-orphaned provision job was not deleted
-	_, err = clientset.BatchV1().Jobs(namespace).Get(context.TODO(), nonOrphanedJobName, metav1.GetOptions{})
+	_, err = clientset.BatchV1().Jobs(namespace).Get(t.Context(), nonOrphanedJobName, metav1.GetOptions{})
 	assert.NoError(t, err, "non-orphaned provision job was deleted.")
 }
 
 func TestGetPVCHostName(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	clientset := fake.NewClientset()
 	clusterInfo := &cephclient.ClusterInfo{Namespace: "ns"}
 	clusterInfo.SetName("mycluster")
@@ -719,9 +719,9 @@ func TestGetOSDInfo(t *testing.T) {
 
 	node := "n1"
 	location := "root=default host=myhost zone=myzone"
-	osd1 := &OSDInfo{ID: 3, UUID: "osd-uuid", BlockPath: "dev/logical-volume-path", CVMode: "raw", Location: location, TopologyAffinity: "topology.rook.io/rack=rack0"}
-	osd2 := &OSDInfo{ID: 3, UUID: "osd-uuid", BlockPath: "vg1/lv1", CVMode: "lvm", LVBackedPV: true}
-	osd3 := &OSDInfo{ID: 3, UUID: "osd-uuid", BlockPath: "", CVMode: "raw"}
+	osd1 := &OSDInfo{ID: 3, UUID: "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53", BlockPath: "dev/logical-volume-path", CVMode: "raw", Location: location, TopologyAffinity: "topology.rook.io/rack=rack0"}
+	osd2 := &OSDInfo{ID: 3, UUID: "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53", BlockPath: "vg1/lv1", CVMode: "lvm", LVBackedPV: true}
+	osd3 := &OSDInfo{ID: 3, UUID: "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53", BlockPath: "", CVMode: "raw"}
 	osdProp := osdProperties{
 		crushHostname: node,
 		pvc:           corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc"},
@@ -772,8 +772,8 @@ func TestGetOSDInfo(t *testing.T) {
 
 	t.Run("get info from node-based OSDs", func(t *testing.T) {
 		useAllDevices := true
-		osd4 := &OSDInfo{ID: 3, UUID: "osd-uuid", BlockPath: "", CVMode: "lvm", Location: location}
-		osd5 := &OSDInfo{ID: 3, UUID: "osd-uuid", BlockPath: "vg1/lv1", CVMode: "lvm"}
+		osd4 := &OSDInfo{ID: 3, UUID: "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53", BlockPath: "", CVMode: "lvm", Location: location}
+		osd5 := &OSDInfo{ID: 3, UUID: "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53", BlockPath: "vg1/lv1", CVMode: "lvm"}
 		osdProp = osdProperties{
 			crushHostname: node,
 			devices:       []cephv1.Device{},
@@ -800,7 +800,7 @@ func TestGetOSDInfo(t *testing.T) {
 	t.Run("verify the existence of labels if the corresponding fields are set on OSDInfo and OSDProperties", func(t *testing.T) {
 		pvcName := "test-pvc"
 		osdInfo := &OSDInfo{
-			UUID:       "osd-uuid",
+			UUID:       "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53",
 			BlockPath:  "dev/logical-volume-path",
 			CVMode:     "raw",
 			Store:      "bluestore",
@@ -841,7 +841,7 @@ func TestGetOSDInfo(t *testing.T) {
 
 	t.Run("detect encryption from dmcrypt block path when encrypted label is missing", func(t *testing.T) {
 		osdInfo := &OSDInfo{
-			UUID:      "osd-uuid",
+			UUID:      "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53",
 			BlockPath: "/dev/mapper/set1-data-0-abc-block-dmcrypt",
 			CVMode:    "raw",
 		}
@@ -867,7 +867,7 @@ func TestGetOSDInfo(t *testing.T) {
 
 	t.Run("encrypted label is set from OSDInfo when osdProps does not indicate encryption", func(t *testing.T) {
 		osdInfo := &OSDInfo{
-			UUID:      "osd-uuid",
+			UUID:      "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53",
 			BlockPath: "/dev/mapper/set1-data-0-abc-block-dmcrypt",
 			CVMode:    "raw",
 			Encrypted: true,
@@ -887,10 +887,37 @@ func TestGetOSDInfo(t *testing.T) {
 		assert.Equal(t, "true", d.Spec.Template.Labels[encrypted])
 	})
 
+	t.Run("global encryptedDevice does not set the encrypted label", func(t *testing.T) {
+		osdInfo := &OSDInfo{
+			UUID:      "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53",
+			BlockPath: "/dev/vg/lv",
+			CVMode:    "lvm",
+		}
+		osdProp := osdProperties{
+			crushHostname: node,
+			storeConfig:   config.StoreConfig{EncryptedDevice: true},
+		}
+
+		d, err := c.makeDeployment(osdProp, osdInfo, dataPathMap)
+		assert.NoError(t, err)
+		assert.Equal(t, "false", d.Labels[encrypted])
+		assert.True(t, d.Spec.Template.Spec.HostIPC)
+
+		// once the global setting is turned off, the unencrypted OSD is not treated as encrypted
+		updatedOSDInfo, err := c.getOSDInfo(d)
+		assert.NoError(t, err)
+		assert.False(t, updatedOSDInfo.Encrypted)
+		osdProp.storeConfig.EncryptedDevice = false
+		d, err = c.makeDeployment(osdProp, &updatedOSDInfo, dataPathMap)
+		assert.NoError(t, err)
+		assert.False(t, d.Spec.Template.Spec.HostIPC)
+		verifyEnvVar(t, d.Spec.Template.Spec.InitContainers[0].Env, EncryptedDeviceEnvVarName, "false", true)
+	})
+
 	t.Run("verify the non-existence of labels if the corresponding fields are not set on OSDInfo and OSDProperties", func(t *testing.T) {
 		useAllDevices := true
 		osdInfo := &OSDInfo{
-			UUID:      "osd-uuid",
+			UUID:      "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53",
 			BlockPath: "vg1/lv1",
 			CVMode:    "lvm",
 			// Store and DeviceType are empty (zero values)
@@ -1042,9 +1069,9 @@ func TestGetOSDInfoWithCustomRoot(t *testing.T) {
 
 	node := "n1"
 	location := "root=custom-root host=myhost zone=myzone"
-	osd1 := &OSDInfo{ID: 3, UUID: "osd-uuid", BlockPath: "dev/logical-volume-path", CVMode: "raw", Location: location}
-	osd2 := &OSDInfo{ID: 3, UUID: "osd-uuid", BlockPath: "vg1/lv1", CVMode: "lvm", LVBackedPV: true, Location: location}
-	osd3 := &OSDInfo{ID: 3, UUID: "osd-uuid", BlockPath: "", CVMode: "lvm", Location: location}
+	osd1 := &OSDInfo{ID: 3, UUID: "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53", BlockPath: "dev/logical-volume-path", CVMode: "raw", Location: location}
+	osd2 := &OSDInfo{ID: 3, UUID: "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53", BlockPath: "vg1/lv1", CVMode: "lvm", LVBackedPV: true, Location: location}
+	osd3 := &OSDInfo{ID: 3, UUID: "8f3a7c2e-5b14-4d6e-9a0b-2c7d1e4f6a53", BlockPath: "", CVMode: "lvm", Location: location}
 	osdProp := osdProperties{
 		crushHostname: node,
 		pvc:           corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc"},
@@ -1076,7 +1103,7 @@ func TestGetOSDInfoWithCustomRoot(t *testing.T) {
 }
 
 func TestUpdateCephStorageStatus(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	clusterInfo := cephclient.AdminTestClusterInfo("fake")
 	executor := &exectest.MockExecutor{
 		MockExecuteCommandWithOutput: func(command string, args ...string) (string, error) {
@@ -1180,7 +1207,7 @@ func TestUpdateCephStorageStatus(t *testing.T) {
 }
 
 func Test_updateCephOsdStorageStatus_cephx(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	clusterInfo := cephclient.AdminTestClusterInfo("fake")
 	executor := &exectest.MockExecutor{
 		MockExecuteCommandWithOutput: func(command string, args ...string) (string, error) {
@@ -1401,7 +1428,7 @@ func TestValidateOSDSettings(t *testing.T) {
 	clusterInfo := &cephclient.ClusterInfo{
 		Namespace:   namespace,
 		CephVersion: cephver.Squid,
-		Context:     context.TODO(),
+		Context:     t.Context(),
 	}
 	clusterInfo.SetName("rook-ceph-test")
 	c := New(&clusterd.Context{}, clusterInfo, cephv1.ClusterSpec{}, "version")
@@ -1501,7 +1528,7 @@ func TestResolveDeviceClass(t *testing.T) {
 	clusterInfo := &cephclient.ClusterInfo{
 		Namespace:   namespace,
 		CephVersion: cephver.Squid,
-		Context:     context.TODO(),
+		Context:     t.Context(),
 	}
 	clusterInfo.SetName("mycluster")
 	clusterInfo.OwnerInfo = cephclient.NewMinimumOwnerInfo(t)
@@ -1513,7 +1540,7 @@ func TestResolveDeviceClass(t *testing.T) {
 				Labels: labels,
 			},
 		}
-		_, err := clientset.CoreV1().Nodes().Create(context.TODO(), node, metav1.CreateOptions{})
+		_, err := clientset.CoreV1().Nodes().Create(t.Context(), node, metav1.CreateOptions{})
 		assert.NoError(t, err)
 	}
 

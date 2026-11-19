@@ -16,6 +16,9 @@ spec:
   {{- with .Values.monitoring }}
   monitoring:
     enabled: {{ .enabled | default false }}
+    {{- with .metricsDisabled }}
+    metricsDisabled: {{ . }}
+    {{- end }}
     {{- with .exporter }}
     exporter:
     {{- . | toYaml | nindent 6 }}
@@ -29,6 +32,9 @@ spec:
     {{- end }}
     {{- with .interval }}
     interval: {{ . }}
+    {{- end }}
+    {{- with .scrapeTimeoutSeconds }}
+    scrapeTimeoutSeconds: {{ . }}
     {{- end }}
     {{- with .metricsTLS }}
     metricsTLS:

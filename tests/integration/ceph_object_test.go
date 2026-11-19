@@ -27,17 +27,22 @@ import (
 	bucketowner "github.com/rook/rook/tests/integration/object/bucket/owner"
 	bucketpolicy "github.com/rook/rook/tests/integration/object/bucket/policy"
 	bucketquota "github.com/rook/rook/tests/integration/object/bucket/quota"
+	bucketrelink "github.com/rook/rook/tests/integration/object/bucket/relink"
 	bucketrw "github.com/rook/rook/tests/integration/object/bucket/rw"
 	"github.com/rook/rook/tests/integration/object/cosi"
 	"github.com/rook/rook/tests/integration/object/dependents"
 	"github.com/rook/rook/tests/integration/object/notification"
+	"github.com/rook/rook/tests/integration/object/realm"
 	topickafka "github.com/rook/rook/tests/integration/object/topic/kafka"
 	usercaps "github.com/rook/rook/tests/integration/object/user/caps"
 	userkeys "github.com/rook/rook/tests/integration/object/user/keys"
 	useropmask "github.com/rook/rook/tests/integration/object/user/opmask"
 	userplacement "github.com/rook/rook/tests/integration/object/user/placement"
+	usersecrettemplate "github.com/rook/rook/tests/integration/object/user/secrettemplate"
 	userstorageclass "github.com/rook/rook/tests/integration/object/user/storageclass"
 	"github.com/rook/rook/tests/integration/object/util/sharedstore"
+	"github.com/rook/rook/tests/integration/object/zone"
+	"github.com/rook/rook/tests/integration/object/zonegroup"
 	"github.com/rook/rook/tests/integration/object/zonepools"
 )
 
@@ -111,11 +116,14 @@ func runObjectE2ETest(t *testing.T, k8sh *utils.K8sHelper, installer *installer.
 		TLSEnable: tlsEnable,
 		AllowUsersInNamespaces: []string{
 			bucketowner.Namespace,
+			bucketrelink.Namespace,
+			bucketrelink.ThiefNamespace,
 			cosi.Namespace,
 			usercaps.Namespace,
 			userkeys.Namespace,
 			useropmask.Namespace,
 			userplacement.Namespace,
+			usersecrettemplate.Namespace,
 			userstorageclass.Namespace,
 		},
 	})
@@ -124,6 +132,7 @@ func runObjectE2ETest(t *testing.T, k8sh *utils.K8sHelper, installer *installer.
 	zonepools.TestZonePools(t, k8sh, sharedObjectStore)
 	bucketlifecycle.TestObjectBucketClaimLifecycle(t, k8sh, sharedObjectStore)
 	bucketowner.TestObjectBucketClaimBucketOwner(t, k8sh, sharedObjectStore)
+	bucketrelink.TestObjectBucketClaimRelink(t, k8sh, sharedObjectStore)
 	bucketpolicy.TestObjectBucketClaimPolicy(t, k8sh, sharedObjectStore)
 	bucketquota.TestObjectBucketClaimQuota(t, k8sh, sharedObjectStore)
 	bucketrw.TestObjectBucketClaimReadWrite(t, k8sh, sharedObjectStore)
@@ -132,11 +141,15 @@ func runObjectE2ETest(t *testing.T, k8sh *utils.K8sHelper, installer *installer.
 	useropmask.TestObjectStoreUserOpMask(t, k8sh, sharedObjectStore)
 	usercaps.TestObjectStoreUserCaps(t, k8sh, sharedObjectStore)
 	userplacement.TestObjectStoreUserDefaultPlacement(t, k8sh, sharedObjectStore)
+	usersecrettemplate.TestObjectStoreUserSecretTemplate(t, k8sh, sharedObjectStore)
 	userstorageclass.TestObjectStoreUserDefaultStorageClass(t, k8sh, sharedObjectStore)
 	// the ceph-cosi driver cannot reach a TLS object store endpoint, so this
 	// suite skips itself in the TLS pass
 	cosi.TestCephCOSIDriver(t, k8sh, sharedObjectStore)
 	notification.TestBucketNotification(t, k8sh, sharedObjectStore)
+	realm.TestCephObjectRealmDependents(t, k8sh, sharedObjectStore)
+	zonegroup.TestCephObjectZoneGroupDependents(t, k8sh, sharedObjectStore)
+	zone.TestCephObjectZoneDependents(t, k8sh, sharedObjectStore)
 
 	// last: this builds and deletes a store of its own, so keep it clear of the
 	// packages sharing the fixture store

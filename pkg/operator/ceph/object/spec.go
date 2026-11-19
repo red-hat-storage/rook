@@ -20,6 +20,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"maps"
 	"net/url"
 	"path"
 	"slices"
@@ -118,6 +119,23 @@ var (
 	opsLogFilename    = "ops-log.$(POD_NS).$(POD_NAME).log"
 	opsLogAbsFilename = path.Join(cephconfig.VarLogCephDir, opsLogFilename)
 )
+
+// appendEnvVarsIfMissing appends env vars whose names are not already present.
+// DaemonEnvVars already includes POD_NAME, so callers must not add it twice.
+func appendEnvVarsIfMissing(env []v1.EnvVar, extras ...v1.EnvVar) []v1.EnvVar {
+	have := make(map[string]struct{}, len(env))
+	for _, e := range env {
+		have[e.Name] = struct{}{}
+	}
+	for _, e := range extras {
+		if _, ok := have[e.Name]; ok {
+			continue
+		}
+		env = append(env, e)
+		have[e.Name] = struct{}{}
+	}
+	return env
+}
 
 type (
 	ProbeType    string
@@ -441,13 +459,19 @@ func (c *clusterConfig) makeDaemonContainer(rgwConfig *rgwConfig) (v1.Container,
 		return v1.Container{}, errors.Wrap(err, "failed to generate default readiness probe")
 	}
 
+	daemonCommand := []string{"radosgw"}
+	if controller.ShouldRaiseNofileLimit(c.store.ObjectMeta.Annotations) {
+		// Wrap radosgw to raise the nofile limit.
+		log.NamedInfo(nsName, logger, "raising nofile soft limit to hard limit in the RGW daemon container")
+		// Must pass arg0 "$0" explicitly since it is left off of "${@}"
+		daemonCommand = []string{"bash", "-c", controller.RaiseNofileLimitScript + `exec radosgw "$0" "$@"`}
+	}
+
 	container := v1.Container{
 		Name:            rgwContainerName,
 		Image:           c.clusterSpec.CephVersion.Image,
 		ImagePullPolicy: controller.GetContainerImagePullPolicy(c.clusterSpec.CephVersion.ImagePullPolicy),
-		Command: []string{
-			"radosgw",
-		},
+		Command:         daemonCommand,
 		Args: append(
 			controller.DaemonFlags(c.clusterInfo, c.clusterSpec,
 				strings.TrimPrefix(generateCephXUser(rgwConfig.ResourceName), "client.")),
@@ -462,7 +486,7 @@ func (c *clusterConfig) makeDaemonContainer(rgwConfig *rgwConfig) (v1.Container,
 			controller.DaemonVolumeMounts(c.DataPathMap, rgwConfig.ResourceName, c.clusterSpec.DataDirHostPath),
 			c.mimeTypesVolumeMount(),
 		),
-		Env:             append(controller.DaemonEnvVars(c.clusterSpec), k8sutil.NameEnvVar()),
+		Env:             controller.DaemonEnvVars(c.clusterSpec),
 		Resources:       c.store.Spec.Gateway.Resources,
 		StartupProbe:    startupProbe,
 		LivenessProbe:   noLivenessProbe(),
@@ -485,7 +509,7 @@ func (c *clusterConfig) makeDaemonContainer(rgwConfig *rgwConfig) (v1.Container,
 	// If the startup probe is enabled
 	container = cephconfig.ConfigureStartupProbe(container, c.store.Spec.HealthCheck.StartupProbe)
 	// If the readiness probe is enabled
-	configureReadinessProbe(&container, c.store.Spec.HealthCheck)
+	container = cephconfig.ConfigureReadinessProbe(container, c.store.Spec.HealthCheck.ReadinessProbe)
 	if c.store.Spec.IsTLSEnabled() {
 		// Add a volume mount for the ssl certificate
 		mount := v1.VolumeMount{Name: certVolumeName, MountPath: certDir, ReadOnly: true}
@@ -528,7 +552,7 @@ func (c *clusterConfig) makeDaemonContainer(rgwConfig *rgwConfig) (v1.Container,
 		}
 	}
 	if c.store.Spec.Gateway.OpsLogSidecar != nil {
-		container.Env = append(container.Env, podNameEnvVars...)
+		container.Env = appendEnvVarsIfMissing(container.Env, podNameEnvVars...)
 		container.Args = append(
 			container.Args,
 			cephconfig.NewFlag("rgw_enable_ops_log", "true"),
@@ -595,7 +619,12 @@ func (c *clusterConfig) makeDaemonContainer(rgwConfig *rgwConfig) (v1.Container,
 			container.Args = append(container.Args, cephconfig.NewFlag(radosReadReplicaPolicy, c.store.Spec.Gateway.ReadAffinity.Type))
 			// set crush location if `balance` and `default` mode are not set.
 			if c.store.Spec.Gateway.ReadAffinity.Type != balanceReadReplicaPolicy && c.store.Spec.Gateway.ReadAffinity.Type != defaultReadReplicaPolicy {
-				container.Command = []string{"bash", "-x", "-c", `exec radosgw --crush-location="host=${NODE_NAME//./-}" "$@"`}
+				// Must pass arg0 "$0" explicitly since it is left off of "${@}"
+				crushScript := `exec radosgw --crush-location="host=${NODE_NAME//./-}" "$0" "$@"`
+				if controller.ShouldRaiseNofileLimit(c.store.ObjectMeta.Annotations) {
+					crushScript = controller.RaiseNofileLimitScript + crushScript
+				}
+				container.Command = []string{"bash", "-x", "-c", crushScript}
 				isCrushLocationSet = true
 			}
 		} else {
@@ -607,28 +636,14 @@ func (c *clusterConfig) makeDaemonContainer(rgwConfig *rgwConfig) (v1.Container,
 		container.Args = append(container.Args, cephconfig.NewFlag("host", controller.ContainerEnvVarReference(k8sutil.PodNameEnvVar)))
 	}
 
-	// user configs are very last arguments so that they override what Rook might be setting before
-	for flag, val := range c.store.Spec.Gateway.RgwCommandFlags {
-		container.Args = append(container.Args, cephconfig.NewFlag(flag, val))
+	// user configs are very last arguments so that they override what Rook might be setting before.
+	// Sort the keys so the args are emitted in a deterministic order; otherwise the random map
+	// iteration order can change the pod template and roll the RGW pods without a spec change.
+	for _, flag := range slices.Sorted(maps.Keys(c.store.Spec.Gateway.RgwCommandFlags)) {
+		container.Args = append(container.Args, cephconfig.NewFlag(flag, c.store.Spec.Gateway.RgwCommandFlags[flag]))
 	}
 
 	return container, nil
-}
-
-// configureReadinessProbe returns the desired readiness probe for a given daemon
-func configureReadinessProbe(container *v1.Container, healthCheck cephv1.ObjectHealthCheckSpec) {
-	if ok := healthCheck.ReadinessProbe; ok != nil {
-		if !healthCheck.ReadinessProbe.Disabled {
-			probe := healthCheck.ReadinessProbe.Probe
-			// If the spec value is empty, let's use a default
-			if probe != nil {
-				// Set the readiness probe on the container to overwrite the default probe created by Rook
-				container.ReadinessProbe = cephconfig.GetProbeWithDefaults(probe, container.ReadinessProbe)
-			}
-		} else {
-			container.ReadinessProbe = nil
-		}
-	}
 }
 
 // RGW has internal mechanisms for restarting its processing if it gets stuck. any failures detected
@@ -803,6 +818,10 @@ func (c *clusterConfig) generateService(cephObjectStore *cephv1.CephObjectStore)
 		}
 	}
 
+	if c.store.Spec.Gateway.Service != nil && c.store.Spec.Gateway.Service.TrafficDistribution != "" {
+		svc.Spec.TrafficDistribution = ptr.To(c.store.Spec.Gateway.Service.TrafficDistribution)
+	}
+
 	addPort(svc, "http", cephObjectStore.Spec.Gateway.Port, destPort.IntVal)
 	addPort(svc, "https", cephObjectStore.Spec.Gateway.SecurePort, cephObjectStore.Spec.Gateway.SecurePort)
 
@@ -896,10 +915,26 @@ func (c *clusterConfig) vaultPrefixRGW() string {
 		vaultPrefixPath = path.Join(vaultPrefix,
 			c.store.Spec.Security.KeyManagementService.ConnectionDetails[vault.VaultBackendPathKey], "/data")
 	case kms.VaultTransitSecretEngineKey:
-		vaultPrefixPath = path.Join(vaultPrefix, secretEngine)
+		vaultPrefixPath = vaultTransitPrefix(c.store.Spec.Security.KeyManagementService.ConnectionDetails)
 	}
 
 	return vaultPrefixPath
+}
+
+// vaultTransitPrefix returns the Vault path prefix of a transit engine: the mount named by
+// VAULT_TRANSIT_BACKEND_PATH, or the secret engine name (transit) when it is not set.
+func vaultTransitPrefix(connectionDetails map[string]string) string {
+	mount := connectionDetails[kms.VaultSecretEngineKey]
+	if transitPath := kms.GetParam(connectionDetails, kms.VaultTransitBackendPathKey); transitPath != "" {
+		mount = transitPath
+	}
+	return path.Join(vaultPrefix, mount)
+}
+
+// vaultPrefixRGWSSES3 returns the Vault path prefix RGW uses for SSE-S3: the transit mount named by
+// VAULT_TRANSIT_BACKEND_PATH, or "transit" when it is not set.
+func (c *clusterConfig) vaultPrefixRGWSSES3() string {
+	return vaultTransitPrefix(c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails)
 }
 
 func (c *clusterConfig) CheckRGWKMS() (bool, error) {
@@ -1107,7 +1142,7 @@ func (c *clusterConfig) sseS3VaultTokenOptions(setOptions bool) []string {
 			cephconfig.NewFlag("rgw crypt sse s3 vault token file",
 				path.Join(rgwVaultDirName, sseS3, kms.VaultFileName)),
 			cephconfig.NewFlag("rgw crypt sse s3 vault prefix",
-				path.Join(vaultPrefix, c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails[kms.VaultSecretEngineKey])),
+				c.vaultPrefixRGWSSES3()),
 			cephconfig.NewFlag("rgw crypt sse s3 vault secret engine",
 				c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails[kms.VaultSecretEngineKey]),
 		}
@@ -1141,7 +1176,7 @@ func (c *clusterConfig) sseS3VaultAgentOptions(setOptions bool) []string {
 		return []string{
 			cephconfig.NewFlag("rgw crypt sse s3 vault auth", "agent"),
 			cephconfig.NewFlag("rgw crypt sse s3 vault prefix",
-				path.Join(vaultPrefix, c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails[kms.VaultSecretEngineKey])),
+				c.vaultPrefixRGWSSES3()),
 			cephconfig.NewFlag("rgw crypt sse s3 vault secret engine",
 				c.store.Spec.Security.ServerSideEncryptionS3.ConnectionDetails[kms.VaultSecretEngineKey]),
 		}

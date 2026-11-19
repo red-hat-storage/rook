@@ -18,7 +18,6 @@ package account
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,13 +30,17 @@ import (
 	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	rookclient "github.com/rook/rook/pkg/client/clientset/versioned/fake"
 	"github.com/rook/rook/pkg/clusterd"
+	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
+	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
 	cephobject "github.com/rook/rook/pkg/operator/ceph/object"
 	"github.com/rook/rook/pkg/operator/k8sutil"
 	"github.com/rook/rook/pkg/operator/test"
 	exectest "github.com/rook/rook/pkg/util/exec/test"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -65,7 +68,7 @@ var (
 )
 
 func TestCephObjectStoreAccountController(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
 
 	objectAccount := &cephv1.CephObjectStoreAccount{
@@ -329,6 +332,13 @@ func TestCephObjectStoreAccountController(t *testing.T) {
 								Body:       io.NopCloser(bytes.NewReader([]byte(newAccountJSON))),
 							}, nil
 						}
+						if req.Method == http.MethodPut && req.URL.Query().Has("quota") {
+							assert.Equal(t, "false", req.URL.Query().Get("enabled"))
+							return &http.Response{
+								StatusCode: 200,
+								Body:       io.NopCloser(bytes.NewReader([]byte(`{}`))),
+							}, nil
+						}
 					}
 					if isUserAPI {
 						if req.Method == http.MethodGet {
@@ -441,6 +451,17 @@ func TestGenerateDeterministicAccountID(t *testing.T) {
 		_, err := generateDeterministicAccountID("zzzzzzzzzzzzzz")
 		assert.Error(t, err)
 	})
+
+	for _, uid := range []types.UID{
+		"00000000-0000-0000-0000-000000000000",
+		"ffffffff-ffff-ffff-ffff-ffffffffffff",
+	} {
+		t.Run("matches the account ID format the CRD enforces for UID "+string(uid), func(t *testing.T) {
+			id, err := generateDeterministicAccountID(uid)
+			require.NoError(t, err)
+			assert.NoError(t, cephobject.ValidateAccountID(id))
+		})
+	}
 }
 
 func TestGetAccountID(t *testing.T) {
@@ -535,7 +556,7 @@ func TestGetOrGenerateAccountID(t *testing.T) {
 
 func TestReconcileAccount(t *testing.T) {
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	t.Run("create account with UID-derived ID", func(t *testing.T) {
 		uid := types.UID("a675dfa7-a785-40a3-b690-eb1e33c1dbdb")
@@ -555,6 +576,12 @@ func TestReconcileAccount(t *testing.T) {
 					return &http.Response{
 						StatusCode: 200,
 						Body:       io.NopCloser(bytes.NewReader([]byte(accountJSON))),
+					}, nil
+				}
+				if req.Method == http.MethodPut && req.URL.Query().Has("quota") {
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(bytes.NewReader([]byte(`{}`))),
 					}, nil
 				}
 				return nil, fmt.Errorf("unexpected request: method %q path %q", req.Method, req.URL.Path)
@@ -605,6 +632,12 @@ func TestReconcileAccount(t *testing.T) {
 					return &http.Response{
 						StatusCode: 200,
 						Body:       io.NopCloser(bytes.NewReader([]byte(accountCreateJSON))),
+					}, nil
+				}
+				if req.Method == http.MethodPut && req.URL.Query().Has("quota") {
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(bytes.NewReader([]byte(`{}`))),
 					}, nil
 				}
 				return nil, fmt.Errorf("unexpected request: method %q path %q", req.Method, req.URL.Path)
@@ -758,6 +791,12 @@ func TestReconcileAccount(t *testing.T) {
 					return &http.Response{
 						StatusCode: 200,
 						Body:       io.NopCloser(bytes.NewReader([]byte(accountJSON))),
+					}, nil
+				}
+				if req.Method == http.MethodPut && req.URL.Query().Has("quota") {
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(bytes.NewReader([]byte(`{}`))),
 					}, nil
 				}
 				return nil, fmt.Errorf("unexpected request: method %q path %q", req.Method, req.URL.Path)
@@ -1016,6 +1055,12 @@ func TestReconcileAccount(t *testing.T) {
 						Body:       io.NopCloser(bytes.NewReader([]byte(accountJSON))),
 					}, nil
 				}
+				if req.Method == http.MethodPut && req.URL.Query().Has("quota") {
+					return &http.Response{
+						StatusCode: 200,
+						Body:       io.NopCloser(bytes.NewReader([]byte(`{}`))),
+					}, nil
+				}
 				return nil, fmt.Errorf("unexpected request: method %q path %q", req.Method, req.URL.Path)
 			},
 		}
@@ -1055,7 +1100,7 @@ func TestReconcileAccount(t *testing.T) {
 
 func TestDeleteAccount(t *testing.T) {
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	t.Run("delete account and root user successfully", func(t *testing.T) {
 		userDeleteCalled := false
@@ -1306,10 +1351,86 @@ func TestDeleteAccount(t *testing.T) {
 		assert.NoError(t, err)
 		assert.False(t, deleteCalled, "should not call RGW delete for a foreign account")
 	})
+
+	const malformedAccountID = "x;touch injected;#xx"
+
+	countingAdminClient := func(t *testing.T, requests *int) *admin.API {
+		mockClient := &cephobject.MockClient{
+			MockDo: func(req *http.Request) (*http.Response, error) {
+				*requests++
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewReader([]byte(""))),
+				}, nil
+			},
+		}
+		adminClient, err := admin.New("rook-ceph-rgw-my-store.mycluster.svc", "access", "secret", mockClient)
+		require.NoError(t, err)
+		return adminClient
+	}
+
+	t.Run("refuses a malformed status account ID without contacting RGW", func(t *testing.T) {
+		requests := 0
+		r := &ReconcileObjectStoreAccount{
+			objContext: &cephobject.AdminOpsContext{
+				AdminOpsClient: countingAdminClient(t, &requests),
+			},
+			opManagerContext: ctx,
+		}
+		account := &cephv1.CephObjectStoreAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				UID:       "test-uid",
+			},
+			Status: &cephv1.ObjectStoreAccountStatus{
+				AccountID: malformedAccountID,
+			},
+		}
+
+		_, err := r.deleteAccount(account)
+		assert.ErrorContains(t, err, "invalid account ID")
+		assert.Zero(t, requests, "should not call RGW for a malformed account ID")
+	})
+
+	t.Run("refuses a malformed status account ID before creating a purge job", func(t *testing.T) {
+		requests := 0
+		clientset := test.New(t, 1)
+		objContext := cephobject.NewContext(&clusterd.Context{Clientset: clientset}, cephclient.AdminTestClusterInfo(namespace), store)
+		r := &ReconcileObjectStoreAccount{
+			objContext: &cephobject.AdminOpsContext{
+				Context:        *objContext,
+				AdminOpsClient: countingAdminClient(t, &requests),
+			},
+			cephClusterSpec: &cephv1.ClusterSpec{
+				DataDirHostPath: "/var/lib/rook",
+				CephVersion:     cephv1.CephVersionSpec{Image: "quay.io/ceph/ceph:v19"},
+			},
+			opManagerContext: ctx,
+		}
+		account := &cephv1.CephObjectStoreAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        name,
+				Namespace:   namespace,
+				UID:         "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+				Annotations: map[string]string{opcontroller.RESOURCE_CLEANUP_ANNOTATION: "true"},
+			},
+			Status: &cephv1.ObjectStoreAccountStatus{
+				AccountID: malformedAccountID,
+			},
+		}
+
+		_, err := r.deleteAccount(account)
+		assert.ErrorContains(t, err, "invalid account ID")
+		assert.Zero(t, requests, "should not call RGW for a malformed account ID")
+		jobs, err := clientset.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
+		require.NoError(t, err)
+		assert.Empty(t, jobs.Items)
+	})
 }
 
 func TestUpdateStatus(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
 
 	s := scheme.Scheme
@@ -1384,7 +1505,7 @@ func TestUpdateStatus(t *testing.T) {
 }
 
 func TestReconcileObjectStoreAccountNotFound(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
 
 	s := scheme.Scheme
@@ -1509,7 +1630,7 @@ func TestGenerateRootUserSecretName(t *testing.T) {
 
 func TestReconcileRootUser(t *testing.T) {
 	capnslog.SetGlobalLogLevel(capnslog.DEBUG)
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	objectStore := &cephv1.CephObjectStore{
 		ObjectMeta: metav1.ObjectMeta{Name: store, Namespace: namespace},
@@ -1791,5 +1912,71 @@ func TestReconcileRootUser(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, secretName)
 		assert.True(t, modifyCalled, "should always call modify to ensure desired state")
+	})
+}
+
+func TestBuildAccountQuota(t *testing.T) {
+	int64Ptr := func(i int64) *int64 { return &i }
+	quantityPtr := func(s string) *resource.Quantity {
+		q := resource.MustParse(s)
+		return &q
+	}
+
+	t.Run("unset size and objects disable the quota with unlimited sentinels", func(t *testing.T) {
+		q := buildAccountStorageQuota("RGW1", admin.AccountQuotaTypeAccount, nil, nil)
+		assert.Equal(t, "RGW1", q.ID)
+		assert.Equal(t, admin.AccountQuotaTypeAccount, q.QuotaType)
+		assert.False(t, *q.Enabled)
+		assert.Equal(t, int64(-1), *q.MaxSize)
+		assert.Equal(t, int64(-1), *q.MaxObjects)
+	})
+
+	t.Run("size only enables the quota and converts to bytes", func(t *testing.T) {
+		q := buildAccountStorageQuota("RGW1", admin.AccountQuotaTypeAccount, quantityPtr("10Gi"), nil)
+		assert.True(t, *q.Enabled)
+		assert.Equal(t, int64(10*1024*1024*1024), *q.MaxSize)
+		assert.Equal(t, int64(-1), *q.MaxObjects)
+	})
+
+	t.Run("objects only enables the quota", func(t *testing.T) {
+		q := buildAccountStorageQuota("RGW1", admin.AccountQuotaTypeAccount, nil, int64Ptr(1000))
+		assert.Equal(t, admin.AccountQuotaTypeAccount, q.QuotaType)
+		assert.True(t, *q.Enabled)
+		assert.Equal(t, int64(-1), *q.MaxSize)
+		assert.Equal(t, int64(1000), *q.MaxObjects)
+	})
+
+	t.Run("both size and objects set", func(t *testing.T) {
+		q := buildAccountStorageQuota("RGW1", admin.AccountQuotaTypeAccount, quantityPtr("1Ti"), int64Ptr(500))
+		assert.True(t, *q.Enabled)
+		assert.Equal(t, int64(1024*1024*1024*1024), *q.MaxSize)
+		assert.Equal(t, int64(500), *q.MaxObjects)
+	})
+}
+
+func TestApplyAccountResourceLimits(t *testing.T) {
+	int64Ptr := func(i int64) *int64 { return &i }
+
+	t.Run("empty quotas reset every limit to the Ceph default", func(t *testing.T) {
+		account := &admin.Account{ID: "RGW1"}
+		applyAccountResourceLimits(account, cephv1.AccountQuotaSpec{})
+		assert.Equal(t, int64(1000), *account.MaxBuckets)
+		assert.Equal(t, int64(1000), *account.MaxUsers)
+		assert.Equal(t, int64(1000), *account.MaxRoles)
+		assert.Equal(t, int64(1000), *account.MaxGroups)
+		assert.Equal(t, int64(4), *account.MaxAccessKeys)
+	})
+
+	t.Run("set fields are copied and unset fields get the Ceph default", func(t *testing.T) {
+		account := &admin.Account{ID: "RGW1"}
+		applyAccountResourceLimits(account, cephv1.AccountQuotaSpec{
+			MaxBuckets:    int64Ptr(100),
+			MaxAccessKeys: int64Ptr(8),
+		})
+		assert.Equal(t, int64(100), *account.MaxBuckets)
+		assert.Equal(t, int64(8), *account.MaxAccessKeys)
+		assert.Equal(t, int64(1000), *account.MaxUsers)
+		assert.Equal(t, int64(1000), *account.MaxRoles)
+		assert.Equal(t, int64(1000), *account.MaxGroups)
 	})
 }
