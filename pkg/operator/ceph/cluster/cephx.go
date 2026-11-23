@@ -73,14 +73,6 @@ var keyTypeHealthErrs = []string{
 	"AUTH_INSECURE_SERVICE_TICKETS",
 }
 
-// DOWNSTREAM ONLY!
-var keyTypeHealthWarnings = []string{
-	"AUTH_INSECURE_ROTATING_SERVICE_KEY_TYPE",
-	"AUTH_INSECURE_CLIENT_KEY_TYPE",
-	"AUTH_INSECURE_KEYS_ALLOWED",
-	"AUTH_INSECURE_KEYS_CREATABLE",
-}
-
 // claimAdminRotationLock tries to claim a lock on admin key rotation for a cluster namespace
 // returns an error if the lock could not be granted.
 // Because (*Mutex).Lock() blocks while trying to get a lock, we could end up stalling Rook
@@ -167,21 +159,6 @@ func setDefaultCephxKeyType(clusterdCtx *clusterd.Context, clusterInfo *cephclie
 				// We anticipate this with RHCS 9.1z1, but 9.1z2 will re-enable these.
 				logger.Infof("could not temporarily mute ceph health err %q: %v", e, err)
 			}
-		}
-	}
-
-	// TODO(key): DOWNSTREAM ONLY! (not actually TODO but helps ensure we don't merge upstream)
-	// TODO(key): when this code block is removed, replace it with 'ceph health unmute'.
-	// Always mute key type health warnings
-	for _, w := range keyTypeHealthWarnings {
-		logger.Infof("permanently muting ceph health warn %q for cluster in namespace %q", w, clusterInfo.Namespace)
-		args = []string{"health", "mute", w, "--sticky"}
-		cmd = cephclient.NewCephCommand(clusterdCtx, clusterInfo, args)
-		_, err = cmd.RunWithTimeout(exec.CephCommandsTimeout)
-		if err != nil {
-			// If the build of ceph doesn't have these warnings, this command will fail.
-			// We anticipate this with RHCS 9.1z1, but 9.1z2 will re-enable these.
-			logger.Infof("could not permanently mute ceph health warn %q: %v", w, err)
 		}
 	}
 
