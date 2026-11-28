@@ -23,6 +23,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/rook/rook/pkg/clusterd"
+	cephclient "github.com/rook/rook/pkg/daemon/ceph/client"
+	oposd "github.com/rook/rook/pkg/operator/ceph/cluster/osd"
 	exectest "github.com/rook/rook/pkg/util/exec/test"
 	"github.com/stretchr/testify/assert"
 )
@@ -228,6 +230,26 @@ func TestAddEncryptionKey(t *testing.T) {
 			"passphrase", "newPassphrase", "0")
 		assert.NoError(t, err)
 	})
+}
+
+func TestSetLUKSLabelAndSubsystem(t *testing.T) {
+	var gotLabel string
+	executor := &exectest.MockExecutor{}
+	executor.MockExecuteCommandWithCombinedOutput = func(command string, args ...string) (string, error) {
+		if command == cryptsetupBinary && args[0] == "config" {
+			gotLabel = args[5]
+			return "", nil
+		}
+		return "", errors.Errorf("unknown command %s %s", command, args)
+	}
+	context := &clusterd.Context{Executor: executor}
+	clusterInfo := &cephclient.ClusterInfo{FSID: "811e7dc0-ea13-4951-b000-24a8565d0735"}
+
+	// a long PVC name is truncated to fit the LUKS2 label
+	t.Setenv(oposd.PVCNameEnvVarName, "ocs-deviceset-lso-lv-for-odf-sc-0-data-1n4gk4")
+	err := setLUKSLabelAndSubsystem(context, clusterInfo, "/dev/sda")
+	assert.NoError(t, err)
+	assert.Equal(t, "pvc_name=ocs-deviceset-lso-lv-for-odf-sc-0-data", gotLabel)
 }
 
 func TestDmsetupVersion(t *testing.T) {
